@@ -49,6 +49,17 @@ def test_only_the_quality_zone_may_read_the_etmf_area() -> None:
     assert sorted(n for n, b in policies.BOUNDARIES.items() if "tmf" in b.reads) == ["quality"]
 
 
+def test_the_preclinical_zone_reads_the_send_study_and_nothing_of_a_clinical_cut() -> None:
+    assert policies.ALL_POLICIES["preclinical"].reads == ("meta", "send")
+
+
+def test_only_the_preclinical_zone_may_read_the_send_area() -> None:
+    readers = sorted(n for n, p in policies.ALL_POLICIES.items() if "send" in p.reads)
+    assert readers == ["preclinical"]
+    assert policies.POLICY_BOUNDARY["preclinical"] == "preclinical"
+    assert sorted(n for n, b in policies.BOUNDARIES.items() if "send" in b.reads) == ["preclinical"]
+
+
 def test_a_cut_is_staged_only_with_the_areas_a_policy_reads() -> None:
     assert cut_areas_for(policies.ALL_POLICIES["rbqm"].reads) == ("blinded", "ops")
     assert cut_areas_for(policies.ALL_POLICIES["safety"].reads) == ("blinded",)
@@ -66,7 +77,8 @@ def test_applied_hashes_now_differ_where_the_rules_differ() -> None:
     for name in policies.ALL_POLICIES:
         groups.setdefault(policies.applied_sha256(name), []).append(name)
     assert sorted(sorted(g) for g in groups.values()) == [
-        ["portfolio", "preclinical", "rbqm", "study_ops"],
+        ["portfolio", "rbqm", "study_ops"],
+        ["preclinical"],
         ["quality"],
         ["quality.audit_trail"],
         ["rbqm.narrator"],

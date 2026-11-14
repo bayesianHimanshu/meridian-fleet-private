@@ -36,6 +36,7 @@ from meridian.data.stage_layout import (
     META,
     NARR,
     OPS,
+    SEND,
     STAGE_AREAS,
     STAGE_ROOT,
     TMF,
@@ -50,6 +51,7 @@ __all__ = [
     "META",
     "NARR",
     "OPS",
+    "SEND",
     "STAGE_AREAS",
     "STAGE_ROOT",
     "TMF",
@@ -137,10 +139,12 @@ class ZonePolicy:
 # The areas each zone may read. The safety zone reads no operational data (its agent
 # reads ae, dm and the safety database snapshot only); the quality zone reads blinded DM
 # and the cut's eTMF index (tmf), and is the only zone that may read tmf; the unblinded
-# zone is the only one that may read the unblinded area. The others have no agent yet and
-# keep the blinded default.
+# zone is the only one that may read the unblinded area; the preclinical zone reads the
+# SEND study (send) and nothing of a clinical cut, and is the only zone that may read send
+# (phase 5 step 1). The others have no agent yet and keep the blinded default.
 ZONE_READS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(ZONES, BLINDED_READS),
+    "preclinical": (META, SEND),
     "safety": (META, BLINDED),
     "quality": (META, BLINDED, TMF),
     "unblinded": (META, BLINDED, OPS, UNBLINDED),
@@ -425,10 +429,13 @@ BOUNDARIES: dict[str, ZonePolicy] = {
     "local_model": ZonePolicy("local_model", reads=(LM,), network=(OLLAMA_RULE,)),
     # The audit boundary: the trigger and the audit extract, no network.
     "audit": ZonePolicy("audit", reads=(META, AUDIT)),
+    # The preclinical boundary: the trigger and the SEND study, no network.
+    "preclinical": ZonePolicy("preclinical", ZONE_READS["preclinical"]),
 }
 # The boundary each zone is proved against.
 ZONE_BOUNDARY: dict[str, str] = {
     **dict.fromkeys(ZONES, "blinded"),
+    "preclinical": "preclinical",
     "quality": "quality",
     "unblinded": "unblinded",
 }

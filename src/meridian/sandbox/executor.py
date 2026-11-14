@@ -26,17 +26,25 @@ from meridian.data.cut_writer import BLINDED_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
 from meridian.data.study_store import (
     SAFETY_DB_ZONES,
+    SEND_ZONES,
     TMF_ZONES,
     AuditStageReader,
     LayeredStudyReader,
     StudyReader,
 )
-from meridian.domain.events import AuditReviewRequested, DataCut, Event, SubstrateRun
+from meridian.domain.events import (
+    AuditReviewRequested,
+    DataCut,
+    Event,
+    SendStudyLoaded,
+    SubstrateRun,
+)
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
     AUDIT,
     META,
+    SEND,
     TMF,
     expected_effective,
     policy_for_agent,
@@ -51,6 +59,7 @@ from meridian.sandbox.staging import (
     cut_areas_for,
     stage_audit,
     stage_cut,
+    stage_send,
     uploads,
 )
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
@@ -120,11 +129,31 @@ def stage_run(
     safety_root: Path | None,
     etmf_root: Path | None,
     audit_root: Path | None,
+    send_root: Path | None = None,
 ) -> StagedRun:
-    """Stage meta/ and the cut areas the policy reads (or the audit extract) under dest,
-    check the stage and the inputs manifest, and return it. Shared by the OpenShell and
-    Substrate executors, so both receive the same files."""
+    """Stage meta/ and the cut areas the policy reads (or the audit extract, or a SEND
+    study) under dest, check the stage and the inputs manifest, and return it. Shared by
+    the OpenShell and Substrate executors, so both receive the same files."""
     policy = ALL_POLICIES[policy_name]
+    if SEND in policy.reads:
+        # The preclinical zone: a SEND study, never a clinical cut (phase 5 step 1).
+        if not isinstance(trigger.payload, SendStudyLoaded) or trigger.payload.cut_id != cut_id:
+            raise ExecutionError(f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}")
+        if send_root is None:
+            raise ExecutionError(f"{agent_id} reads a SEND study; no SEND store is set")
+        send_dir = send_root / cut_id / SEND
+        if not send_dir.is_dir():
+            raise ExecutionError(f"no SEND cut {cut_id} under {send_root}")
+        stage = stage_send(send_dir, trigger, dest)
+        assert_clean_stage(stage, (SEND,))
+        recomputed = build_manifest(stage)
+        written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
+        if written != recomputed.dumps():
+            raise ExecutionError("staged files changed after the inputs manifest was written")
+        sha = recomputed.sha256()
+        return StagedRun(stage=stage, areas=(SEND, META), inputs_manifest_sha256=sha)
+    if isinstance(trigger.payload, SendStudyLoaded):
+        raise ExecutionError(f"{agent_id} may not read a SEND study ({policy_name} does not)")
     audit = AUDIT in policy.reads
     if audit:
         if not isinstance(trigger.payload, AuditReviewRequested):
@@ -178,8 +207,10 @@ class InProcessExecutor:
         safety_reader_factory: Callable[[str], StudyReader] | None = None,
         tmf_reader_factory: Callable[[str], StudyReader] | None = None,
         audit_root: Path | None = None,
+        send_reader_factory: Callable[[str], StudyReader] | None = None,
     ) -> None:
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
+        self._send_reader_factory = send_reader_factory  # cut id to a SEND study reader
         self._registry = registry
         self._reader_factory = reader_factory
         self._safety_reader_factory = safety_reader_factory
@@ -187,6 +218,11 @@ class InProcessExecutor:
         self._log = log
 
     def _reader(self, agent_id: str, cut_id: str) -> StudyReader:
+        if zone_of(agent_id) in SEND_ZONES:
+            # The preclinical zone reads its SEND study and nothing of a clinical cut.
+            if self._send_reader_factory is None:
+                raise ExecutionError(f"{agent_id} reads a SEND study; no SEND reader is set")
+            return self._send_reader_factory(cut_id)
         reader = self._reader_factory(cut_id)
         if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_reader_factory is not None:
             return LayeredStudyReader(reader, self._safety_reader_factory(cut_id))
@@ -287,7 +323,9 @@ class OpenShellExecutor:
         safety_root: Path | None = None,
         etmf_root: Path | None = None,
         audit_root: Path | None = None,
+        send_root: Path | None = None,
     ) -> None:
+        self._send_root = send_root  # <send_root>/<study>: SEND cuts (preclinical zone)
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
         self._etmf_root = etmf_root  # <etmf_root>/<study>: eTMF snapshots by cut id
@@ -336,6 +374,7 @@ class OpenShellExecutor:
                 safety_root=self._safety_root,
                 etmf_root=self._etmf_root,
                 audit_root=self._audit_root,
+                send_root=self._send_root,
             )
             stage = staged.stage
             inputs_sha = staged.inputs_manifest_sha256

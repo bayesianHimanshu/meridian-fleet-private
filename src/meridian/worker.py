@@ -38,12 +38,13 @@ from meridian.data.study_store import (
     LayeredStudyReader,
     MissingTableError,
     ParquetStudyReader,
+    SendStudyReader,
     StudyAccessError,
     StudyReader,
     TmfStageReader,
 )
 from meridian.domain.audit import LEDGER_SCOPE
-from meridian.domain.events import AuditReviewRequested, DataCut, Event
+from meridian.domain.events import AuditReviewRequested, DataCut, Event, SendStudyLoaded
 from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
@@ -157,6 +158,11 @@ def execute(
             study = AuditStageReader.at_cut_dir(
                 cut_dir, cut_id=LEDGER_SCOPE, study_id=trigger.payload.study_id
             )
+        elif isinstance(trigger.payload, SendStudyLoaded):
+            # A SEND study (preclinical zone): only send/ is staged, and read.
+            study = SendStudyReader.at_cut_dir(
+                cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.study_id
+            )
         elif isinstance(trigger.payload, DataCut):
             ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
             study = ParquetStudyReader.at_cut_dir(cut_dir, **ids)
@@ -164,7 +170,7 @@ def execute(
                 # The quality zone also reads the eTMF index staged under tmf/.
                 study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(cut_dir, **ids))
         else:
-            raise ValueError(f"trigger is a {trigger.payload.type}, not a data_cut")
+            raise ValueError(f"trigger is a {trigger.payload.type}, not a data cut or SEND study")
     except (OSError, ValidationError, ValueError, StudyAccessError) as exc:
         log.error("worker.bad_input", error=f"{type(exc).__name__}: {exc}")
         return EXIT_DATA, None

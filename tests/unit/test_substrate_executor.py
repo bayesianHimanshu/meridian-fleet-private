@@ -26,7 +26,7 @@ from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.audit.extract import write_extract
 from meridian.data.study_store import ParquetStudyReader
-from meridian.domain.events import AuditReviewRequested, Event
+from meridian.domain.events import AuditReviewRequested, Event, SendStudyLoaded
 from meridian.platform.agent_settings import QtlDetectorConfig
 from meridian.platform.clock import FixedClock
 from meridian.platform.config import AgentsSettings, SubstrateSettings
@@ -328,7 +328,16 @@ def _zone_roots(tmp_path: Path) -> tuple[Path, Event, Event]:
         update={"payload": AuditReviewRequested(study_id=STUDY, from_seq=1, through_seq=8)}
     )
     write_extract([], tmp_path / "audit" / "9" / "audit")
+    send = tmp_path / "send" / "MRD-101-TOX-01" / "TOX-FINAL" / "send"
+    send.mkdir(parents=True)
+    pl.DataFrame({"USUBJID": ["A1"], "ARMCD": ["4"]}).write_parquet(send / "dm.parquet")
     return tmp_path, cut_trigger("DC-BASE", seq=2), review
+
+
+def send_trigger(seq: int = 11) -> Event:
+    return cut_trigger("DC-BASE", seq=seq).model_copy(
+        update={"payload": SendStudyLoaded(study_id="MRD-101-TOX-01", cut_id="TOX-FINAL", path="x")}
+    )
 
 
 EXPECTED_AREAS = {
@@ -336,12 +345,14 @@ EXPECTED_AREAS = {
     "safety.sae_reconciler": {"meta", "blinded"},
     "quality": {"meta", "blinded", "tmf"},
     "quality.audit_trail": {"meta", "audit"},
+    "preclinical": {"meta", "send"},
 }
 AGENT_OF = {
     "rbqm": "rbqm.csm",
     "safety.sae_reconciler": "safety.sae_reconciler",
     "quality": "quality.tmf_completeness",
     "quality.audit_trail": "quality.audit_trail_reviewer",
+    "preclinical": "preclinical.tox_study_monitor",
 }
 
 
@@ -350,16 +361,18 @@ def test_an_actor_receives_only_its_zones_folders(tmp_path: Path, policy: str) -
     assert set(SUBSTRATE_POLICIES) == set(EXPECTED_AREAS)
     root, cut, review = _zone_roots(tmp_path)
     audit = policy == "quality.audit_trail"
+    send = policy == "preclinical"
     staged = stage_run(
         agent_id=AGENT_OF[policy],
-        trigger=review if audit else cut,
-        cut_id="LEDGER" if audit else "DC-BASE",
+        trigger=review if audit else send_trigger() if send else cut,
+        cut_id="LEDGER" if audit else "TOX-FINAL" if send else "DC-BASE",
         policy_name=policy,
         dest=tmp_path / "stage",
         study_root=root / "curated" / STUDY,
         safety_root=root / "safety" / STUDY,
         etmf_root=root / "etmf" / STUDY,
         audit_root=root / "audit",
+        send_root=root / "send" / "MRD-101-TOX-01",
     )
     members = archive_members(archive(staged.stage))
     areas = {m.split("/", 1)[0] for m in members}
@@ -371,7 +384,7 @@ def test_an_actor_receives_only_its_zones_folders(tmp_path: Path, policy: str) -
     # The actor's side: the template's --areas is the same set, and it refuses any other.
     command = zone_command(policy)
     assert set(command[command.index("--areas") + 1].split(",")) == set(ALL_POLICIES[policy].reads)
-    for other in {"blinded", "ops", "unblinded", "tmf", "audit", "lm", "narr"} - areas:
+    for other in {"blinded", "ops", "unblinded", "tmf", "audit", "lm", "narr", "send"} - areas:
         bad = io.BytesIO()
         with tarfile.open(fileobj=bad, mode="w") as tar:
             info = tarfile.TarInfo(f"{other}/x.parquet")
@@ -430,3 +443,26 @@ def test_the_server_takes_one_run_and_checks_the_archive_sha(roots: Path, tmp_pa
     assert out["inputs_manifest_sha256"] == staged.inputs_manifest_sha256
     state.finish()
     assert not state.claim()  # one actor, one run
+
+
+@pytest.mark.parametrize("policy", [p for p in SUBSTRATE_POLICIES if p != "preclinical"])
+def test_no_other_zone_can_be_staged_a_send_study(tmp_path: Path, policy: str) -> None:
+    root, _, _ = _zone_roots(tmp_path)
+    with pytest.raises(ExecutionError, match="may not read a SEND study"):
+        stage_run(
+            agent_id=AGENT_OF[policy], trigger=send_trigger(), cut_id="TOX-FINAL",
+            policy_name=policy, dest=tmp_path / "stage", study_root=root / "curated" / STUDY,
+            safety_root=root / "safety" / STUDY, etmf_root=root / "etmf" / STUDY,
+            audit_root=root / "audit", send_root=root / "send" / "MRD-101-TOX-01",
+        )  # fmt: skip
+
+
+def test_the_preclinical_zone_cannot_be_staged_a_clinical_cut(tmp_path: Path) -> None:
+    root, cut, _ = _zone_roots(tmp_path)
+    with pytest.raises(ExecutionError, match="not the SendStudyLoaded"):
+        stage_run(
+            agent_id="preclinical.tox_study_monitor", trigger=cut, cut_id="DC-BASE",
+            policy_name="preclinical", dest=tmp_path / "stage",
+            study_root=root / "curated" / STUDY, safety_root=None, etmf_root=None,
+            audit_root=None, send_root=root / "send" / "MRD-101-TOX-01",
+        )  # fmt: skip

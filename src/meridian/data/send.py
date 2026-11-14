@@ -34,14 +34,14 @@ from meridian.data.cut_writer import (
     write_parquet_deterministic,
 )
 from meridian.data.datacut import Ledger
+from meridian.data.datacut import send_study_events as send_study_events
 from meridian.data.fetch import FetchManifest, file_name
 from meridian.data.files import sha256_file
 from meridian.data.stage_layout import SEND
 from meridian.data.xpt_reader import read_xpt
-from meridian.domain.enums import EventType, Visibility
+from meridian.domain.enums import Visibility
 from meridian.domain.events import Event, EventDraft, SendStudyLoaded
 from meridian.domain.ids import UtcDatetime
-from meridian.ledger.store import LedgerReader
 
 SEND_AREA = SEND
 # The domains ingested: the design, mortality, and every findings domain the agent reads.
@@ -193,19 +193,6 @@ def write_send_cut(
     finally:
         if tmp.exists():
             shutil.rmtree(tmp)
-
-
-def send_study_events(reader: LedgerReader, study_id: str | None = None) -> list[Event]:
-    """Every SendStudyLoaded event in seq order, optionally for one study."""
-    out: list[Event] = []
-    for entry in reader.read(event_types=[EventType.SEND_STUDY_LOADED]):
-        if (
-            isinstance(entry, Event)
-            and isinstance(entry.payload, SendStudyLoaded)
-            and (study_id is None or entry.payload.study_id == study_id)
-        ):
-            out.append(entry)
-    return out
 
 
 def record_send_study(

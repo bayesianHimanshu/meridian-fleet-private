@@ -107,6 +107,7 @@ rbqm = "substrate"
 "safety.sae_reconciler" = "substrate"
 quality = "substrate"
 "quality.audit_trail" = "substrate"
+preclinical = "substrate"  # phase 5 step 1: the SEND study, no network
 
 # Agent Substrate on the local kind cluster (phase 4a). version and commit pin the release
 # ate-system was deployed from; the install record must name the same version.
