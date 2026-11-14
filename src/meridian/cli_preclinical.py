@@ -1,5 +1,9 @@
 """meridian preclinical: MRD-101's SEND study and preclinical.tox_study_monitor."""
 
+import hashlib
+import json
+from typing import Annotated
+
 import httpx
 import typer
 
@@ -71,3 +75,51 @@ def preclinical_ingest() -> None:
             typer.echo(f"  {f.path:<20} {f.rows:>6} rows  sha256 {f.sha256[:16]}")
         verb = "appended" if result.event_appended else "already recorded"
         typer.echo(f"SendStudyLoaded {verb} at ledger seq {result.event.seq}")
+
+
+@preclinical_app.command("eval")
+def preclinical_eval(
+    which: Annotated[str, typer.Option("--set", help="null, dev or holdout")],
+) -> None:
+    """Run the agent in process on the pre-registered evaluation copies (no ledger
+    writes) and write data/evals/preclinical/<set>.json; ground truth for dev and holdout
+    goes to data/ground_truth/preclinical/ (docs/preclinical-eval.md)."""
+    from meridian.data.cut_writer import CutManifest
+    from meridian.evals.preclinical import (
+        dumps,
+        evaluate_null,
+        evaluate_set,
+        load_study,
+        summarise,
+    )
+    from meridian.ledger.hashing import canonical_json
+    from meridian.preclinical.inprocess import run_checks
+
+    if which not in ("null", "dev", "holdout"):
+        raise _fail(ValueError(f"--set must be null, dev or holdout, not {which}"))
+    s = Settings()
+    p, cfg = s.preclinical, s.agents.tox_study_monitor
+    cut_dir = p.send_root / p.study_id / p.cut_id
+    base = load_study(cut_dir)
+    manifest = CutManifest.load(cut_dir)
+    base_sha = hashlib.sha256(canonical_json(manifest.model_dump(mode="json")).encode()).hexdigest()
+    run = run_checks(cfg, p.study_id)
+    if which == "null":
+        results = evaluate_null(base, run)
+    else:
+        results = evaluate_set(which, base, cfg, run, base_sha, s.ground_truth_dir / "preclinical")
+    out = s.evals_dir / "preclinical" / f"{which}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        dumps(
+            results,
+            {
+                "set": which,
+                "config": cfg.model_dump(mode="json"),
+                "base_cut": p.cut_id,
+                "base_manifest_sha256": base_sha,
+            },
+        )
+    )
+    typer.echo(json.dumps(summarise(results), indent=2, sort_keys=True))
+    typer.echo(f"wrote {out}")
