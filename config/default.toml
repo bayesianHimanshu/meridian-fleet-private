@@ -199,6 +199,7 @@ enabled = [
     "safety.sae_reconciler",
     "quality.tmf_completeness",
     "quality.audit_trail_reviewer",
+    "preclinical.tox_study_monitor",
 ]
 
 [agents.kri_monitor]
