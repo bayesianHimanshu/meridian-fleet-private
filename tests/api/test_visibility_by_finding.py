@@ -71,6 +71,9 @@ PATHS = [
     "/api/v1/portfolio",
     "/api/v1/rbqm/DC-BASE/sites",
     "/api/v1/safety/DC-BASE/reconciliation",
+    "/api/v1/preclinical/studies",
+    "/api/v1/preclinical/MRD-101-TOX-01/endpoints",
+    "/api/v1/preclinical/MRD-101-TOX-01/noael",
 ]
 
 spec = st.fixed_dictionaries(

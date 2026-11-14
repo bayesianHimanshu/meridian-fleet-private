@@ -442,7 +442,7 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
     from meridian.platform.container import Container
 
     settings = Settings(ledger_path=tmp_path / "l.sqlite3")
-    assert settings.cuts.operational == ("DC-BASE",)
+    assert settings.cuts.operational == ("DC-BASE", "TOX-FINAL")
     assert settings.cuts.operational_executors == ("openshell", "substrate")
     assert settings.runtime.executor == "zoned"
     assert settings.runtime.executors == {

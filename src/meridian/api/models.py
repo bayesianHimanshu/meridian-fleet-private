@@ -515,12 +515,30 @@ class AssetStatic(BaseModel):
     status: AssetStatus
 
 
+class NoaelBrief(BaseModel):
+    """The current NOAEL decision for one sex (or combined), for the portfolio."""
+
+    model_config = _FROZEN
+
+    decision_id: str
+    sex: Literal["M", "F", "combined"]
+    established: bool
+    noael_dose: float | None
+    dose_unit: str
+    recorded_at: datetime
+    decided_by: str
+
+
 class AssetLive(BaseModel):
     """Computed from the ledger at request time, as the caller may see it."""
 
     model_config = _FROZEN
 
     open_findings: int
+    # A preclinical asset (phase 5): its study's current NOAEL decisions. noael_status is
+    # "not_shown" for a role that does not see preclinical data (noael is then empty).
+    noael_status: Literal["decided", "not_yet_decided", "not_shown"] | None = None
+    noael: list[NoaelBrief] = Field(default_factory=list)
 
 
 class PortfolioAsset(BaseModel):
@@ -765,3 +783,136 @@ class AuditView(BaseModel):
     chain_findings: int
     by_check: list[CheckCount]
     findings: list[AuditFindingItem]
+
+
+# ---- preclinical (phase 5 step 1)
+
+
+class DoseGroupView(BaseModel):
+    model_config = _FROZEN
+
+    setcd: str
+    phase: Literal["main", "recovery"]
+    dose: float
+    control: bool
+    males: int
+    females: int
+
+
+class PreclinicalStudy(BaseModel):
+    model_config = _FROZEN
+
+    study_id: str
+    asset_id: str | None
+    cut_id: str
+    loaded_seq: int
+    title: str
+    species: str
+    strain: str
+    route: str
+    duration: str
+    dose_unit: str
+    groups: list[DoseGroupView]
+
+
+class GradeCount(BaseModel):
+    model_config = _FROZEN
+
+    grade: int
+    animals: int
+
+
+class EndpointGroupView(BaseModel):
+    model_config = _FROZEN
+
+    rank: int
+    dose: float
+    n: int
+    mean: float | None = None
+    sd: float | None = None
+    percent_vs_control: float | None = None
+    p: float | None = None
+    affected: int | None = None
+    grades: list[GradeCount] = Field(default_factory=list)
+    flagged: bool = False
+
+
+class EndpointTableView(BaseModel):
+    model_config = _FROZEN
+
+    endpoint: str
+    label: str
+    kind: Literal["continuous", "incidence"]
+    unit: str
+    sex: Literal["M", "F"]
+    phase: Literal["main", "recovery"]
+    groups: list[EndpointGroupView]
+    trend_p: float | None
+    check: str | None
+    finding_id: str | None
+
+
+class DoseSupport(BaseModel):
+    """Decision support for the NOAEL: per dose group, the findings that flag it."""
+
+    model_config = _FROZEN
+
+    phase: Literal["main", "recovery"]
+    dose: float
+    dose_related: list[str]
+    without_trend: list[str]
+
+
+class PreclinicalEndpoints(BaseModel):
+    model_config = _FROZEN
+
+    study_id: str
+    cut_id: str
+    dose_unit: str
+    tables: list[EndpointTableView]
+    by_dose: list[DoseSupport]
+
+
+class NoaelRequest(BaseModel):
+    model_config = _FROZEN
+
+    sex: Literal["M", "F", "combined"]
+    established: bool
+    noael_dose: Annotated[float, Field(ge=0)] | None = None
+    loael_dose: Annotated[float, Field(ge=0)] | None = None
+    finding_ids: list[Annotated[str, Field(pattern=r"^[A-Z]+-[0-9]{4}$")]] = Field(
+        default_factory=list, max_length=200
+    )
+    rationale: Annotated[str, Field(min_length=20, max_length=4000)]
+    supersedes: Annotated[str, Field(pattern=r"^NOAEL-[0-9a-f]{12}$")] | None = None
+
+
+class NoaelDecisionView(BaseModel):
+    model_config = _FROZEN
+
+    seq: int
+    recorded_at: datetime
+    decision_id: str
+    study_id: str
+    sex: Literal["M", "F", "combined"]
+    established: bool
+    noael_dose: float | None
+    loael_dose: float | None
+    dose_unit: str
+    finding_ids: list[str]
+    rationale: str
+    decided_by: str
+    supersedes: str | None
+    superseded_by: str | None
+    current: bool
+
+
+class NoaelHistory(BaseModel):
+    model_config = _FROZEN
+
+    study_id: str
+    dose_unit: str
+    doses: list[float]
+    current: list[NoaelDecisionView]
+    history: list[NoaelDecisionView]
+    may_record: bool

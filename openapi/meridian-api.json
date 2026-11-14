@@ -522,6 +522,29 @@
         "additionalProperties": false,
         "description": "Computed from the ledger at request time, as the caller may see it.",
         "properties": {
+          "noael": {
+            "items": {
+              "$ref": "#/components/schemas/NoaelBrief"
+            },
+            "title": "Noael",
+            "type": "array"
+          },
+          "noael_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "decided",
+                  "not_yet_decided",
+                  "not_shown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noael Status"
+          },
           "open_findings": {
             "title": "Open Findings",
             "type": "integer"
@@ -1564,6 +1587,275 @@
           "artifact"
         ],
         "title": "DocumentFiled",
+        "type": "object"
+      },
+      "DoseGroupView": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "title": "Control",
+            "type": "boolean"
+          },
+          "dose": {
+            "title": "Dose",
+            "type": "number"
+          },
+          "females": {
+            "title": "Females",
+            "type": "integer"
+          },
+          "males": {
+            "title": "Males",
+            "type": "integer"
+          },
+          "phase": {
+            "enum": [
+              "main",
+              "recovery"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "setcd": {
+            "title": "Setcd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setcd",
+          "phase",
+          "dose",
+          "control",
+          "males",
+          "females"
+        ],
+        "title": "DoseGroupView",
+        "type": "object"
+      },
+      "DoseSupport": {
+        "additionalProperties": false,
+        "description": "Decision support for the NOAEL: per dose group, the findings that flag it.",
+        "properties": {
+          "dose": {
+            "title": "Dose",
+            "type": "number"
+          },
+          "dose_related": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dose Related",
+            "type": "array"
+          },
+          "phase": {
+            "enum": [
+              "main",
+              "recovery"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "without_trend": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Without Trend",
+            "type": "array"
+          }
+        },
+        "required": [
+          "phase",
+          "dose",
+          "dose_related",
+          "without_trend"
+        ],
+        "title": "DoseSupport",
+        "type": "object"
+      },
+      "EndpointGroupView": {
+        "additionalProperties": false,
+        "properties": {
+          "affected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected"
+          },
+          "dose": {
+            "title": "Dose",
+            "type": "number"
+          },
+          "flagged": {
+            "default": false,
+            "title": "Flagged",
+            "type": "boolean"
+          },
+          "grades": {
+            "items": {
+              "$ref": "#/components/schemas/GradeCount"
+            },
+            "title": "Grades",
+            "type": "array"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "percent_vs_control": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Vs Control"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sd"
+          }
+        },
+        "required": [
+          "rank",
+          "dose",
+          "n"
+        ],
+        "title": "EndpointGroupView",
+        "type": "object"
+      },
+      "EndpointTableView": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointGroupView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "continuous",
+              "incidence"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "main",
+              "recovery"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "sex": {
+            "enum": [
+              "M",
+              "F"
+            ],
+            "title": "Sex",
+            "type": "string"
+          },
+          "trend_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend P"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "label",
+          "kind",
+          "unit",
+          "sex",
+          "phase",
+          "groups",
+          "trend_p",
+          "check",
+          "finding_id"
+        ],
+        "title": "EndpointTableView",
         "type": "object"
       },
       "Enrollment": {
@@ -3034,6 +3326,25 @@
         "title": "FleetAgent",
         "type": "object"
       },
+      "GradeCount": {
+        "additionalProperties": false,
+        "properties": {
+          "animals": {
+            "title": "Animals",
+            "type": "integer"
+          },
+          "grade": {
+            "title": "Grade",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "grade",
+          "animals"
+        ],
+        "title": "GradeCount",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3434,6 +3745,64 @@
         "title": "NarrativeView",
         "type": "object"
       },
+      "NoaelBrief": {
+        "additionalProperties": false,
+        "description": "The current NOAEL decision for one sex (or combined), for the portfolio.",
+        "properties": {
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "dose_unit": {
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "established": {
+            "title": "Established",
+            "type": "boolean"
+          },
+          "noael_dose": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noael Dose"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "sex": {
+            "enum": [
+              "M",
+              "F",
+              "combined"
+            ],
+            "title": "Sex",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "sex",
+          "established",
+          "noael_dose",
+          "dose_unit",
+          "recorded_at",
+          "decided_by"
+        ],
+        "title": "NoaelBrief",
+        "type": "object"
+      },
       "NoaelDecision": {
         "additionalProperties": false,
         "description": "A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by\nthe toxicologist. Append-only: a revision is a new decision naming the one it\nsupersedes, and both stay in the ledger. The current decision for (study, sex) is the\nlatest one that nothing supersedes. Agents never write this event.",
@@ -3542,6 +3911,251 @@
           "decided_by"
         ],
         "title": "NoaelDecision",
+        "type": "object"
+      },
+      "NoaelDecisionView": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "dose_unit": {
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "established": {
+            "title": "Established",
+            "type": "boolean"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "loael_dose": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loael Dose"
+          },
+          "noael_dose": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noael Dose"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "sex": {
+            "enum": [
+              "M",
+              "F",
+              "combined"
+            ],
+            "title": "Sex",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          }
+        },
+        "required": [
+          "seq",
+          "recorded_at",
+          "decision_id",
+          "study_id",
+          "sex",
+          "established",
+          "noael_dose",
+          "loael_dose",
+          "dose_unit",
+          "finding_ids",
+          "rationale",
+          "decided_by",
+          "supersedes",
+          "superseded_by",
+          "current"
+        ],
+        "title": "NoaelDecisionView",
+        "type": "object"
+      },
+      "NoaelHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "items": {
+              "$ref": "#/components/schemas/NoaelDecisionView"
+            },
+            "title": "Current",
+            "type": "array"
+          },
+          "dose_unit": {
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "doses": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Doses",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/NoaelDecisionView"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "may_record": {
+            "title": "May Record",
+            "type": "boolean"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "dose_unit",
+          "doses",
+          "current",
+          "history",
+          "may_record"
+        ],
+        "title": "NoaelHistory",
+        "type": "object"
+      },
+      "NoaelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "established": {
+            "title": "Established",
+            "type": "boolean"
+          },
+          "finding_ids": {
+            "items": {
+              "pattern": "^[A-Z]+-[0-9]{4}$",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "loael_dose": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loael Dose"
+          },
+          "noael_dose": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noael Dose"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "sex": {
+            "enum": [
+              "M",
+              "F",
+              "combined"
+            ],
+            "title": "Sex",
+            "type": "string"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "pattern": "^NOAEL-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          }
+        },
+        "required": [
+          "sex",
+          "established",
+          "rationale"
+        ],
+        "title": "NoaelRequest",
         "type": "object"
       },
       "ObservationItem": {
@@ -3881,6 +4495,120 @@
           "live"
         ],
         "title": "PortfolioAsset",
+        "type": "object"
+      },
+      "PreclinicalEndpoints": {
+        "additionalProperties": false,
+        "properties": {
+          "by_dose": {
+            "items": {
+              "$ref": "#/components/schemas/DoseSupport"
+            },
+            "title": "By Dose",
+            "type": "array"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "dose_unit": {
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/EndpointTableView"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "dose_unit",
+          "tables",
+          "by_dose"
+        ],
+        "title": "PreclinicalEndpoints",
+        "type": "object"
+      },
+      "PreclinicalStudy": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "dose_unit": {
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "duration": {
+            "title": "Duration",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/DoseGroupView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "loaded_seq": {
+            "title": "Loaded Seq",
+            "type": "integer"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          },
+          "species": {
+            "title": "Species",
+            "type": "string"
+          },
+          "strain": {
+            "title": "Strain",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "asset_id",
+          "cut_id",
+          "loaded_seq",
+          "title",
+          "species",
+          "strain",
+          "route",
+          "duration",
+          "dose_unit",
+          "groups"
+        ],
+        "title": "PreclinicalStudy",
         "type": "object"
       },
       "PreviousDecision": {
@@ -6272,6 +7000,325 @@
         "summary": "Portfolio",
         "tags": [
           "portfolio"
+        ]
+      }
+    },
+    "/api/v1/preclinical/studies": {
+      "get": {
+        "description": "The SEND studies loaded (SendStudyLoaded) and their design: dose groups by phase,\nwith the animals of each sex.",
+        "operationId": "preclinical_studies_api_v1_preclinical_studies_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PreclinicalStudy"
+                  },
+                  "title": "Response Preclinical Studies Api V1 Preclinical Studies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preclinical Studies",
+        "tags": [
+          "preclinical"
+        ]
+      }
+    },
+    "/api/v1/preclinical/{study}/endpoints": {
+      "get": {
+        "description": "Every endpoint by sex, phase and dose group against the concurrent control, with\nthe tests and flags of preclinical.tox_study_monitor's analysis, the finding raised on\nit when the caller can see it, and per dose group the findings that flag it.",
+        "operationId": "preclinical_endpoints_api_v1_preclinical__study__endpoints_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreclinicalEndpoints"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preclinical Endpoints",
+        "tags": [
+          "preclinical"
+        ]
+      }
+    },
+    "/api/v1/preclinical/{study}/noael": {
+      "get": {
+        "description": "The study's current NOAEL decision per sex (or combined) and every earlier one.",
+        "operationId": "preclinical_noael_api_v1_preclinical__study__noael_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoaelHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preclinical Noael",
+        "tags": [
+          "preclinical"
+        ]
+      },
+      "post": {
+        "description": "Toxicologist only: record a NOAEL decision (NoaelDecision), append-only. The doses\nmust be the study's; the findings must exist and be the study's; a revision names the\ncurrent decision in supersedes (409 otherwise). The agent never proposes a NOAEL.",
+        "operationId": "record_noael_api_v1_preclinical__study__noael_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoaelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoaelDecisionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Noael",
+        "tags": [
+          "preclinical"
         ]
       }
     },

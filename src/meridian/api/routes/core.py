@@ -16,11 +16,16 @@ from meridian.api.models import (
     Fleet,
     Health,
     LedgerPage,
+    NoaelDecisionView,
+    NoaelHistory,
+    NoaelRequest,
     ObservationItem,
     ObservationRequest,
     ObservationResponse,
     PersonView,
     Portfolio,
+    PreclinicalEndpoints,
+    PreclinicalStudy,
     RbqmSites,
     Reconciliation,
     ReviewQueue,
@@ -227,3 +232,35 @@ def quality_audit(repo: Repo, ctx: Context) -> AuditView:
 @router.get("/portfolio", tags=["portfolio"])
 def portfolio(repo: Repo) -> Portfolio:
     return repo.portfolio()
+
+
+# ---- preclinical (phase 5 step 1): toxicologist, portfolio lead and QA auditor only
+
+
+@router.get("/preclinical/studies", tags=["preclinical"])
+def preclinical_studies(repo: Repo) -> list[PreclinicalStudy]:
+    """The SEND studies loaded (SendStudyLoaded) and their design: dose groups by phase,
+    with the animals of each sex."""
+    return repo.preclinical_studies()
+
+
+@router.get("/preclinical/{study}/endpoints", tags=["preclinical"])
+def preclinical_endpoints(study: str, repo: Repo) -> PreclinicalEndpoints:
+    """Every endpoint by sex, phase and dose group against the concurrent control, with
+    the tests and flags of preclinical.tox_study_monitor's analysis, the finding raised on
+    it when the caller can see it, and per dose group the findings that flag it."""
+    return repo.preclinical_endpoints(study)
+
+
+@router.get("/preclinical/{study}/noael", tags=["preclinical"])
+def preclinical_noael(study: str, repo: Repo) -> NoaelHistory:
+    """The study's current NOAEL decision per sex (or combined) and every earlier one."""
+    return repo.noael(study)
+
+
+@router.post("/preclinical/{study}/noael", tags=["preclinical"], status_code=201)
+def record_noael(study: str, body: NoaelRequest, repo: Repo) -> NoaelDecisionView:
+    """Toxicologist only: record a NOAEL decision (NoaelDecision), append-only. The doses
+    must be the study's; the findings must exist and be the study's; a revision names the
+    current decision in supersedes (409 otherwise). The agent never proposes a NOAEL."""
+    return repo.record_noael(study, body)

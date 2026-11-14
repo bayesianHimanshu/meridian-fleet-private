@@ -19,6 +19,7 @@ from meridian.api.repository import PortfolioEntry, Repository
 from meridian.data.study_store import (
     LayeredStudyReader,
     ParquetStudyReader,
+    SendStudyReader,
     StudyReader,
     UnblindedReader,
 )
@@ -49,6 +50,13 @@ class ApiContext:
     # not listed runs on default_executor.
     executors: tuple[tuple[str, str], ...] = ()
     default_executor: str = "openshell"
+    # Phase 5: SEND studies under <send_root>/<study>/<cut>, and preclinical asset id to
+    # its SEND study id ([preclinical] asset_id and study_id).
+    send_root: Path = Path("data/send")
+    preclinical_assets: tuple[tuple[str, str], ...] = ()
+
+    def send_reader(self, study_id: str, cut_id: str) -> StudyReader:
+        return SendStudyReader(self.send_root / study_id, cut_id)
 
     def tmf_reader(self, cut_id: str) -> StudyReader:
         """Blinded DM of the cut, layered with its eTMF snapshot (index, visits, export)."""
@@ -119,6 +127,9 @@ def repository(
             run_timeout_seconds=ctx.run_timeout_seconds,
             executors=dict(ctx.executors),
             default_executor=ctx.default_executor,
+            send_reader=ctx.send_reader,
+            tox_config=ctx.agents.tox_study_monitor,
+            preclinical_assets=dict(ctx.preclinical_assets),
         )
     finally:
         ledger.close()

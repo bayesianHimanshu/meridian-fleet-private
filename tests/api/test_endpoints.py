@@ -150,7 +150,12 @@ def test_portfolio_marks_static_and_live_fields(fx: Fixture) -> None:
         "phase_2",
         "phase_3",
     ]
-    assert [a["live"] for a in assets] == [None, None, {"open_findings": 2}, None]
+    assert [a["live"] for a in assets] == [
+        None,
+        None,
+        {"open_findings": 2, "noael_status": None, "noael": []},
+        None,
+    ]
 
 
 def test_rbqm_sites_from_the_agents_stats(tmp_path: Path) -> None:

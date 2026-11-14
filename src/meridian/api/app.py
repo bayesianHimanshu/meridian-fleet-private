@@ -87,6 +87,8 @@ def context_from_settings(
         default_executor="openshell"
         if settings.runtime.executor == "zoned"
         else settings.runtime.executor,
+        send_root=settings.preclinical.send_root,
+        preclinical_assets=((settings.preclinical.asset_id, settings.preclinical.study_id),),
     )
 
 

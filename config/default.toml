@@ -172,7 +172,7 @@ max_calls_per_pass = 20
 # Cut scope. Operational cuts are the study's current data and the only ones the review
 # queue shows by default; every other cut (null, faulted, holdout, sweep) is evaluation.
 [cuts]
-operational = ["DC-BASE"]
+operational = ["DC-BASE", "TOX-FINAL"]  # TOX-FINAL: MRD-101-TOX-01, the SEND study (phase 5)
 # Operational cuts are processed in OpenShell sandboxes or Substrate actors only: the
 # runner refuses the in-process executor for them (evaluation cuts may use any).
 operational_executors = ["openshell", "substrate"]

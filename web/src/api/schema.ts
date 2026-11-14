@@ -179,6 +179,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/preclinical/studies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Studies
+         * @description The SEND studies loaded (SendStudyLoaded) and their design: dose groups by phase,
+         *     with the animals of each sex.
+         */
+        get: operations["preclinical_studies_api_v1_preclinical_studies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/preclinical/{study}/endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Endpoints
+         * @description Every endpoint by sex, phase and dose group against the concurrent control, with
+         *     the tests and flags of preclinical.tox_study_monitor's analysis, the finding raised on
+         *     it when the caller can see it, and per dose group the findings that flag it.
+         */
+        get: operations["preclinical_endpoints_api_v1_preclinical__study__endpoints_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/preclinical/{study}/noael": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Noael
+         * @description The study's current NOAEL decision per sex (or combined) and every earlier one.
+         */
+        get: operations["preclinical_noael_api_v1_preclinical__study__noael_get"];
+        put?: never;
+        /**
+         * Record Noael
+         * @description Toxicologist only: record a NOAEL decision (NoaelDecision), append-only. The doses
+         *     must be the study's; the findings must exist and be the study's; a revision names the
+         *     current decision in supersedes (409 otherwise). The agent never proposes a NOAEL.
+         */
+        post: operations["record_noael_api_v1_preclinical__study__noael_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quality/audit": {
         parameters: {
             query?: never;
@@ -553,6 +622,10 @@ export interface components {
          * @description Computed from the ledger at request time, as the caller may see it.
          */
         AssetLive: {
+            /** Noael */
+            noael?: components["schemas"]["NoaelBrief"][];
+            /** Noael Status */
+            noael_status?: ("decided" | "not_yet_decided" | "not_shown") | null;
             /** Open Findings */
             open_findings: number;
         };
@@ -929,6 +1002,99 @@ export interface components {
             type: "document_filed";
             /** Zone */
             zone: string;
+        };
+        /** DoseGroupView */
+        DoseGroupView: {
+            /** Control */
+            control: boolean;
+            /** Dose */
+            dose: number;
+            /** Females */
+            females: number;
+            /** Males */
+            males: number;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "main" | "recovery";
+            /** Setcd */
+            setcd: string;
+        };
+        /**
+         * DoseSupport
+         * @description Decision support for the NOAEL: per dose group, the findings that flag it.
+         */
+        DoseSupport: {
+            /** Dose */
+            dose: number;
+            /** Dose Related */
+            dose_related: string[];
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "main" | "recovery";
+            /** Without Trend */
+            without_trend: string[];
+        };
+        /** EndpointGroupView */
+        EndpointGroupView: {
+            /** Affected */
+            affected?: number | null;
+            /** Dose */
+            dose: number;
+            /**
+             * Flagged
+             * @default false
+             */
+            flagged: boolean;
+            /** Grades */
+            grades?: components["schemas"]["GradeCount"][];
+            /** Mean */
+            mean?: number | null;
+            /** N */
+            n: number;
+            /** P */
+            p?: number | null;
+            /** Percent Vs Control */
+            percent_vs_control?: number | null;
+            /** Rank */
+            rank: number;
+            /** Sd */
+            sd?: number | null;
+        };
+        /** EndpointTableView */
+        EndpointTableView: {
+            /** Check */
+            check: string | null;
+            /** Endpoint */
+            endpoint: string;
+            /** Finding Id */
+            finding_id: string | null;
+            /** Groups */
+            groups: components["schemas"]["EndpointGroupView"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "continuous" | "incidence";
+            /** Label */
+            label: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "main" | "recovery";
+            /**
+             * Sex
+             * @enum {string}
+             */
+            sex: "M" | "F";
+            /** Trend P */
+            trend_p: number | null;
+            /** Unit */
+            unit: string;
         };
         /**
          * Enrollment
@@ -1382,6 +1548,13 @@ export interface components {
             /** Zone */
             zone: string;
         };
+        /** GradeCount */
+        GradeCount: {
+            /** Animals */
+            animals: number;
+            /** Grade */
+            grade: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1520,6 +1693,32 @@ export interface components {
             status: "accepted" | "rejected" | "refused" | "error";
         };
         /**
+         * NoaelBrief
+         * @description The current NOAEL decision for one sex (or combined), for the portfolio.
+         */
+        NoaelBrief: {
+            /** Decided By */
+            decided_by: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Dose Unit */
+            dose_unit: string;
+            /** Established */
+            established: boolean;
+            /** Noael Dose */
+            noael_dose: number | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /**
+             * Sex
+             * @enum {string}
+             */
+            sex: "M" | "F" | "combined";
+        };
+        /**
          * NoaelDecision
          * @description A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by
          *     the toxicologist. Append-only: a revision is a new decision naming the one it
@@ -1560,6 +1759,80 @@ export interface components {
              * @enum {string}
              */
             type: "noael_decision";
+        };
+        /** NoaelDecisionView */
+        NoaelDecisionView: {
+            /** Current */
+            current: boolean;
+            /** Decided By */
+            decided_by: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Dose Unit */
+            dose_unit: string;
+            /** Established */
+            established: boolean;
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Loael Dose */
+            loael_dose: number | null;
+            /** Noael Dose */
+            noael_dose: number | null;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Sex
+             * @enum {string}
+             */
+            sex: "M" | "F" | "combined";
+            /** Study Id */
+            study_id: string;
+            /** Superseded By */
+            superseded_by: string | null;
+            /** Supersedes */
+            supersedes: string | null;
+        };
+        /** NoaelHistory */
+        NoaelHistory: {
+            /** Current */
+            current: components["schemas"]["NoaelDecisionView"][];
+            /** Dose Unit */
+            dose_unit: string;
+            /** Doses */
+            doses: number[];
+            /** History */
+            history: components["schemas"]["NoaelDecisionView"][];
+            /** May Record */
+            may_record: boolean;
+            /** Study Id */
+            study_id: string;
+        };
+        /** NoaelRequest */
+        NoaelRequest: {
+            /** Established */
+            established: boolean;
+            /** Finding Ids */
+            finding_ids?: string[];
+            /** Loael Dose */
+            loael_dose?: number | null;
+            /** Noael Dose */
+            noael_dose?: number | null;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Sex
+             * @enum {string}
+             */
+            sex: "M" | "F" | "combined";
+            /** Supersedes */
+            supersedes?: string | null;
         };
         /** ObservationItem */
         ObservationItem: {
@@ -1660,6 +1933,44 @@ export interface components {
             asset_id: string;
             live: components["schemas"]["AssetLive"] | null;
             static: components["schemas"]["AssetStatic"];
+        };
+        /** PreclinicalEndpoints */
+        PreclinicalEndpoints: {
+            /** By Dose */
+            by_dose: components["schemas"]["DoseSupport"][];
+            /** Cut Id */
+            cut_id: string;
+            /** Dose Unit */
+            dose_unit: string;
+            /** Study Id */
+            study_id: string;
+            /** Tables */
+            tables: components["schemas"]["EndpointTableView"][];
+        };
+        /** PreclinicalStudy */
+        PreclinicalStudy: {
+            /** Asset Id */
+            asset_id: string | null;
+            /** Cut Id */
+            cut_id: string;
+            /** Dose Unit */
+            dose_unit: string;
+            /** Duration */
+            duration: string;
+            /** Groups */
+            groups: components["schemas"]["DoseGroupView"][];
+            /** Loaded Seq */
+            loaded_seq: number;
+            /** Route */
+            route: string;
+            /** Species */
+            species: string;
+            /** Strain */
+            strain: string;
+            /** Study Id */
+            study_id: string;
+            /** Title */
+            title: string;
         };
         /**
          * PreviousDecision
@@ -2496,6 +2807,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Portfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preclinical_studies_api_v1_preclinical_studies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreclinicalStudy"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preclinical_endpoints_api_v1_preclinical__study__endpoints_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreclinicalEndpoints"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preclinical_noael_api_v1_preclinical__study__noael_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoaelHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_noael_api_v1_preclinical__study__noael_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoaelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoaelDecisionView"];
                 };
             };
             /** @description Validation Error */
