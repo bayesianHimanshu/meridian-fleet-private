@@ -1648,8 +1648,10 @@
                 "finding_narrative": "#/components/schemas/FindingNarrative",
                 "finding_raised": "#/components/schemas/FindingRaised",
                 "human_decision": "#/components/schemas/HumanDecision",
+                "noael_decision": "#/components/schemas/NoaelDecision",
                 "policy_denied": "#/components/schemas/PolicyDenied",
-                "quality_observation": "#/components/schemas/QualityObservation"
+                "quality_observation": "#/components/schemas/QualityObservation",
+                "send_study_loaded": "#/components/schemas/SendStudyLoaded"
               },
               "propertyName": "type"
             },
@@ -1689,6 +1691,12 @@
               },
               {
                 "$ref": "#/components/schemas/QualityObservation"
+              },
+              {
+                "$ref": "#/components/schemas/SendStudyLoaded"
+              },
+              {
+                "$ref": "#/components/schemas/NoaelDecision"
               }
             ],
             "title": "Payload"
@@ -1752,7 +1760,9 @@
           "finding_assessment",
           "human_decision",
           "audit_review_requested",
-          "quality_observation"
+          "quality_observation",
+          "send_study_loaded",
+          "noael_decision"
         ],
         "title": "EventType",
         "type": "string"
@@ -2345,7 +2355,8 @@
           "sae_reconciliation",
           "tmf",
           "audit",
-          "qa_observation"
+          "qa_observation",
+          "tox_signal"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -3423,6 +3434,116 @@
         "title": "NarrativeView",
         "type": "object"
       },
+      "NoaelDecision": {
+        "additionalProperties": false,
+        "description": "A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by\nthe toxicologist. Append-only: a revision is a new decision naming the one it\nsupersedes, and both stay in the ledger. The current decision for (study, sex) is the\nlatest one that nothing supersedes. Agents never write this event.",
+        "properties": {
+          "decided_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision_id": {
+            "pattern": "^NOAEL-[0-9a-f]{12}$",
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "dose_unit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Dose Unit",
+            "type": "string"
+          },
+          "established": {
+            "title": "Established",
+            "type": "boolean"
+          },
+          "finding_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Z]+-[0-9]{4}$",
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "loael_dose": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loael Dose"
+          },
+          "noael_dose": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noael Dose"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "sex": {
+            "enum": [
+              "M",
+              "F",
+              "combined"
+            ],
+            "title": "Sex",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "pattern": "^NOAEL-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          },
+          "type": {
+            "const": "noael_decision",
+            "default": "noael_decision",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "study_id",
+          "sex",
+          "established",
+          "dose_unit",
+          "rationale",
+          "decided_by"
+        ],
+        "title": "NoaelDecision",
+        "type": "object"
+      },
       "ObservationItem": {
         "additionalProperties": false,
         "properties": {
@@ -4396,6 +4517,43 @@
           "suspended"
         ],
         "title": "RunTrace",
+        "type": "object"
+      },
+      "SendStudyLoaded": {
+        "additionalProperties": false,
+        "description": "A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical\nagents, as DataCut is of the clinical ones. Its study is the toxicology study's own id\n(MRD-101-TOX-01), never a clinical study's, so no clinical agent or page picks it up.",
+        "properties": {
+          "cut_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "send_study_loaded",
+            "default": "send_study_loaded",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "path"
+        ],
+        "title": "SendStudyLoaded",
         "type": "object"
       },
       "Severity": {

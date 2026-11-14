@@ -966,7 +966,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -984,7 +984,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -1176,7 +1176,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1519,6 +1519,48 @@ export interface components {
              */
             status: "accepted" | "rejected" | "refused" | "error";
         };
+        /**
+         * NoaelDecision
+         * @description A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by
+         *     the toxicologist. Append-only: a revision is a new decision naming the one it
+         *     supersedes, and both stay in the ledger. The current decision for (study, sex) is the
+         *     latest one that nothing supersedes. Agents never write this event.
+         */
+        NoaelDecision: {
+            /** Decided By */
+            decided_by: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Dose Unit */
+            dose_unit: string;
+            /** Established */
+            established: boolean;
+            /**
+             * Finding Ids
+             * @default []
+             */
+            finding_ids: string[];
+            /** Loael Dose */
+            loael_dose?: number | null;
+            /** Noael Dose */
+            noael_dose?: number | null;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Sex
+             * @enum {string}
+             */
+            sex: "M" | "F" | "combined";
+            /** Study Id */
+            study_id: string;
+            /** Supersedes */
+            supersedes?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "noael_decision";
+        };
         /** ObservationItem */
         ObservationItem: {
             /** Finding Id */
@@ -1836,6 +1878,25 @@ export interface components {
             /** Trigger Seq */
             trigger_seq: number;
             woke: components["schemas"]["RunEvent"] | null;
+        };
+        /**
+         * SendStudyLoaded
+         * @description A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical
+         *     agents, as DataCut is of the clinical ones. Its study is the toxicology study's own id
+         *     (MRD-101-TOX-01), never a clinical study's, so no clinical agent or page picks it up.
+         */
+        SendStudyLoaded: {
+            /** Cut Id */
+            cut_id: string;
+            /** Path */
+            path: string;
+            /** Study Id */
+            study_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "send_study_loaded";
         };
         /**
          * Severity

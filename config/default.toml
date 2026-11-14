@@ -31,6 +31,36 @@ base_url = "https://github.com/cdisc-org/sdtm-adam-pilot-project/raw/master/upda
 domains = ["dm", "ae", "vs", "lb", "ds", "sv", "ex"]
 timeout_seconds = 120.0
 
+# MRD-101's GLP rat study: PointCross PC201708 (PHUSE phuse-scripts, MIT), relabelled.
+# docs/preclinical-data.md. Each file's sha256 is pinned; fetch and ingest refuse others.
+[preclinical]
+asset_id = "MRD-101"
+study_id = "MRD-101-TOX-01"
+cut_id = "TOX-FINAL"
+treatment = "MRD-101"
+source_study_id = "PC201708"
+source_treatment = "PCDRUG"
+base_url = "https://raw.githubusercontent.com/phuse-org/phuse-scripts/398a6d33ced9359ffb58c46650a6d488811176b1/data/send/PointCross"
+raw_dir = "data/raw/send_pointcross"
+send_root = "data/send"
+timeout_seconds = 120.0
+
+[preclinical.files]
+bg = "b8f4fd8d24c45ce802b3d65002d7f9eb113abb81765ed5f8a2e429e58f38ca04"
+bw = "dbd48fc10a754275b9d7036687134ba0a1f96aa87b22d650f45c6bcbf3da33b2"
+cl = "84a9bf432fd74b483d4802af1f7328fc6554caeecd5790bf31dd57398377e8ed"
+dd = "f58b21e4988dbafe67561be62cd8cda8286c132b4cff6e18567d48420f5e9f2b"
+dm = "ab5d342a5ae13d3b8613fc318d319f7ea642a4caa8bd8e360f080dda383b341f"
+ds = "b6a616bc71c02cc91b7b649778d472b0eedb5d702a280fd8639d0706bc74e0dd"
+ex = "3a121adbd8f8434b796f31c3a3cd81a645911acd9f080c1974954657fc942cb0"
+fw = "6bc43499ed5d47277c36275062ab7310868947a356b54037473cd4c60e51e7ab"
+lb = "d63121b6bf4bc9277532ac5ab1b10203eb23124a686200eee0e22a73f73f849e"
+ma = "712b45e1bac2baf7706cb0580e42e1c96d1bfcd529463c23b136bc32fbf490ef"
+mi = "3916977b8e778c156e055cce6bb6fa4ac339f0313e4501a9b1df338143608c16"
+om = "ad9614dab7c70f0bc169ee3549bb548ee3c4fb9c2ea56c55bc697ca919df4bbf"
+ts = "1fd59460c55cbe1a3b7ef37b5a8166769ffac6fc1e3d2cf528ade6c94d280400"
+tx = "99bae80ad3542aa5412b7f7002293f6763d2cde81fa5980460253eab9e57b224"
+
 # Operational data synthesis. Log-normal sigmas are on the natural log scale.
 [ops_synth]
 study_median_entry_lag_days = 3.0

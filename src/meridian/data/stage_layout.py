@@ -14,7 +14,8 @@ NARR = "narr"  # rbqm.narrator's job
 LM = "lm"  # the local model's job
 TMF = "tmf"  # the eTMF index of the cut (quality zone only)
 AUDIT = "audit"  # the audit extract of the ledger (quality.audit_trail only)
-STAGE_AREAS: tuple[str, ...] = (META, BLINDED, OPS, UNBLINDED, NARR, LM, TMF, AUDIT)
+SEND = "send"  # a nonclinical SEND study (preclinical zone only)
+STAGE_AREAS: tuple[str, ...] = (META, BLINDED, OPS, UNBLINDED, NARR, LM, TMF, AUDIT, SEND)
 
 
 def stage_path(area: str) -> str:
