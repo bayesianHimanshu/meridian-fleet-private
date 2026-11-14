@@ -270,3 +270,32 @@ in_progress_seconds = 120   # a run started this recently may still be running
 # Segregation of duties: QA and clinical operations see audit findings; clinical_ops_lead
 # decides them, qa_auditor never does, and nobody decides a finding about their own actions.
 visible_to = ["clinical_ops_lead", "qa_auditor"]
+
+[agents.tox_study_monitor]
+# preclinical.tox_study_monitor 1.0.0 (phase 5 step 1). Pre-registered in
+# docs/preclinical-eval.md before the agent ran on any study; not changed in response to
+# a result. Against the concurrent control only. The agent may say "dose-related", never
+# "adverse": adversity, the NOAEL and the LOAEL are the toxicologist's decisions.
+alpha_pairwise = 0.05              # Dunnett, two-sided: a dose group is flagged below this
+alpha_trend = 0.01                 # Jonckheere-Terpstra, two-sided: "dose-related" below this
+alpha_pairwise_alone = 0.01        # a flagged change with no trend is raised only below this
+min_per_group = 3                  # fewer usable values: the group is not tested
+alpha_incidence_trend = 0.05       # Cochran-Armitage, one-sided (increase), dose-rank scores
+alpha_incidence_pairwise_alone = 0.01  # Fisher exact, one-sided, without a trend
+incidence_min_excess_animals = 2   # top dose over control, in animals
+incidence_min_excess_points = 20.0 # and in percentage points
+dunnett_seed = 20261115            # scipy's Dunnett integration, fixed for reproducibility
+# Toxicologist, portfolio lead and QA auditor only; clinical roles do not see preclinical
+# findings in this step.
+visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]
+
+[agents.tox_study_monitor.magnitude_pct]
+# Minimum absolute percent difference from the control mean, by endpoint class.
+body_weight = 5.0
+body_weight_gain = 10.0
+hematology = 10.0
+coagulation = 10.0
+clinical_chemistry = 20.0
+urinalysis = 25.0
+organ_weight = 10.0
+other = 20.0

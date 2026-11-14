@@ -30,6 +30,7 @@ from meridian.platform.agent_settings import (
     QtlDetectorConfig,
     SaeReconcilerConfig,
     TmfCompletenessConfig,
+    ToxStudyMonitorConfig,
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -108,6 +109,7 @@ class AgentsSettings(BaseModel):
     sae_reconciler: SaeReconcilerConfig = Field(default_factory=SaeReconcilerConfig)
     tmf_completeness: TmfCompletenessConfig = Field(default_factory=TmfCompletenessConfig)
     audit_trail_reviewer: AuditTrailReviewerConfig = Field(default_factory=AuditTrailReviewerConfig)
+    tox_study_monitor: ToxStudyMonitorConfig = Field(default_factory=ToxStudyMonitorConfig)
 
 
 class RuntimeSettings(BaseModel):

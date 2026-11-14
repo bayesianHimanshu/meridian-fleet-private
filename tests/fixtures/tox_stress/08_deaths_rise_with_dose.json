@@ -1,0 +1,23 @@
+{
+  "actual": {},
+  "case": "deaths_rise_with_dose",
+  "description": "Unscheduled deaths 0, 0, 1 and 4 of 10 per sex. Ideal: dose-related mortality in each sex.",
+  "ideal": [
+    "dose_related_incidence:death:F:main",
+    "dose_related_incidence:death:M:main"
+  ],
+  "spec": {
+    "effects": [
+      {
+        "counts": [
+          0,
+          0,
+          1,
+          4
+        ],
+        "endpoint": "death"
+      }
+    ],
+    "seed": 18
+  }
+}
