@@ -1,5 +1,10 @@
 {
-  "actual": {},
+  "actual": {
+    "1.0.0": [
+      "dose_related_incidence:death:F:main",
+      "dose_related_incidence:death:M:main"
+    ]
+  },
   "case": "deaths_rise_with_dose",
   "description": "Unscheduled deaths 0, 0, 1 and 4 of 10 per sex. Ideal: dose-related mortality in each sex.",
   "ideal": [

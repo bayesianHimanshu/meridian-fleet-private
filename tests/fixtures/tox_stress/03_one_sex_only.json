@@ -1,5 +1,9 @@
 {
-  "actual": {},
+  "actual": {
+    "1.0.0": [
+      "dose_related_change:lb:AST:F:main"
+    ]
+  },
   "case": "one_sex_only",
   "description": "AST rises with dose in females only. Ideal: a finding for females, none for males.",
   "ideal": [

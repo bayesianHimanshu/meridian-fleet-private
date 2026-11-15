@@ -11,6 +11,6 @@ Endpoint ids: `lb:<LBTESTCD>`, `bw:BW`, `bw:GAIN`, `om:<OMSPEC>:abs`, `om:<OMSPE
 Checks: `dose_related_change`, `pairwise_change`, `dose_related_incidence`,
 `pairwise_incidence`, `data_quality`.
 
-`actual` is filled once, at the end, by `meridian preclinical stress` (scripts write it
-back per agent version). The set tests the specification: it is written by the author of
+`actual` is filled once, at the end, by `uv run python scripts/tox_stress.py`, per agent
+version. The set tests the specification: it is written by the author of
 the agent, so agreement shows the code follows the rules, not that the rules are right.
