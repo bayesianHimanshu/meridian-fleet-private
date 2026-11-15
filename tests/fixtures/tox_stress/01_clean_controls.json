@@ -4,7 +4,10 @@
   },
   "case": "clean_controls",
   "description": "No effect anywhere: four groups drawn from the same distributions. Ideal: nothing.",
-  "ideal": [],
+  "ideal": {
+    "1.0.0": [],
+    "1.1.0": []
+  },
   "spec": {
     "seed": 11
   }

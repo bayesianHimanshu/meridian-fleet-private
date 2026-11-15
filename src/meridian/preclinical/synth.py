@@ -76,7 +76,7 @@ class Edit(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["lb_factor", "lb_missing", "lb_unit", "death"]
+    kind: Literal["lb_factor", "lb_missing", "lb_unit", "death", "mi_finding"]
     sex: Literal["M", "F"]
     group: int  # dose rank: 0 is the control
     animal: int = 0
@@ -87,6 +87,11 @@ class Edit(BaseModel):
     unit: str = ""
     day: int = 30
     animals: tuple[int, ...] = ()  # lb_missing / lb_unit: several animals at once
+    # mi_finding, or death with a cause (1.1.0 stress cases): the animal's MI record of
+    # this specimen gets this finding and MIRESCAT; for a death it is the cause (MIDTHREL Y).
+    specimen: str = ""
+    finding: str = ""
+    category: str = ""
 
 
 class StudySpec(BaseModel):
@@ -292,7 +297,7 @@ def build(spec: StudySpec) -> dict[str, pl.DataFrame]:
                     }
                 )
         for seq, specimen in enumerate(MI_SPECIMENS, start=1):
-            result, severity = "NORMAL", ""
+            result, severity, category, related = "NORMAL", "", "", ""
             for e in spec.effects:
                 if (
                     e.endpoint.startswith(f"mi:{specimen}:")
@@ -301,6 +306,15 @@ def build(spec: StudySpec) -> dict[str, pl.DataFrame]:
                     and i < e.counts[rank]
                 ):
                     result, severity = e.endpoint.split(":", 2)[2], e.severity
+            for ed in spec.edits:
+                if (
+                    ed.kind in ("mi_finding", "death")
+                    and ed.finding
+                    and ed.specimen == specimen
+                    and (ed.sex, ed.group, ed.phase, ed.animal) == (sex, rank, phase, i)
+                ):
+                    result, severity, category = ed.finding, "MARKED", ed.category
+                    related = "Y" if ed.kind == "death" else "N"
             mi.append(
                 {
                     "USUBJID": uid,
@@ -309,6 +323,8 @@ def build(spec: StudySpec) -> dict[str, pl.DataFrame]:
                     "MISTRESC": result,
                     "MISEV": severity,
                     "MISTAT": "",
+                    "MIRESCAT": category,
+                    "MIDTHREL": related,
                 }
             )
     lbf = pl.DataFrame(lb)
@@ -358,7 +374,7 @@ def _uids(animals: pl.DataFrame, e: Edit, indexes: Sequence[int]) -> list[str]:
 
 
 def _edit(lb: pl.DataFrame, animals: pl.DataFrame, e: Edit) -> pl.DataFrame:
-    if e.kind == "death":
+    if e.kind in ("death", "mi_finding"):
         return lb
     which = e.animals or (e.animal,)
     uids = _uids(animals, e, which)
