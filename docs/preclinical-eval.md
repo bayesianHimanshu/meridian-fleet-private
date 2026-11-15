@@ -425,3 +425,104 @@ run once at the end.
   run through the dispatcher, and every store searched with its positive control.
 - scipy's Dunnett "precision loss" warning: found and fixed at its source, or recorded
   with why it is safe.
+
+## 1.1.0 results
+
+Run on 15 Nov 2026, preclinical.tox_study_monitor 1.1.0 at commit `9b2ebbd`, the
+pre-registration (`b76c90c`) unchanged. Null and dev were run once each while building
+(nothing was changed after them); holdout once; the stress set once. Scorecards:
+`data/evals/preclinical/{null,dev,holdout}.json` (git-ignored), ground truth
+`data/ground_truth/preclinical/`.
+
+### Null cuts (20 control bases): statistical targets missed
+
+| | Target | Result |
+|---|---:|---:|
+| Statistical findings per cut, mean | at most 5 | **5.95** (0 to 15) |
+| dose_related_* per cut, mean | at most 2 | **2.3** |
+| Cuts with more than 10 | none | **3** (12, 14, 15) |
+| Rule findings: deaths / neoplasms | exactly the resampled ones / 0 | 56 of 56 expected / 0 |
+| Red-cell cost (1.1.0 rule against a plain 10%) | at most 0.5 a cut | 0.2 against 0.05: **+0.15** |
+
+Of the 119 statistical findings, **62 are recovery-only** (58 changes, 4 incidences) and
+57 are main-study (2.85 a cut, within the target). Cause: each recovery group is 5 draws
+with replacement from only 5 control animals per sex, so a group often holds the same
+animal two or three times, its variance collapses and Dunnett's test fires (one dev copy
+had 20 recovery-only findings, 19 of them in females). That is a property of the base I
+pre-registered, and also a warning about 5-animal groups in real studies. Main-study
+incidence trends (exact test) still give 1.5 a cut over about 70 lesion endpoints, which
+is what a 5% one-sided level over that many endpoints gives. No rule was changed.
+
+### Planted effects (dev and holdout, 10 copies each; holdout run once)
+
+| Effect | Target M / F | Dev M / F | Holdout M / F |
+|---|---:|---:|---:|
+| ALT up, AST up | 95% / 95% | 100% / 100% | 100% / 100% |
+| ALT and AST with mid and high flagged | 90% / 90% | 100% / 100% | 100% / 100% |
+| RBC down 6% | 80% / 80% | 100% / 100% | 100% / 100% |
+| HGB down 6% | 80% / 80% | 100% / 80% | 80% / **70%** |
+| HCT down 6% | 80% / 80% | 100% / 100% | 80% / 100% |
+| Body weight gain down 30% | 80% / 50% | **70%** / 50% | **60%** / 50% |
+| Liver weight up 25% | 50% / 90% | **30%** / 90% | 60% / **60%** |
+| Hepatocellular hypertrophy | 95% / 95% | 100% / 100% | 100% / 100% |
+| Planted death raised with its MI cause | 100% / 100% | 100% / 100% | 100% / 100% |
+| One-animal carcinoma raised | 100% / 100% | 100% / 100% | 100% / 100% |
+| CREAT outlier raised | 0 copies | 0 | 0 |
+| Statistical findings on unplanted endpoints, mean | at most 5 | 3.7 (max 20) | 2.6 (max 6) |
+
+Holdout misses: male body weight gain (60% against 80%), female liver weight (60% against
+90%), female HGB (70% against 80%). With the evaluation flaw of 1.0.0 removed, these are
+power at n = 10 with this study's control variance (gain CV 19% M, 28% F; liver weight
+CV 22% M, 14% F), not a rule failing; I did not measure how much the repeated animals of
+the bootstrap add: the 1.0.0 "liver weight
+F 10%" is now 60% to 90%.
+
+### Stress set (16 cases, run once): 13 as ideal
+
+`recovery_reverses` and `unit_change_in_lb` give the same chance extras as 1.0.0 (relative
+kidney weight F, now `recovery_only_change`; body weight M). `lower_body_weight` misses the
+male grouped finding: in that seeded draw the males' absolute organ weights at the high
+dose came out about 8% lower by chance, so the relative weights rose only 13% with Dunnett
+p 0.08 to 0.12 and none was flagged; the rule did what it says. The three new cases
+(death with cause, single neoplasm, female body-weight grouping) are as ideal.
+
+### The real study, in a Substrate sandbox on kind
+
+One run on MRD-101-TOX-01 (SendStudyLoaded seq 19601), template
+`preclinical-9afb2a96aecf-m384`, gVisor, 5.8 s, 0 failed: **98 findings** (PRE-0134 to
+PRE-0231, seq 19828 to 19925), against the expected 50 to 90 (**missed**). By check:
+dose_related_change 43, dose_related_incidence 20, pairwise_change 5, recovery_only_change
+10, recovery_only_incidence 3, organ_weight_secondary_to_bw 2, neoplasm 4,
+unscheduled_death 2, data quality 9. 1.0.0's 133 are all resolved: 75 superseded (the same
+check raised by 1.1.0) and 58 retired (1.1.0 completed on TOX-FINAL without raising them).
+
+| Reviewer's guide | 1.1.0 |
+|---|---|
+| Body weight and gain lower in groups 3 and 4 | Group 4: BW -18% M, -19% F, gain dose-related both sexes. Group 3 not (as expected, -2% / +2%) |
+| AST, ALT, ALP higher in group 4 | AST and ALP dose-related M and F; ALT dose-related F, change without a trend M |
+| RBC, HGB, HCT lower in group 4 | **Females:** HGB and HCT -9%, dose-related (HGB persists, HCT reverses at recovery). **Males, main study: not raised**: HCT -5% (Dunnett p 0.003) has no coherent partner (RBC -3.5% p 0.08, HGB -3.7% p 0.06), so the 10% magnitude applies. Males at recovery: RBC -11% and HCT -6%, recovery-only |
+| Liver weights higher in group 4 | Females: absolute +90%, relative +131%, dose-related, persists. Males: relative +21% (absolute -1%) in the grouped "may be secondary to lower body weight" finding |
+| Liver findings in groups 3 and 4 | Hypertrophy M (persists) and F (partly reverses); enlarged liver M and F; necrosis F. Vacuolization only as recovery-only (main M exact trend p 0.0507). Not raised, as expected: necrosis M |
+| Liver tumours in group 4 | Neoplasm findings: adenoma M (2 of 10, exact p 0.058), carcinoma M (1 of 10, main) and F (1 of 5, recovery). Also: uterine leiomyoma F at 2 mg/kg (1 of 10) |
+| Premature deaths in group 4 | Both raised with their MI cause: male 4003 (main, day 90) and female 4113 (recovery, day 100), each a moribund sacrifice, liver hepatocellular carcinoma. The control's gavage-error death is not raised (control) |
+
+Covered against the targets: every guide signal except **the male red cell decrease in the
+main study**. The real study's values were seen in 1.0.0's report, so this is not an
+independent test of the 1.1.0 rules; the planted sets are.
+
+### Also
+
+- Leak check, preclinical zone on kind (`meridian leakcheck --env kind --zone
+  preclinical`, 20 runs): canary in none of the six sources (dispatcher input store,
+  dispatcher pod, its logs, the snapshot bucket, the node, the host's var/), every positive
+  control found; `var/leakcheck/kind-20261115T081914Z.json`. A first attempt failed only on
+  the bucket rule (the previous image's golden snapshots still there);
+  `meridian substrate deploy --prune` deleted the 11 stale templates and the rerun passed.
+- scipy's Dunnett warning: it fires whenever one sample is constant (urinalysis grades all
+  5.0); that sample's variance is exactly 0 and the pooled variance comes from the others,
+  so the result is exact. Silenced for that case only; a test checks the statistic against
+  the pooled t computed by hand.
+- Process: my first attempt at the pre-registration commit ran the test hook while I was
+  already editing 1.1.0 code in the same tree, and failed. I stashed the code and committed
+  the pre-registration alone (`b76c90c` holds only the doc, the fixtures, synth and their
+  test); the code came after it.
