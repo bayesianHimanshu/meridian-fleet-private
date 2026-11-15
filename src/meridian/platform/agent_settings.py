@@ -169,10 +169,11 @@ SubjectEndField = Literal["RFENDTC", "RFPENDTC"]
 
 
 class ToxStudyMonitorConfig(AgentConfig):
-    """preclinical.tox_study_monitor 1.0.0 (phase 5 step 1). Every method and threshold is
-    pre-registered in docs/preclinical-eval.md, set before the agent ran on any study and
-    not changed in response to a result. Comparisons are against the concurrent control
-    only, never historical data. Visibility lives here, next to the agent."""
+    """preclinical.tox_study_monitor 1.1.0 (1.0.0 in phase 5 step 1, 1.1.0 in step 1b).
+    Every method and threshold is pre-registered in docs/preclinical-eval.md, set before
+    the version ran on any study and not changed in response to a result. Comparisons are
+    against the concurrent control only, never historical data. Visibility lives here,
+    next to the agent."""
 
     # Continuous endpoints: Dunnett (many-to-one, two-sided) and Jonckheere-Terpstra
     # (ordered groups, two-sided). A dose group is flagged when Dunnett p < alpha_pairwise
@@ -206,6 +207,17 @@ class ToxStudyMonitorConfig(AgentConfig):
     # scipy.stats.dunnett integrates a multivariate t numerically; a fixed seed makes it
     # reproducible run to run (and so the drafts byte for byte).
     dunnett_seed: int = 20261115
+    # 1.1.0: red cell mass parameters are flagged at this magnitude when another of them is
+    # flagged at it in the same direction at the same dose (coherence); else the
+    # hematology magnitude applies.
+    red_cell_tests: tuple[str, ...] = ("RBC", "HGB", "HCT")
+    red_cell_magnitude_pct: float = Field(3.0, gt=0)
+    # 1.1.0: relative organ weights at a dose whose body weight is at least this far below
+    # control, with no matching absolute change, become one "may be secondary" finding.
+    bw_secondary_pct: float = Field(10.0, gt=0)
+    # 1.1.0: recovery status; a change persists when the recovery difference is at least
+    # this fraction of the main-study difference.
+    recovery_persists_fraction: float = Field(0.5, gt=0, le=1)
     visible_to: tuple[Role, ...] = (Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)
 
 

@@ -7,7 +7,13 @@ import statistics
 
 import pytest
 
-from meridian.preclinical.stats import cochran_armitage, dunnett, fisher_greater, jonckheere
+from meridian.preclinical.stats import (
+    cochran_armitage,
+    cochran_armitage_exact,
+    dunnett,
+    fisher_greater,
+    jonckheere,
+)
 
 
 def test_dunnett_reproduces_dunnetts_1955_example() -> None:
@@ -96,3 +102,58 @@ def test_fisher_reproduces_the_tea_tasting_experiment() -> None:
     assert fisher_greater(3, 4, 1, 4) == pytest.approx(17 / 70)
     # 5 of 10 against 0 of 10: P = C(10,5) C(10,0) / C(20,5) summed upward = 0.0163.
     assert fisher_greater(5, 10, 0, 10) == pytest.approx(0.01625, abs=0.0001)
+
+
+def test_exact_cochran_armitage_two_of_forty_in_the_top_group() -> None:
+    # The 1.0.0 null pattern: 2 affected of 40, both in the top group of 10. Exact:
+    # C(10, 2) / C(40, 2) = 45 / 780; the normal approximation gives 0.026.
+    r = cochran_armitage_exact([0, 0, 0, 2], [10] * 4, [0, 1, 2, 3])
+    assert r.p == pytest.approx(45 / 780)
+    assert cochran_armitage([0, 0, 0, 2], [10] * 4, [0, 1, 2, 3]).p == pytest.approx(
+        0.026, abs=1e-3
+    )
+
+
+def test_exact_cochran_armitage_by_enumeration() -> None:
+    # Every placement of the affected animals, counted by brute force.
+    totals, affected, scores = [4, 3, 3], [0, 1, 2], [0, 1, 2]
+    animals = [s for s, n in zip(scores, totals, strict=True) for _ in range(n)]
+    observed = sum(s * x for s, x in zip(scores, affected, strict=True))
+    combos = list(itertools.combinations(range(len(animals)), sum(affected)))
+    tail = sum(sum(animals[i] for i in c) >= observed for c in combos)
+    assert cochran_armitage_exact(affected, totals, scores).p == pytest.approx(tail / len(combos))
+    assert cochran_armitage_exact([0, 0, 0, 3], [10] * 4, [0, 1, 2, 3]).p == pytest.approx(
+        120 / 9880
+    )
+    assert cochran_armitage_exact([0, 0, 0, 0], [10] * 4, [0, 1, 2, 3]).p == 1.0
+
+
+def test_dunnett_on_a_constant_group_is_exact_and_quiet() -> None:
+    # The real study's urinalysis case that made scipy warn: two dose groups all 5.0.
+    import warnings
+
+    import numpy as np
+    from scipy import stats as sps
+
+    control = [5.0, 5.0, 15.0, 5.0, 5.0, 5.0, 5.0]
+    groups = [[5.0] * 6, [5.0] * 3]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ps = dunnett(control, groups, 1)
+    # The statistic scipy uses is the pooled t, computed here by hand.
+    allv = [control, *groups]
+    sse = sum(sum((x - statistics.fmean(g)) ** 2 for x in g) for g in allv)
+    df = sum(len(g) for g in allv) - len(allv)
+    sd = math.sqrt(sse / df)
+    want = [
+        (statistics.fmean(g) - statistics.fmean(control))
+        / (sd * math.sqrt(1 / len(g) + 1 / len(control)))
+        for g in groups
+    ]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        got = sps.dunnett(
+            *[np.asarray(g) for g in groups], control=np.asarray(control), rng=1
+        ).statistic
+    assert list(got) == pytest.approx(want)
+    assert all(0 < p <= 1 for p in ps)

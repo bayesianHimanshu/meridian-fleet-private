@@ -12,12 +12,12 @@ import math
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import polars as pl
 
 from meridian.platform.agent_settings import ToxStudyMonitorConfig
-from meridian.preclinical.stats import cochran_armitage, dunnett, fisher_greater, jonckheere
+from meridian.preclinical.stats import cochran_armitage_exact, dunnett, fisher_greater, jonckheere
 
 MAIN, RECOVERY = "main", "recovery"
 SEXES = ("M", "F")
@@ -31,6 +31,13 @@ LB_CLASS = {
     "URINALYSIS": "urinalysis",
 }
 _RECOVERY = re.compile(r"(?<![a-z])recovery")
+# 1.1.0: an MI finding is a neoplasm when MIRESCAT says BENIGN or MALIGNANT; where MIRESCAT
+# is empty for every record of it, when its term names one.
+NEOPLASTIC_CATEGORIES = frozenset({"BENIGN", "MALIGNANT"})
+NEOPLASM_TERM = re.compile(
+    r"\b\w*(?:CARCINOMA|SARCOMA|ADENOMA|LYMPHOMA|LEUKEMIA|PAPILLOMA|FIBROMA|LIPOMA|"
+    r"LEIOMYOMA|THYMOMA|MESOTHELIOMA|PHEOCHROMOCYTOMA|NEOPLASM|TUMOR)\b"
+)
 
 # The finding checks (docs/preclinical-eval.md).
 DOSE_RELATED_CHANGE = "dose_related_change"
@@ -181,6 +188,7 @@ class Endpoint:
     kind: str  # continuous or incidence
     cls: str  # magnitude class (continuous) or domain (incidence)
     unit: str = ""
+    neoplastic: bool = False  # 1.1.0: an MI neoplasm (its own rule, never an incidence finding)
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,6 +435,7 @@ def _findings_domain(
             result=_str(frame, f"{p}STRESC"),
             stat=_str(frame, f"{p}STAT"),
             sev=_str(frame, f"{p}SEV"),
+            cat=_str(frame, f"{p}RESCAT"),
         )
         .filter(pl.col("stat") != "NOT DONE")
         .join(animals.select("USUBJID"), on="USUBJID")
@@ -464,7 +473,13 @@ def _findings_domain(
             )
         )
         what = f"{str(spec).title()}: {str(result).lower()}"
-        eps[endpoint] = Endpoint(endpoint, f"{what} ({names[domain]})", "incidence", domain)
+        cats = set(part["cat"].to_list()) - {""}
+        neoplastic = domain == "mi" and (
+            bool(cats & NEOPLASTIC_CATEGORIES) if cats else bool(NEOPLASM_TERM.search(str(result)))
+        )
+        eps[endpoint] = Endpoint(
+            endpoint, f"{what} ({names[domain]})", "incidence", domain, neoplastic=neoplastic
+        )
     return (pl.concat(out) if out else _EMPTY_INC), eps
 
 
@@ -532,6 +547,7 @@ class Summary:
     trend_z: float | None
     trend_p: float | None
     check: str | None  # the finding rule met, if any
+    magnitude: float = 0.0  # continuous: the magnitude its groups were judged at (percent)
 
     @property
     def key(self) -> str:
@@ -563,6 +579,7 @@ def _continuous(
     doses: list[float],
     cfg: ToxStudyMonitorConfig,
     problems: list[Problem],
+    magnitude: float | None = None,
 ) -> Summary | None:
     control = by_rank.get(0, [])
     if len(control) < cfg.min_per_group:
@@ -584,7 +601,11 @@ def _continuous(
         else [1.0] * len(tested)
     )
     p_of = dict(zip(tested, ps, strict=True))
-    mag = cfg.magnitude_pct.get(ep.cls, cfg.magnitude_pct.get("other", 20.0))
+    mag = (
+        magnitude
+        if magnitude is not None
+        else cfg.magnitude_pct.get(ep.cls, cfg.magnitude_pct.get("other", 20.0))
+    )
     stats: list[GroupStat] = [GroupStat(0, doses[0], len(control), c_mean, c_sd, 0.0)]
     for r in sorted(by_rank):
         if r == 0:
@@ -609,23 +630,60 @@ def _continuous(
         )
         stats.append(GroupStat(r, doses[r], len(xs), m, sd, pct, robust, p, flagged=flagged))
     trend = jonckheere([by_rank[r] for r in [0, *tested]]) if tested and varies else None
-    check = None
+    tz, tp = (None, None) if trend is None else (trend.z, trend.p)
+    return Summary(ep, sex, phase, tuple(stats), tz, tp, _continuous_check(stats, tz, tp, cfg), mag)
+
+
+def _continuous_check(
+    stats: list[GroupStat] | tuple[GroupStat, ...],
+    trend_z: float | None,
+    trend_p: float | None,
+    cfg: ToxStudyMonitorConfig,
+) -> str | None:
     flagged_groups = [g for g in stats if g.flagged]
-    if flagged_groups:
-        same_way = trend is not None and all((g.pct or 0) * trend.z > 0 for g in flagged_groups)
-        if trend is not None and trend.p < cfg.alpha_trend and same_way:
-            check = DOSE_RELATED_CHANGE
-        elif any(g.p is not None and g.p < cfg.alpha_pairwise_alone for g in flagged_groups):
-            check = PAIRWISE_CHANGE
-    return Summary(
-        ep,
-        sex,
-        phase,
-        tuple(stats),
-        None if trend is None else trend.z,
-        None if trend is None else trend.p,
-        check,
-    )
+    if not flagged_groups:
+        return None
+    same_way = trend_z is not None and all((g.pct or 0) * trend_z > 0 for g in flagged_groups)
+    if trend_p is not None and trend_p < cfg.alpha_trend and same_way:
+        return DOSE_RELATED_CHANGE
+    if any(g.p is not None and g.p < cfg.alpha_pairwise_alone for g in flagged_groups):
+        return PAIRWISE_CHANGE
+    return None
+
+
+def _red_cell_coherence(summaries: list[Summary], cfg: ToxStudyMonitorConfig) -> dict[str, Summary]:
+    """1.1.0: a red cell group flagged at the red cell magnitude stays flagged only if
+    another red cell parameter is flagged in the same direction at the same dose (same sex
+    and phase); otherwise it must meet the hematology magnitude, with and without its most
+    extreme animal. Returns the changed summaries by key."""
+    hem = cfg.magnitude_pct.get("hematology", 10.0)
+    out: dict[str, Summary] = {}
+    for s in summaries:
+        others = [o for o in summaries if o is not s]
+        groups = []
+        for g in s.groups:
+            coherent = any(
+                og.rank == g.rank and og.flagged and (og.pct or 0) * (g.pct or 0) > 0
+                for o in others
+                for og in o.groups
+            )
+            keep = g.flagged and (
+                coherent
+                or (
+                    g.pct is not None
+                    and g.pct_without_extreme is not None
+                    and abs(g.pct) >= hem
+                    and abs(g.pct_without_extreme) >= hem
+                )
+            )
+            groups.append(replace(g, flagged=keep))
+        if any(a.flagged != b.flagged for a, b in zip(groups, s.groups, strict=True)):
+            out[s.key] = replace(
+                s,
+                groups=tuple(groups),
+                check=_continuous_check(groups, s.trend_z, s.trend_p, cfg),
+            )
+    return out
 
 
 def _incidence(
@@ -657,8 +715,8 @@ def _incidence(
                 grades=tuple(sorted(grades.items())),
             )
         )
-    trend = cochran_armitage(
-        [by_rank[r][0] for r in ranks], [by_rank[r][1] for r in ranks], [float(r) for r in ranks]
+    trend = cochran_armitage_exact(
+        [by_rank[r][0] for r in ranks], [by_rank[r][1] for r in ranks], list(ranks)
     )
 
     def excess(g: GroupStat) -> bool:
@@ -707,6 +765,7 @@ def analyse(tables: Mapping[str, pl.DataFrame], cfg: ToxStudyMonitorConfig) -> A
     cont = values.continuous.join(animals, on="USUBJID")
     inc = values.incidence.join(animals, on="USUBJID")
     summaries: list[Summary] = []
+    red_cells: list[Summary] = []
     for phase in (MAIN, RECOVERY):
         doses = design.doses(phase)
         if not doses:
@@ -718,11 +777,24 @@ def analyse(tables: Mapping[str, pl.DataFrame], cfg: ToxStudyMonitorConfig) -> A
                 by_rank: dict[int, list[float]] = {}
                 for r, v in part.select("rank", "value").iter_rows():
                     by_rank.setdefault(int(r), []).append(float(v))
+                red = endpoint.removeprefix("lb:") in cfg.red_cell_tests
                 s = _continuous(
-                    values.endpoints[endpoint], sex, phase, by_rank, doses, cfg, problems
+                    values.endpoints[endpoint],
+                    sex,
+                    phase,
+                    by_rank,
+                    doses,
+                    cfg,
+                    problems,
+                    cfg.red_cell_magnitude_pct if red else None,
                 )
                 if s is not None:
                     summaries.append(s)
+                    if red:
+                        red_cells.append(s)
+            for key, changed in _red_cell_coherence(red_cells, cfg).items():
+                summaries = [changed if x.key == key else x for x in summaries]
+            red_cells = []
             i = inc.filter((pl.col("phase") == phase) & (pl.col("SEX") == sex))
             for endpoint in sorted(i["endpoint"].unique().to_list()):
                 part = i.filter(pl.col("endpoint") == endpoint)

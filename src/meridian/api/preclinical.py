@@ -28,8 +28,9 @@ from meridian.preclinical.analysis import (
     analyse,
     read_design,
 )
+from meridian.preclinical.rules import raise_findings
 
-DOMAINS = ("bw", "cl", "dm", "ds", "lb", "ma", "mi", "om", "ts", "tx")
+DOMAINS = ("bw", "cl", "dd", "dm", "ds", "lb", "ma", "mi", "om", "ts", "tx")
 
 
 def tables(reader: StudyReader) -> dict[str, pl.DataFrame]:
@@ -103,11 +104,14 @@ def endpoints_view(
 ) -> PreclinicalEndpoints:
     """Every endpoint table, with the finding the agent raised on it when the caller can
     see that finding (finding_by_check holds only those)."""
-    analysis: Analysis = analyse(tables(reader), cfg)
+    t = tables(reader)
+    analysis: Analysis = analyse(t, cfg)
+    raised = raise_findings(analysis, t, cfg)  # 1.1.0: the finding that carries each table
     views = []
     support: dict[tuple[str, float], tuple[list[str], list[str]]] = {}
     for s in analysis.summaries:
-        fid = finding_by_check.get(f"{s.check}:{s.key}") if s.check else None
+        carrier = raised.carried_by.get(s.key)
+        fid = finding_by_check.get(carrier) if carrier else None
         views.append(
             EndpointTableView(
                 endpoint=s.endpoint.endpoint,
@@ -132,15 +136,19 @@ def endpoints_view(
                     for g in s.groups
                 ],
                 trend_p=s.trend_p,
-                check=s.check,
+                check=carrier.split(":", 1)[0] if carrier else None,
                 finding_id=fid,
             )
         )
         if fid is None:
             continue
-        related = s.check in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE)
+        related = (
+            carrier is not None
+            and carrier.split(":", 1)[0] in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE)
+            and s.phase == MAIN
+        )
         for g in s.groups:
-            if g.flagged:
+            if g.rank > 0 and (g.flagged or (s.endpoint.neoplastic and g.affected > 0)):
                 slot = support.setdefault((s.phase, g.dose), ([], []))
                 slot[0 if related else 1].append(fid)
     by_dose = [
