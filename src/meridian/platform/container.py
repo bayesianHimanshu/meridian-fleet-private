@@ -18,7 +18,7 @@ from meridian.agents.safety.local_narration import LocalNarratorRunner
 from meridian.audit.extract import extract_rows, write_extract
 from meridian.data.ingest import IngestService
 from meridian.data.stage_layout import AUDIT
-from meridian.data.study_store import ParquetStudyReader, StudyReader
+from meridian.data.study_store import ParquetStudyReader, SendStudyReader, StudyReader
 from meridian.domain.events import AuditReviewRequested, Event, LedgerEntry
 from meridian.evals.scorecard import ScorecardStore
 from meridian.faults.inject import FaultInjector
@@ -86,6 +86,14 @@ class Container:
         """The blinded area of one cut's eTMF snapshot: the index, visits and export date."""
         return ParquetStudyReader(self.settings.etmf_root / self.settings.study_id, cut_id)
 
+    def send_root(self) -> Path:
+        """<send_root>/<study>: the cuts of MRD-101's SEND study (phase 5 step 1)."""
+        p = self.settings.preclinical
+        return p.send_root / p.study_id
+
+    def send_reader(self, cut_id: str) -> SendStudyReader:
+        return SendStudyReader(self.send_root(), cut_id)
+
     def write_audit_extract(self, trigger: Event, entries: Sequence[LedgerEntry]) -> Path:
         """The audit extract of an audit review, under <audit_root>/<trigger seq>/audit."""
         p = trigger.payload
@@ -149,6 +157,7 @@ class Container:
             safety_reader_factory=self.safety_db_reader,
             tmf_reader_factory=self.etmf_reader,
             audit_root=self.settings.audit_root,
+            send_reader_factory=self.send_reader,
             log=log,
         )
 
@@ -187,6 +196,7 @@ class Container:
             safety_root=self.settings.safety_root / self.settings.study_id,
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
+            send_root=self.send_root(),
         )
 
     def narrator_runner(
@@ -395,6 +405,7 @@ class Container:
             safety_root=self.settings.safety_root / self.settings.study_id,
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
+            send_root=self.send_root(),
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
             placement_wait_seconds=s.placement_wait_seconds,
         )

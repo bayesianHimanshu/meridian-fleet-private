@@ -476,6 +476,64 @@ class QualityObservation(BaseModel):
     refers_to_seq: PositiveInt | None = None
 
 
+class SendStudyLoaded(BaseModel):
+    """A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical
+    agents, as DataCut is of the clinical ones. Its study is the toxicology study's own id
+    (MRD-101-TOX-01), never a clinical study's, so no clinical agent or page picks it up."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.SEND_STUDY_LOADED] = EventType.SEND_STUDY_LOADED
+    study_id: StudyId
+    cut_id: Annotated[
+        str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    ]
+    path: Annotated[str, Field(min_length=1)]
+
+
+NOAEL_SEXES = ("M", "F", "combined")
+
+
+class NoaelDecision(BaseModel):
+    """A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by
+    the toxicologist. Append-only: a revision is a new decision naming the one it
+    supersedes, and both stay in the ledger. The current decision for (study, sex) is the
+    latest one that nothing supersedes. Agents never write this event."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.NOAEL_DECISION] = EventType.NOAEL_DECISION
+    decision_id: Annotated[str, Field(pattern=r"^NOAEL-[0-9a-f]{12}$")]
+    study_id: StudyId
+    sex: Literal["M", "F", "combined"]
+    established: bool
+    noael_dose: Annotated[float, Field(ge=0)] | None = None
+    loael_dose: Annotated[float, Field(ge=0)] | None = None
+    dose_unit: Annotated[str, Field(min_length=1, max_length=32)]
+    finding_ids: tuple[FindingId, ...] = ()
+    rationale: Annotated[str, Field(min_length=20, max_length=4000)]
+    decided_by: ActorId
+    supersedes: Annotated[str, Field(pattern=r"^NOAEL-[0-9a-f]{12}$")] | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.established != (self.noael_dose is not None):
+            raise ValueError("a NOAEL dose is given exactly when the NOAEL is established")
+        if (
+            self.noael_dose is not None
+            and self.loael_dose is not None
+            and self.loael_dose <= self.noael_dose
+        ):
+            raise ValueError("the LOAEL must be above the NOAEL")
+        if self.loael_dose is not None and not self.finding_ids:
+            raise ValueError("a LOAEL rests on at least one finding")
+        if len(set(self.finding_ids)) != len(self.finding_ids):
+            raise ValueError("a finding is named twice")
+        if self.supersedes == self.decision_id:
+            raise ValueError("a decision cannot supersede itself")
+        return self
+
+
 class HumanDecision(BaseModel):
     model_config = _FROZEN
 
@@ -495,7 +553,9 @@ EventPayload = Annotated[
     | FindingAssessment
     | HumanDecision
     | AuditReviewRequested
-    | QualityObservation,
+    | QualityObservation
+    | SendStudyLoaded
+    | NoaelDecision,
     Field(discriminator="type"),
 ]
 

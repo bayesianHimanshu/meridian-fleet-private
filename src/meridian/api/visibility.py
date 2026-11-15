@@ -18,14 +18,18 @@ from collections.abc import Collection, Iterable
 
 from meridian.domain.enums import FindingKind, Role, Visibility
 from meridian.domain.events import (
+    ActorSuspended,
+    ActorWoke,
     Event,
     FindingAssessment,
     FindingNarrative,
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    NoaelDecision,
     QualityObservation,
     RedactedEvent,
+    SendStudyLoaded,
 )
 from meridian.domain.findings import Finding
 
@@ -84,6 +88,8 @@ def finding_ids_of(entry: Event) -> tuple[str, ...]:
         return p.finding_ids
     if isinstance(p, HumanDecision):
         return (p.decision.finding_id,)
+    if isinstance(p, NoaelDecision):
+        return p.finding_ids
     return ()
 
 
@@ -115,6 +121,8 @@ def redact_with_findings(
         return shown
     hidden = any(f not in visible_finding_ids for f in finding_ids_of(shown))
     p = shown.payload
+    if is_preclinical_event(shown) and not can_see_preclinical(role):
+        hidden = True  # a NOAEL, a SEND load, a preclinical run: preclinical roles only
     if isinstance(p, QualityObservation) and p.observation_id not in visible_observation_ids:
         hidden = True
     if hidden:
@@ -156,9 +164,14 @@ def can_see_study_data(role: Role) -> bool:
 
 # Who may decide a finding, by kind (phase 3 step 4b, segregation of duties). Any other
 # kind may be decided by every role that sees it except qa_auditor, which never decides.
+# A QA observation on a NOAEL decision reaches the preclinical roles only; of those, the
+# portfolio lead decides it (the toxicologist whose decision it is may not: actor under
+# review). Each role decides only the observations it can see.
 DECIDERS: dict[FindingKind, frozenset[Role]] = {
     FindingKind.AUDIT: frozenset({Role.CLINICAL_OPS_LEAD}),
-    FindingKind.QA_OBSERVATION: frozenset({Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR}),
+    FindingKind.QA_OBSERVATION: frozenset(
+        {Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD}
+    ),
 }
 NEVER_DECIDES = Role.QA_AUDITOR
 
@@ -210,3 +223,28 @@ def can_see_tmf(role: Role, agent_visible_to: Collection[Role]) -> bool:
     """The TMF page holds no subject data: per-site completeness of trial records. It is
     shown to exactly the roles quality.tmf_completeness's findings reach (its config)."""
     return role in agent_visible_to
+
+
+# Preclinical (phase 5 step 1): the roles preclinical.tox_study_monitor's findings reach
+# ([agents.tox_study_monitor] visible_to; a test keeps the two equal). The SEND study's
+# pages and its NOAEL decisions reach exactly these roles; clinical roles see neither.
+PRECLINICAL_ROLES = frozenset({Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR})
+# Only the toxicologist records a NOAEL. The toxicologist also decides the findings it
+# rests on, as in practice; the independent check is the QA auditor's observation on it.
+NOAEL_RECORDER = Role.TOXICOLOGIST
+
+
+def can_see_preclinical(role: Role) -> bool:
+    return role in PRECLINICAL_ROLES
+
+
+def can_record_noael(role: Role) -> bool:
+    return role is NOAEL_RECORDER
+
+
+def is_preclinical_event(entry: Event) -> bool:
+    """A NOAEL decision, a SEND study load, or a run of a preclinical agent."""
+    p = entry.payload
+    if isinstance(p, NoaelDecision | SendStudyLoaded):
+        return True
+    return isinstance(p, ActorWoke | ActorSuspended) and p.agent_id.startswith("preclinical.")

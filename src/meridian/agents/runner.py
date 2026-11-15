@@ -31,7 +31,7 @@ import structlog
 
 from meridian.agents.base import FindingDraft
 from meridian.agents.registry import AgentRegistry, RegisteredAgent
-from meridian.data.datacut import Ledger, data_cut_events
+from meridian.data.datacut import Ledger, data_cut_events, send_study_events
 from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import dedup_prefix
 from meridian.domain.enums import EventType, Role, Visibility
@@ -45,6 +45,7 @@ from meridian.domain.events import (
     EventPayload,
     FindingRaised,
     LedgerEntry,
+    SendStudyLoaded,
     SubstrateRun,
 )
 from meridian.domain.findings import Finding
@@ -273,12 +274,25 @@ class AgentRunner:
         )
         return known is not None and mine in known
 
-    def _append(self, actor: str, visibility: Visibility, payload: EventPayload) -> Event:
+    def _study_of(self, trigger: Event) -> str:
+        """The study a run belongs to: a SEND study's own id (MRD-101-TOX-01) for the
+        preclinical agents, else the runner's clinical study."""
+        if isinstance(trigger.payload, SendStudyLoaded):
+            return trigger.payload.study_id
+        return self._study_id
+
+    def _append(
+        self,
+        actor: str,
+        visibility: Visibility,
+        payload: EventPayload,
+        study_id: str | None = None,
+    ) -> Event:
         return self._ledger.append(
             EventDraft(
                 occurred_at=self._clock.now(),
                 actor=actor,
-                study_id=self._study_id,
+                study_id=self._study_id if study_id is None else study_id,
                 visibility=visibility,
                 payload=payload,
             )
@@ -296,18 +310,29 @@ class AgentRunner:
         findings are skipped as duplicates, and the run is recorded only if it produced
         something new (the module docstring); report.unchanged lists the others."""
         report = RunReport()
-        triggers = [
-            t
-            for t in data_cut_events(self._ledger, self._study_id)
-            if cuts is None or (isinstance(t.payload, DataCut) and t.payload.cut_id in cuts)
-        ]
+        # DataCut events of the clinical study, and SendStudyLoaded events of any SEND
+        # study; each agent is paired only with the trigger types it subscribes to.
+        by_type = {
+            EventType.DATA_CUT: data_cut_events(self._ledger, self._study_id),
+            EventType.SEND_STUDY_LOADED: send_study_events(self._ledger),
+        }
+        triggers = {
+            kind: [
+                t
+                for t in events
+                if cuts is None
+                or (isinstance(t.payload, DataCut | SendStudyLoaded) and t.payload.cut_id in cuts)
+            ]
+            for kind, events in by_type.items()
+        }
         done = self._completed()
         pending = [
             (registered, trigger)
             for registered in self._registry.enabled()
-            if EventType.DATA_CUT in registered.agent.subscribes_to
-            and (agents is None or registered.agent.agent_id in agents)
-            for trigger in triggers
+            if agents is None or registered.agent.agent_id in agents
+            for kind in (EventType.DATA_CUT, EventType.SEND_STUDY_LOADED)
+            if kind in registered.agent.subscribes_to
+            for trigger in triggers[kind]
             if rerun
             or (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
         ]
@@ -316,7 +341,7 @@ class AgentRunner:
         self._recorded_runs = self._recorded() if rerun else None
         planned: list[_Planned] = []
         for registered, trigger in pending:
-            assert isinstance(trigger.payload, DataCut)
+            assert isinstance(trigger.payload, DataCut | SendStudyLoaded)
             plan = self._plan(registered, trigger, report)
             if plan is not None:
                 planned.append(_Planned(registered, trigger, trigger.payload.cut_id, plan))
@@ -524,6 +549,7 @@ class AgentRunner:
                     "worker_node": getattr(lost, "node", None),
                 }
             )
+        study = self._study_of(trigger)
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -539,6 +565,7 @@ class AgentRunner:
                 attempt=attempt if attempt > 1 else None,
                 worker_lost=None if lost is None else f"{type(lost).__name__}: {lost}"[:1000],
             ),
+            study,
         )
         try:
             if isinstance(outcome, Exception):
@@ -568,7 +595,7 @@ class AgentRunner:
             return
 
         for draft in drafts:
-            self._record(p.registered, draft, report)
+            self._record(p.registered, draft, report, study)
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -585,11 +612,18 @@ class AgentRunner:
                 substrate=outcome.substrate,
                 drafts_sha256=drafts_sha256(drafts),
             ),
+            study,
         )
         report.completed.append((agent.agent_id, trigger.seq))
         log.info("agent.completed", drafts=len(drafts))
 
-    def _record(self, registered: RegisteredAgent, draft: FindingDraft, report: RunReport) -> None:
+    def _record(
+        self,
+        registered: RegisteredAgent,
+        draft: FindingDraft,
+        report: RunReport,
+        study_id: str | None = None,
+    ) -> None:
         agent = registered.agent
         if self._ledger.find_by_dedup_key(draft.dedup_key) is not None:
             report.findings_skipped.append(draft.dedup_key)
@@ -599,7 +633,7 @@ class AgentRunner:
             kind=draft.kind,
             agent_id=agent.agent_id,
             agent_version=agent.version,
-            study_id=self._study_id,
+            study_id=self._study_id if study_id is None else study_id,
             site_id=draft.site_id,
             severity=draft.severity,
             title=draft.title,
@@ -615,6 +649,7 @@ class AgentRunner:
                 agent.agent_id,
                 agent.visibility,
                 FindingRaised(finding=finding, dedup_key=draft.dedup_key),
+                finding.study_id,
             )
         except DuplicateDedupKeyError:
             report.findings_skipped.append(draft.dedup_key)

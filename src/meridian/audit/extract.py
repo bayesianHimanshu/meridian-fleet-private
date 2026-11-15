@@ -36,6 +36,7 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    NoaelDecision,
     QualityObservation,
     RedactedEvent,
 )
@@ -179,6 +180,8 @@ def extract_rows(
             row |= {a.FINDING_ID: _about(e)[0], a.AGENT: p.agent_id, a.VERSION: p.agent_version}
         elif isinstance(p, QualityObservation):
             row |= {a.ACTOR: p.raised_by, a.FINDING_ID: p.refers_to_finding_id}
+        elif isinstance(p, NoaelDecision):
+            row |= {a.ACTOR: p.decided_by}
         rows.append(row)
     return rows
 

@@ -30,6 +30,7 @@ from meridian.platform.agent_settings import (
     QtlDetectorConfig,
     SaeReconcilerConfig,
     TmfCompletenessConfig,
+    ToxStudyMonitorConfig,
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -70,6 +71,32 @@ class PilotSource(BaseModel):
     timeout_seconds: float = 120.0
 
 
+POINTCROSS_COMMIT = "398a6d33ced9359ffb58c46650a6d488811176b1"
+POINTCROSS_BASE_URL = (
+    "https://raw.githubusercontent.com/phuse-org/phuse-scripts/"
+    f"{POINTCROSS_COMMIT}/data/send/PointCross"
+)
+
+
+class PreclinicalSettings(BaseModel):
+    """MRD-101's GLP rat study ([preclinical] in TOML; docs/preclinical-data.md)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset_id: str = "MRD-101"
+    study_id: str = "MRD-101-TOX-01"
+    cut_id: str = "TOX-FINAL"
+    treatment: str = "MRD-101"
+    source_study_id: str = "PC201708"
+    source_treatment: str = "PCDRUG"
+    base_url: str = POINTCROSS_BASE_URL
+    raw_dir: Path = Path("data/raw/send_pointcross")
+    send_root: Path = Path("data/send")
+    timeout_seconds: float = 120.0
+    # Domain to the sha256 of its .xpt at the pinned commit; fetch and ingest refuse others.
+    files: dict[str, str] = Field(default_factory=dict)
+
+
 class AgentsSettings(BaseModel):
     """Which agents run, and each agent's own configuration ([agents.<name>] in TOML)."""
 
@@ -82,6 +109,7 @@ class AgentsSettings(BaseModel):
     sae_reconciler: SaeReconcilerConfig = Field(default_factory=SaeReconcilerConfig)
     tmf_completeness: TmfCompletenessConfig = Field(default_factory=TmfCompletenessConfig)
     audit_trail_reviewer: AuditTrailReviewerConfig = Field(default_factory=AuditTrailReviewerConfig)
+    tox_study_monitor: ToxStudyMonitorConfig = Field(default_factory=ToxStudyMonitorConfig)
 
 
 class RuntimeSettings(BaseModel):
@@ -345,6 +373,7 @@ class Settings(BaseSettings):
     audit_root: Path = Path("var/audit")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
+    preclinical: PreclinicalSettings = Field(default_factory=PreclinicalSettings)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
     agents: AgentsSettings
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)

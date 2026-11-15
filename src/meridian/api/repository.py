@@ -18,15 +18,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
+from pydantic import ValidationError
+
 from meridian.agents.base import zone_of
 from meridian.agents.quality import audit_trail_reviewer, tmf_completeness
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
 from meridian.agents.safety import local_narrator, term_adjudicator
+from meridian.api import preclinical, visibility
 from meridian.api import safety as safety_view
 from meridian.api import tmf as tmf_view
-from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
     AnswerView,
@@ -54,11 +56,17 @@ from meridian.api.models import (
     LatestNarrative,
     LedgerPage,
     NarrativeView,
+    NoaelBrief,
+    NoaelDecisionView,
+    NoaelHistory,
+    NoaelRequest,
     ObservationItem,
     ObservationRequest,
     ObservationResponse,
     Portfolio,
     PortfolioAsset,
+    PreclinicalEndpoints,
+    PreclinicalStudy,
     PreviousDecision,
     RbqmSites,
     Reconciliation,
@@ -91,12 +99,18 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    NoaelDecision,
     QualityObservation,
+    SendStudyLoaded,
 )
 from meridian.domain.findings import Decision, Evidence, Finding
 from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
-from meridian.platform.agent_settings import AuditTrailReviewerConfig, TmfCompletenessConfig
+from meridian.platform.agent_settings import (
+    AuditTrailReviewerConfig,
+    TmfCompletenessConfig,
+    ToxStudyMonitorConfig,
+)
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
@@ -572,7 +586,15 @@ class Repository:
         run_timeout_seconds: int = 120,
         executors: Mapping[str, str] | None = None,
         default_executor: str = "openshell",
+        send_reader: Callable[[str, str], StudyReader] | None = None,
+        tox_config: ToxStudyMonitorConfig | None = None,
+        preclinical_assets: Mapping[str, str] | None = None,
     ) -> None:
+        # Phase 5: (study, cut) to a SEND study reader, the agent's config (the endpoint
+        # tables use its analysis), and preclinical asset id to its SEND study id.
+        self._send_reader = send_reader
+        self._tox_config = tox_config
+        self._preclinical_assets = dict(preclinical_assets or {})
         self._executors = dict(executors or {})
         self._default_executor = default_executor
         # A started detector run without its ActorSuspended counts as running, not failed,
@@ -1264,9 +1286,22 @@ class Repository:
         snap = self.snapshot()
         visible_to = set(visibility.OBSERVATION_VISIBLE_TO)
         actor_under_review: str | None = None
+        study_id = self._study_id
         refers: list[Evidence] = []
+        # An observation on preclinical work (a NOAEL decision or a preclinical finding)
+        # reaches the preclinical roles, so the toxicologist sees it; no clinical role does.
+        referred_entry = (
+            self._visible_entry(body.ledger_seq, snap) if body.ledger_seq is not None else None
+        )
+        referred_finding = self._visible(body.finding_id) if body.finding_id is not None else None
+        if (referred_entry is not None and isinstance(referred_entry.payload, NoaelDecision)) or (
+            referred_finding is not None
+            and referred_finding.finding.agent_id.startswith("preclinical.")
+        ):
+            visible_to = set(visibility.PRECLINICAL_ROLES)
         if body.finding_id is not None:
             referred = self._visible(body.finding_id)
+            study_id = referred.finding.study_id
             # Nobody may learn of a finding through an observation about it.
             visible_to &= set(referred.finding.visible_to) | {Role.QA_AUDITOR}
             refers.append(
@@ -1283,6 +1318,9 @@ class Repository:
             p = entry.payload
             if isinstance(p, HumanDecision):
                 actor_under_review = p.decision.actor
+            if isinstance(p, NoaelDecision):
+                actor_under_review = p.decided_by  # the toxicologist does not decide it
+                study_id = p.study_id
             for fid in visibility.finding_ids_of(entry):
                 referred = snap.raised[fid]
                 visible_to &= set(referred.finding.visible_to) | {Role.QA_AUDITOR}
@@ -1310,7 +1348,7 @@ class Repository:
             kind=FindingKind.QA_OBSERVATION,
             agent_id=visibility.OBSERVATION_SOURCE,
             agent_version=visibility.OBSERVATION_VERSION,
-            study_id=self._study_id,
+            study_id=study_id,
             site_id=None,
             severity=body.severity,
             title=observation.title,
@@ -1335,7 +1373,7 @@ class Repository:
             agent_id=finding.agent_id,
             agent_version=finding.agent_version,
             kind=finding.kind,
-            study_id=self._study_id,
+            study_id=study_id,
             site_id=None,
             cut_id=LEDGER_SCOPE,
             check=f"qa_observation:{observation_id}",
@@ -1344,7 +1382,7 @@ class Repository:
             EventDraft(
                 occurred_at=now,
                 actor=self.person.actor,
-                study_id=self._study_id,
+                study_id=study_id,
                 visibility=Visibility.BLINDED,
                 payload=p,
             )
@@ -1489,19 +1527,199 @@ class Repository:
         return UnblindedCases(cut_id=cut_id, cases=cases, cases_with_treatment=with_treatment)
 
     def portfolio(self) -> Portfolio:
-        open_count = sum(1 for item in self.review_queue().items if item.study_id == self._study_id)
+        queue = self.review_queue().items
+        open_count = sum(1 for item in queue if item.study_id == self._study_id)
+
+        def live(asset_id: str) -> AssetLive | None:
+            if asset_id == self._study_id:
+                return AssetLive(open_findings=open_count)
+            study = self._preclinical_assets.get(asset_id)
+            if study is None:
+                return None
+            if not visibility.can_see_preclinical(self.role):
+                return AssetLive(open_findings=0, noael_status="not_shown")
+            current = [v for v in self._noael_views(study) if v.current]
+            briefs = [
+                NoaelBrief(
+                    decision_id=v.decision_id,
+                    sex=v.sex,
+                    established=v.established,
+                    noael_dose=v.noael_dose,
+                    dose_unit=v.dose_unit,
+                    recorded_at=v.recorded_at,
+                    decided_by=v.decided_by,
+                )
+                for v in sorted(current, key=lambda v: v.sex)
+            ]
+            return AssetLive(
+                open_findings=sum(1 for item in queue if item.study_id == study),
+                noael_status="decided" if briefs else "not_yet_decided",
+                noael=briefs,
+            )
+
         return Portfolio(
             assets=[
-                PortfolioAsset(
-                    asset_id=a.asset_id,
-                    static=a.static,
-                    live=AssetLive(open_findings=open_count)
-                    if a.asset_id == self._study_id
-                    else None,
-                )
+                PortfolioAsset(asset_id=a.asset_id, static=a.static, live=live(a.asset_id))
                 for a in sorted(self._portfolio, key=lambda a: a.asset_id)
             ]
         )
+
+    # ---- preclinical (phase 5 step 1)
+
+    def _require_preclinical(self) -> None:
+        if not visibility.can_see_preclinical(self.role):
+            raise ForbiddenError(f"{self.role.value} does not see preclinical studies")
+
+    def _send_loads(self) -> dict[str, Event]:
+        """The latest SendStudyLoaded event of each SEND study."""
+        out: dict[str, Event] = {}
+        for e in self._ledger.read(
+            event_types=[EventType.SEND_STUDY_LOADED],
+            viewer_role=visibility.ledger_viewer(self.role),
+        ):
+            if isinstance(e, Event) and isinstance(e.payload, SendStudyLoaded):
+                out[e.payload.study_id] = e
+        return out
+
+    def _send_study(self, study_id: str) -> tuple[Event, StudyReader]:
+        self._require_preclinical()
+        loaded = self._send_loads().get(study_id)
+        if loaded is None or self._send_reader is None:
+            raise NotFoundError(f"preclinical study {study_id} not found")
+        assert isinstance(loaded.payload, SendStudyLoaded)
+        try:
+            return loaded, self._send_reader(study_id, loaded.payload.cut_id)
+        except (OSError, StudyAccessError) as exc:
+            raise NotFoundError(f"preclinical study {study_id} is not on this host") from exc
+
+    def preclinical_studies(self) -> list[PreclinicalStudy]:
+        self._require_preclinical()
+        asset_of = {s: a for a, s in self._preclinical_assets.items()}
+        out = []
+        for study_id in sorted(self._send_loads()):
+            loaded, reader = self._send_study(study_id)
+            assert isinstance(loaded.payload, SendStudyLoaded)
+            out.append(
+                preclinical.study_view(
+                    reader,
+                    study_id=study_id,
+                    asset_id=asset_of.get(study_id),
+                    cut_id=loaded.payload.cut_id,
+                    seq=loaded.seq,
+                )
+            )
+        return out
+
+    def preclinical_endpoints(self, study_id: str) -> PreclinicalEndpoints:
+        loaded, reader = self._send_study(study_id)
+        assert isinstance(loaded.payload, SendStudyLoaded)
+        if self._tox_config is None:
+            raise NotFoundError("preclinical analysis is not configured")
+        cut = loaded.payload.cut_id
+        by_check = {
+            r.check: fid
+            for fid, r in self.snapshot().raised.items()
+            if r.finding.study_id == study_id
+            and r.cut_id == cut
+            and r.finding.agent_id.startswith("preclinical.")
+        }
+        return preclinical.endpoints_view(
+            reader, self._tox_config, study_id=study_id, cut_id=cut, finding_by_check=by_check
+        )
+
+    def _noael_views(self, study_id: str) -> list[NoaelDecisionView]:
+        events = [
+            e
+            for e in self._ledger.read(
+                event_types=[EventType.NOAEL_DECISION],
+                viewer_role=visibility.ledger_viewer(self.role),
+            )
+            if isinstance(e, Event)
+            and isinstance(e.payload, NoaelDecision)
+            and e.payload.study_id == study_id
+        ]
+        return preclinical.noael_views(events)
+
+    def noael(self, study_id: str) -> NoaelHistory:
+        _, reader = self._send_study(study_id)
+        doses, unit = preclinical.main_doses(reader)
+        views = self._noael_views(study_id)
+        return NoaelHistory(
+            study_id=study_id,
+            dose_unit=unit,
+            doses=doses,
+            current=[v for v in views if v.current],
+            history=list(reversed(views)),
+            may_record=visibility.can_record_noael(self.role),
+        )
+
+    def record_noael(self, study_id: str, body: NoaelRequest) -> NoaelDecisionView:
+        """The toxicologist's NOAEL for a study and sex (or combined). Append-only: a
+        revision names the current decision it supersedes (409 otherwise), and both stay."""
+        self._require_preclinical()
+        if not visibility.can_record_noael(self.role):
+            raise ForbiddenError("only the toxicologist records a NOAEL decision")
+        _, reader = self._send_study(study_id)
+        doses, unit = preclinical.main_doses(reader)
+        treated = [d for d in doses if d > 0]
+        for name, dose in (("NOAEL", body.noael_dose), ("LOAEL", body.loael_dose)):
+            if dose is not None and dose not in treated:
+                raise InvalidDecisionError(
+                    f"the {name} must be one of the study's dose levels: "
+                    + ", ".join(f"{d:g}" for d in treated)
+                    + f" {unit}"
+                )
+        snap = self.snapshot()
+        for fid in body.finding_ids:
+            r = self._visible(fid)  # 404 if missing or not visible to the toxicologist
+            if r.finding.study_id != study_id or not r.finding.agent_id.startswith("preclinical."):
+                raise InvalidDecisionError(f"{fid} is not a finding of study {study_id}")
+        del snap
+
+        def current_id() -> str | None:
+            mine = [v for v in self._noael_views(study_id) if v.sex == body.sex and v.current]
+            return mine[-1].decision_id if mine else None
+
+        def unchanged() -> None:
+            if current_id() != body.supersedes:
+                now = current_id()
+                raise ConflictError(
+                    f"the current {body.sex} NOAEL decision is {now}: a new decision must name "
+                    "it in supersedes"
+                    if now is not None
+                    else f"there is no {body.sex} NOAEL decision to supersede"
+                )
+
+        unchanged()
+        try:
+            payload = NoaelDecision(
+                decision_id="NOAEL-" + uuid.uuid4().hex[:12],
+                study_id=study_id,
+                sex=body.sex,
+                established=body.established,
+                noael_dose=body.noael_dose,
+                loael_dose=body.loael_dose,
+                dose_unit=unit,
+                finding_ids=tuple(body.finding_ids),
+                rationale=body.rationale.strip(),
+                decided_by=self.person.actor,
+                supersedes=body.supersedes,
+            )
+        except ValidationError as exc:
+            raise InvalidDecisionError(
+                "; ".join(str(e["msg"]).removeprefix("Value error, ") for e in exc.errors())
+            ) from exc
+        draft = EventDraft(
+            occurred_at=self._clock.now(),
+            actor=self.person.actor,
+            study_id=study_id,
+            visibility=Visibility.BLINDED,
+            payload=payload,
+        )
+        event = self._ledger.append_guarded(draft, unchanged)
+        self._snapshot = None
+        (view,) = [v for v in self._noael_views(study_id) if v.seq == event.seq]
+        return view
 
     # ---- deciding
 

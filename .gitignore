@@ -237,4 +237,5 @@ data/ground_truth/
 data/evals/
 data/safety_db/
 data/etmf/
+data/send/
 deploy/gke/env.sh

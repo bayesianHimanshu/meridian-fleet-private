@@ -23,6 +23,8 @@ const TYPES: EventType[] = [
   "policy_denied",
   "containment_check_completed",
   "document_filed",
+  "send_study_loaded",
+  "noael_decision",
 ];
 
 function typesText(types: EventType[]): string {
@@ -92,6 +94,12 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
       return `Containment check ${p.policy_name ?? p.zone}: ${p.passed ? "passed" : "failed"}`;
     case "document_filed":
       return `Document ${p.doc_id} filed`;
+    case "send_study_loaded":
+      return `SEND study ${p.study_id} loaded (${p.cut_id})`;
+    case "noael_decision":
+      return `NOAEL for ${p.study_id} (${p.sex}): ${
+        p.established ? `${String(p.noael_dose)} ${p.dose_unit}` : "not established"
+      }, by ${p.decided_by}${p.supersedes ? `, revising ${p.supersedes}` : ""}`;
   }
 }
 

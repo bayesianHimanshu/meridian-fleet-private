@@ -138,6 +138,24 @@ class UnblindedReader(_AreaReader):
     _areas = (UNBLINDED_AREA,)
 
 
+class SendStudyReader(_AreaReader):
+    """The send/ area of one SEND cut only (<send_root>/<study>/<cut>/send): the
+    preclinical zone's reader. No clinical area is reachable through it."""
+
+    _areas = ("send",)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> SendStudyReader:
+        """Inside a sandbox: the stage holds send/ (and meta/); ids come from the trigger."""
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
+
+
+# Zones whose agents read a SEND study (staged as /stage/send) and nothing of a clinical cut.
+SEND_ZONES = frozenset({"preclinical"})
 # Zones whose agents also read the cut's safety database snapshot (its blinded area).
 SAFETY_DB_ZONES = frozenset({"safety"})
 # Zones whose agents also read the cut's eTMF index (the blinded area of its eTMF

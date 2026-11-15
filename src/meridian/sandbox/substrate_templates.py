@@ -35,6 +35,7 @@ SUBSTRATE_POLICIES: tuple[str, ...] = (
     "safety.sae_reconciler",
     "quality",
     "quality.audit_trail",
+    "preclinical",
 )
 CONFORMANCE = "conformance"
 WORKER_BIN = "/opt/meridian/venv/bin/meridian-worker"

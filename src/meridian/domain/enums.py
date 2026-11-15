@@ -32,6 +32,7 @@ class FindingKind(StrEnum):
     TMF = "tmf"
     AUDIT = "audit"
     QA_OBSERVATION = "qa_observation"
+    TOX_SIGNAL = "tox_signal"  # preclinical: a dose-related or pairwise change, or data quality
 
 
 class EventType(StrEnum):
@@ -47,6 +48,8 @@ class EventType(StrEnum):
     HUMAN_DECISION = "human_decision"
     AUDIT_REVIEW_REQUESTED = "audit_review_requested"
     QUALITY_OBSERVATION = "quality_observation"
+    SEND_STUDY_LOADED = "send_study_loaded"
+    NOAEL_DECISION = "noael_decision"
 
 
 class DecisionAction(StrEnum):

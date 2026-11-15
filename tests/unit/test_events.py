@@ -20,8 +20,10 @@ from meridian.domain.events import (
     FindingNarrative,
     FindingRaised,
     HumanDecision,
+    NoaelDecision,
     PolicyDenied,
     QualityObservation,
+    SendStudyLoaded,
 )
 from meridian.domain.findings import Decision
 from tests.support import STUDY, T0, make_finding
@@ -152,6 +154,19 @@ PAYLOADS: list[EventPayload] = [
         severity=Severity.MEDIUM,
         refers_to_finding_id="RBQM-0001",
     ),
+    SendStudyLoaded(study_id="MRD-101-TOX-01", cut_id="TOX-FINAL", path="data/send/x"),
+    NoaelDecision(
+        decision_id="NOAEL-0123456789ab",
+        study_id="MRD-101-TOX-01",
+        sex="combined",
+        established=True,
+        noael_dose=20.0,
+        loael_dose=200.0,
+        dose_unit="mg/kg/day",
+        finding_ids=("PRE-0001",),
+        rationale="Hepatocellular necrosis with ALT rise at 200 mg/kg; none at 20 mg/kg.",
+        decided_by="leela.nair",
+    ),
 ]
 
 ADAPTER: TypeAdapter[EventPayload] = TypeAdapter(EventPayload)
@@ -271,3 +286,42 @@ def test_a_review_range_lies_before_its_trigger() -> None:
             ActorWoke(agent_id="quality.audit_trail_reviewer", trigger_seq=42, **bad)  # type: ignore[arg-type]
     with pytest.raises(ValidationError):
         AuditReviewRequested(study_id="MRD-201", from_seq=5, through_seq=4)
+
+
+NOAEL = {
+    "decision_id": "NOAEL-0123456789ab",
+    "study_id": "MRD-101-TOX-01",
+    "sex": "M",
+    "established": True,
+    "noael_dose": 20.0,
+    "dose_unit": "mg/kg/day",
+    "rationale": "No adverse change at any dose up to 20 mg/kg/day.",
+    "decided_by": "leela.nair",
+}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"established": False},  # a dose with "not established"
+        {"noael_dose": None},  # established without a dose
+        {"loael_dose": 20.0, "finding_ids": ("PRE-0001",)},  # LOAEL not above the NOAEL
+        {"loael_dose": 200.0},  # a LOAEL resting on no finding
+        {"finding_ids": ("PRE-0001", "PRE-0001")},
+        {"supersedes": "NOAEL-0123456789ab"},  # itself
+        {"rationale": "too short"},
+        {"sex": "both"},
+    ],
+)
+def test_noael_decision_rules(changes: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        NoaelDecision.model_validate({**NOAEL, **changes})
+
+
+def test_a_noael_not_established_has_no_dose() -> None:
+    d = NoaelDecision.model_validate(
+        {**NOAEL, "established": False, "noael_dose": None, "loael_dose": 2.0,
+         "finding_ids": ("PRE-0002",)}
+    )  # fmt: skip
+    assert d.noael_dose is None
+    assert d.loael_dose == 2.0

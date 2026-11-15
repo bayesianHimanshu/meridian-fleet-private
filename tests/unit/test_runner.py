@@ -226,10 +226,12 @@ def test_crash_after_findings_reruns_without_duplicates(ledger: SqliteLedger) ->
     runner = _runner(ledger, agent)
     original = runner._append
 
-    def crash_on_suspend(actor: str, visibility: Visibility, payload: object) -> Event:
+    def crash_on_suspend(
+        actor: str, visibility: Visibility, payload: object, study_id: str | None = None
+    ) -> Event:
         if isinstance(payload, ActorSuspended):
             raise KeyboardInterrupt
-        return original(actor, visibility, payload)  # type: ignore[arg-type]
+        return original(actor, visibility, payload, study_id)  # type: ignore[arg-type]
 
     runner._append = crash_on_suspend  # type: ignore[method-assign]
     with pytest.raises(KeyboardInterrupt):
@@ -440,7 +442,7 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
     from meridian.platform.container import Container
 
     settings = Settings(ledger_path=tmp_path / "l.sqlite3")
-    assert settings.cuts.operational == ("DC-BASE",)
+    assert settings.cuts.operational == ("DC-BASE", "TOX-FINAL")
     assert settings.cuts.operational_executors == ("openshell", "substrate")
     assert settings.runtime.executor == "zoned"
     assert settings.runtime.executors == {
@@ -448,6 +450,7 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
         "safety.sae_reconciler": "substrate",
         "quality": "substrate",
         "quality.audit_trail": "substrate",
+        "preclinical": "substrate",
     }
     with Container.build(settings, FixedClock(T0)) as c:
         c.ledger.initialize()
@@ -559,3 +562,58 @@ def test_rerun_runs_completed_pairs_again_and_records_only_what_is_new(
     assert again.unchanged == [("rbqm.fake", 1)]
     assert again.findings_appended == []
     assert len(ledger.read()) == size
+
+
+class FakePreclinical(FakeAgent):
+    zone = Zone.PRECLINICAL
+    subscribes_to = frozenset({EventType.SEND_STUDY_LOADED})
+    visible_to = frozenset({Role.TOXICOLOGIST})
+
+
+def test_a_send_study_triggers_only_its_subscribers_under_its_own_study_id(
+    ledger: SqliteLedger,
+) -> None:
+    from meridian.data.send import record_send_study
+
+    cut = _cut(ledger, "DC-A")
+    send, _ = record_send_study(
+        ledger, occurred_at=T0, actor="system.ingest", study_id="MRD-101-TOX-01",
+        cut_id="TOX-FINAL", path=Path("x"),
+    )  # fmt: skip
+    clinical = FakeAgent()
+    tox = FakePreclinical(agent_id="preclinical.fake")
+    registry = AgentRegistry()
+    registry.register(clinical, AgentConfig())
+    registry.register(tox, AgentConfig())
+    runner = AgentRunner(
+        ledger=ledger,
+        registry=registry,
+        executor=InProcessExecutor(
+            registry=registry,
+            reader_factory=StubReader,
+            send_reader_factory=StubReader,
+            log=structlog.get_logger(),
+        ),
+        clock=FixedClock(T0),
+        study_id=STUDY,
+        log=structlog.get_logger(),
+        operational_cuts=("DC-BASE",),
+    )
+    report = runner.run_pending()
+    assert sorted(report.completed) == sorted(
+        [("rbqm.fake", cut.seq), ("preclinical.fake", send.seq)]
+    )
+    by_agent: dict[str, set[str | None]] = {}
+    for e in ledger.read():
+        if isinstance(e, Event) and e.event_type in (
+            EventType.ACTOR_WOKE, EventType.FINDING_RAISED, EventType.ACTOR_SUSPENDED,
+        ):  # fmt: skip
+            by_agent.setdefault(e.actor, set()).add(e.study_id)
+    assert by_agent == {"rbqm.fake": {STUDY}, "preclinical.fake": {"MRD-101-TOX-01"}}
+    raised = [
+        e.payload.finding.study_id
+        for e in ledger.read()
+        if isinstance(e, Event) and isinstance(e.payload, FindingRaised)
+        and e.payload.finding.agent_id == "preclinical.fake"
+    ]  # fmt: skip
+    assert raised == ["MRD-101-TOX-01"]

@@ -168,6 +168,47 @@ SubjectStartField = Literal["RFICDTC", "RFSTDTC"]
 SubjectEndField = Literal["RFENDTC", "RFPENDTC"]
 
 
+class ToxStudyMonitorConfig(AgentConfig):
+    """preclinical.tox_study_monitor 1.0.0 (phase 5 step 1). Every method and threshold is
+    pre-registered in docs/preclinical-eval.md, set before the agent ran on any study and
+    not changed in response to a result. Comparisons are against the concurrent control
+    only, never historical data. Visibility lives here, next to the agent."""
+
+    # Continuous endpoints: Dunnett (many-to-one, two-sided) and Jonckheere-Terpstra
+    # (ordered groups, two-sided). A dose group is flagged when Dunnett p < alpha_pairwise
+    # and the change meets the magnitude, with and without its most extreme animal.
+    alpha_pairwise: float = Field(0.05, gt=0, lt=1)
+    alpha_trend: float = Field(0.01, gt=0, lt=1)
+    # A flagged change with no trend is raised only when Dunnett p < this.
+    alpha_pairwise_alone: float = Field(0.01, gt=0, lt=1)
+    # Minimum absolute percent difference from the control mean, by endpoint class.
+    magnitude_pct: dict[str, float] = Field(
+        default_factory=lambda: {
+            "body_weight": 5.0,
+            "body_weight_gain": 10.0,
+            "hematology": 10.0,
+            "coagulation": 10.0,
+            "clinical_chemistry": 20.0,
+            "urinalysis": 25.0,
+            "organ_weight": 10.0,
+            "other": 20.0,
+        }
+    )
+    # A group with fewer usable values is not tested; a control with fewer is reported.
+    min_per_group: int = Field(3, ge=2)
+    # Incidence endpoints: Cochran-Armitage (one-sided, increase; scores = dose rank) and
+    # Fisher's exact test against control (one-sided, increase).
+    alpha_incidence_trend: float = Field(0.05, gt=0, lt=1)
+    alpha_incidence_pairwise_alone: float = Field(0.01, gt=0, lt=1)
+    # The top dose group must exceed the control by at least this many animals and points.
+    incidence_min_excess_animals: int = Field(2, ge=1)
+    incidence_min_excess_points: float = Field(20.0, ge=0, le=100)
+    # scipy.stats.dunnett integrates a multivariate t numerically; a fixed seed makes it
+    # reproducible run to run (and so the drafts byte for byte).
+    dunnett_seed: int = 20261115
+    visible_to: tuple[Role, ...] = (Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)
+
+
 class TmfCompletenessConfig(AgentConfig):
     """quality.tmf_completeness: the expected artifacts (config/tmf_expected.toml), the DM
     fields that give the site milestones, and who may see its findings. Visibility lives

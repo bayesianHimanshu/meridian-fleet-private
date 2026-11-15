@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from meridian.domain.enums import EventType, Visibility
-from meridian.domain.events import DataCut, Event, EventDraft
+from meridian.domain.events import DataCut, Event, EventDraft, SendStudyLoaded
 from meridian.ledger.store import LedgerReader, LedgerWriter
 from meridian.platform.clock import Clock
 
@@ -49,3 +49,16 @@ def record_data_cut(
         )
     )
     return event, True
+
+
+def send_study_events(reader: LedgerReader, study_id: str | None = None) -> list[Event]:
+    """Every SendStudyLoaded event in seq order, optionally for one study."""
+    out: list[Event] = []
+    for entry in reader.read(event_types=[EventType.SEND_STUDY_LOADED]):
+        if (
+            isinstance(entry, Event)
+            and isinstance(entry.payload, SendStudyLoaded)
+            and (study_id is None or entry.payload.study_id == study_id)
+        ):
+            out.append(entry)
+    return out
