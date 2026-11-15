@@ -4,6 +4,11 @@
       "dose_related_change:lb:ALT:F:main",
       "dose_related_change:lb:ALT:M:main",
       "dose_related_change:om:KIDNEY:rel:F:recovery"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main",
+      "recovery_only_change:om:KIDNEY:rel:F:recovery"
     ]
   },
   "case": "recovery_reverses",

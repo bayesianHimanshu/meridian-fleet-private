@@ -3,6 +3,10 @@
     "1.0.0": [
       "pairwise_change:lb:GLUC:F:main",
       "pairwise_change:lb:GLUC:M:main"
+    ],
+    "1.1.0": [
+      "pairwise_change:lb:GLUC:F:main",
+      "pairwise_change:lb:GLUC:M:main"
     ]
   },
   "case": "mid_dose_only",

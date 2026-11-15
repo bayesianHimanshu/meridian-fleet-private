@@ -9,6 +9,12 @@
       "dose_related_change:om:LIVER:rel:F:recovery",
       "dose_related_change:om:LIVER:rel:M:main",
       "dose_related_change:om:LIVER:rel:M:recovery"
+    ],
+    "1.1.0": [
+      "dose_related_change:om:LIVER:abs:F:main",
+      "dose_related_change:om:LIVER:abs:M:main",
+      "dose_related_change:om:LIVER:rel:F:main",
+      "dose_related_change:om:LIVER:rel:M:main"
     ]
   },
   "case": "recovery_persists",

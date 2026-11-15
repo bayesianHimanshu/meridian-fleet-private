@@ -3,6 +3,10 @@
     "1.0.0": [
       "dose_related_change:lb:ALT:F:main",
       "dose_related_change:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
     ]
   },
   "case": "dose_related_both_sexes",

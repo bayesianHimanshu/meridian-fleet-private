@@ -3,6 +3,10 @@
     "1.0.0": [
       "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
       "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
     ]
   },
   "case": "hypertrophy_incidence",

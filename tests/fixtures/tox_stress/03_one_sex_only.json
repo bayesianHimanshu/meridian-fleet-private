@@ -2,6 +2,9 @@
   "actual": {
     "1.0.0": [
       "dose_related_change:lb:AST:F:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:AST:F:main"
     ]
   },
   "case": "one_sex_only",

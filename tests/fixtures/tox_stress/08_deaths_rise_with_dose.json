@@ -3,6 +3,20 @@
     "1.0.0": [
       "dose_related_incidence:death:F:main",
       "dose_related_incidence:death:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_incidence:death:F:main",
+      "dose_related_incidence:death:M:main",
+      "unscheduled_death:SYN-TOX-01-3001",
+      "unscheduled_death:SYN-TOX-01-3051",
+      "unscheduled_death:SYN-TOX-01-4001",
+      "unscheduled_death:SYN-TOX-01-4002",
+      "unscheduled_death:SYN-TOX-01-4003",
+      "unscheduled_death:SYN-TOX-01-4004",
+      "unscheduled_death:SYN-TOX-01-4051",
+      "unscheduled_death:SYN-TOX-01-4052",
+      "unscheduled_death:SYN-TOX-01-4053",
+      "unscheduled_death:SYN-TOX-01-4054"
     ]
   },
   "case": "deaths_rise_with_dose",
