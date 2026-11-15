@@ -401,7 +401,7 @@ function NoaelPanel({ study }: { study: Study }) {
               {noael.data.current.map((d) => (
                 <li key={d.decision_id} className="finding" data-testid="noael-current">
                   <DecisionText d={d} />
-                  <RaiseObservation refersTo={{ ledger_seq: d.seq }} />
+                  <RaiseObservation refersTo={{ ledger_seq: d.seq }} decidedBy="The portfolio lead" />
                 </li>
               ))}
             </ul>

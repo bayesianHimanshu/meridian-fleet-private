@@ -23,13 +23,20 @@ function refersText(r: RefersTo): string {
 /** "Raise an observation", for the QA auditor only (nobody else sees it). A short form:
  * title, description, severity. Enter submits only from the description field (Shift+Enter
  * starts a new line there); in the title or the severity it does nothing. */
-export function RaiseObservation({ refersTo }: { refersTo: RefersTo }) {
+export function RaiseObservation({
+  refersTo,
+  decidedBy = "Clinical operations or the medical monitor",
+}: {
+  refersTo: RefersTo;
+  decidedBy?: string;
+}) {
   const { person } = useIdentity();
   const [open, setOpen] = useState(false);
   if (person.role !== "qa_auditor") return null;
   return open ? (
     <ObservationForm
       refersTo={refersTo}
+      decidedBy={decidedBy}
       onClose={() => {
         setOpen(false);
       }}
@@ -49,9 +56,11 @@ export function RaiseObservation({ refersTo }: { refersTo: RefersTo }) {
 
 export function ObservationForm({
   refersTo,
+  decidedBy = "Clinical operations or the medical monitor",
   onClose,
 }: {
   refersTo: RefersTo;
+  decidedBy?: string;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -101,8 +110,8 @@ export function ObservationForm({
       <p className="message ok" role="status" data-testid="observation-raised">
         Observation recorded as{" "}
         <FindingLink id={raise.data.finding_id} className="mono" /> (ledger seq{" "}
-        <span className="mono">{raise.data.observation_seq}</span>). Clinical
-        operations or the medical monitor will decide it.
+        <span className="mono">{raise.data.observation_seq}</span>).{" "}
+        {decidedBy} will decide it.
       </p>
     );
   }
