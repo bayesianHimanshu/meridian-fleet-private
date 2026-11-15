@@ -24,8 +24,8 @@ export function PortfolioView() {
         <div>
           <h1 id="portfolio-title">Portfolio</h1>
           <p>
-            Meridian's four assets. Fields marked static are written in configuration and never computed;
-            only MRD-201 has live data, its open findings from the ledger.
+            Meridian's four assets. Fields marked static are written in configuration and never computed.
+            Live fields come from the ledger: MRD-201's open findings, and MRD-101's current NOAEL decision.
           </p>
         </div>
       </div>
@@ -64,12 +64,13 @@ export function PortfolioView() {
                     <p>
                       <span className={`chip ${STATUS_CLASS[a.static.status.level]}`}>{a.static.status.text}</span>
                     </p>
-                    {a.live ? (
+                    {a.live?.noael_status === null ? (
                       <p>
                         <span className="chip outline">live</span>{" "}
                         <span className="fig">{a.live.open_findings}</span> open findings to review
                       </p>
                     ) : null}
+                    {a.live?.noael_status ? <NoaelField live={a.live} /> : null}
                   </article>
                 ))}
             </section>
@@ -77,5 +78,36 @@ export function PortfolioView() {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function NoaelField({ live }: { live: Schemas["AssetLive"] }) {
+  const sexes: Record<string, string> = { M: "males", F: "females", combined: "both sexes" };
+  return (
+    <p data-testid="noael-field">
+      <span className="chip outline">live</span>{" "}
+      {live.noael_status === "not_shown" ? (
+        <span className="muted">NOAEL: not shown to your role</span>
+      ) : live.noael_status === "not_yet_decided" ? (
+        <>NOAEL: not yet decided</>
+      ) : (
+        <>
+          NOAEL:{" "}
+          {(live.noael ?? []).map((n, i) => (
+            <span key={n.decision_id}>
+              {i ? "; " : ""}
+              {n.established ? (
+                <span className="fig">
+                  {String(n.noael_dose)} {n.dose_unit}
+                </span>
+              ) : (
+                "not established"
+              )}{" "}
+              ({sexes[n.sex]})
+            </span>
+          ))}
+        </>
+      )}
+    </p>
   );
 }

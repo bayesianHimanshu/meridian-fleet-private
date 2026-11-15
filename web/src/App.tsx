@@ -12,6 +12,7 @@ import { useApi } from "./queries";
 import { FindingDetail } from "./views/FindingDetail";
 import { FleetView } from "./views/Fleet";
 import { LedgerView } from "./views/Ledger";
+import { PreclinicalView } from "./views/Preclinical";
 import { PortfolioView } from "./views/Portfolio";
 import { SafetyView } from "./views/Safety";
 import { RbqmView } from "./views/Rbqm";
@@ -111,7 +112,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       "Development",
       [
         { to: "/portfolio", label: "Portfolio" },
-        { label: "Preclinical" },
+        { to: "/preclinical", label: "Preclinical" },
         { to: "/study", label: "Study MRD-201" },
       ],
     ],
@@ -255,6 +256,7 @@ export function App() {
             <Route path="/ledger" element={<LedgerView />} />
             <Route path="/fleet" element={<FleetView />} />
             <Route path="/portfolio" element={<PortfolioView />} />
+            <Route path="/preclinical" element={<PreclinicalView />} />
             <Route path="/unblinded" element={<UnblindedView />} />
             <Route
               path="*"
