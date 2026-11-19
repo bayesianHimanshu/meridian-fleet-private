@@ -177,3 +177,26 @@ the formal run.
 exactly its expected finding and nothing else. The module is
 `meridian.preclinical.ind_cases`, not `inventory_faults` as written above: it also builds
 the stress cases.
+
+### The real inventory, in a Substrate sandbox on kind
+
+The image built from `0b22edd` (clean), templates `*-638a520b14fa-m384` deployed with
+`meridian substrate deploy --prune`; preclinical zone conformance on Substrate passed
+(every egress refused, controls allowed). `meridian preclinical inventory-load` recorded
+the committed inventory as cut `INV-4ced19d3` (InventoryLoaded, seq 19956); one run in an
+actor of `preclinical-638a520b14fa-m384`, 0 failed, drafts identical to an in-process run
+of the same trigger (drafts sha256 `dc25595d...`). **As pre-registered:** 7 of 11
+requirements met (63.6%), four findings:
+
+| Finding | Seq | Gap |
+|---|---:|---|
+| PRE-0233 | 19961 | `report_not_ready:repeat_dose_nonrodent:MRD-101-TOX-02` (QA audit planned 2027-06-16) |
+| PRE-0234 | 19962 | `glp_status_missing:safety_pharmacology_respiratory:MRD-101-SP-03` |
+| PRE-0235 | 19963 | `report_not_ready:toxicokinetics_nonrodent:MRD-101-TOX-02-TK` (2027-06-13) |
+| PRE-0236 | 19964 | `required_study_missing:in_vitro_metabolism_protein_binding` |
+
+In the same pass preclinical.dose_translation ran on the latest NOAEL decision (seq 19943)
+in the same template: PRE-0232 (seq 19958), a proposed starting dose of 1.94 mg for a
+60 kg adult from the combined NOAEL of 2 mg/kg (docs/fih-dose-notes.md), drafts identical
+to an in-process run (`c1728dfe...`). It is open: no decision was recorded on it. After the
+pass `meridian ledger verify` is ok at 19,965 events.
