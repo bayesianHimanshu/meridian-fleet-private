@@ -29,9 +29,11 @@ from meridian.platform.agent_settings import (
     DoseTranslationConfig,
     IndReadinessConfig,
     KriMonitorConfig,
+    PipelineIntelligenceConfig,
     QtlDetectorConfig,
     SaeReconcilerConfig,
     SignalScoutConfig,
+    StageGatePackConfig,
     TmfCompletenessConfig,
     ToxStudyMonitorConfig,
     TranslationalBridgeConfig,
@@ -127,6 +129,10 @@ class AgentsSettings(BaseModel):
         default_factory=TranslationalBridgeConfig
     )
     safety_signal_scout: SignalScoutConfig = Field(default_factory=SignalScoutConfig)
+    pipeline_intelligence: PipelineIntelligenceConfig = Field(
+        default_factory=PipelineIntelligenceConfig
+    )
+    stage_gate_pack: StageGatePackConfig = Field(default_factory=StageGatePackConfig)
 
     @model_validator(mode="before")
     @classmethod
@@ -407,6 +413,9 @@ class Settings(BaseSettings):
     # Phase 5 step 3a: each signal scan's openFDA responses, kept as the run's inputs
     # (<signal_root>/<trigger seq>/signal/openfda_responses.parquet).
     signal_root: Path = Path("var/signals")
+    # Phase 5 step 3b: the portfolio facts staged for a review or a gate request, built by
+    # the host as the portfolio lead (<portfolio_root>/<trigger seq>/portfolio).
+    portfolio_root: Path = Path("var/portfolio")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     preclinical: PreclinicalSettings = Field(default_factory=PreclinicalSettings)

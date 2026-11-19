@@ -105,6 +105,26 @@ class Container:
             decisions, trigger, send_cut, self.settings.preclinical.noael_root
         )
 
+    def write_portfolio_facts(self, trigger: Event) -> Path:
+        """A portfolio review's or gate request's facts (phase 5 step 3b), built AS the
+        portfolio lead through the Fleet API's Repository (meridian.api.portfolio_facts),
+        with the previous outlook's facts, under <portfolio_root>/<trigger seq>/portfolio."""
+        from meridian.api import portfolio_facts as pf
+        from meridian.api.app import context_from_settings
+        from meridian.api.deps import make_repository
+        from meridian.domain.enums import Role
+
+        s = self.settings
+        ctx = context_from_settings(s, self.clock, s.api.people_file, s.api.portfolio_file)
+        lead = next(p for p in ctx.people.people.values() if p.role is Role.PORTFOLIO_LEAD)
+        repo = make_repository(ctx, lead, self.ledger)
+        facts = pf.build(repo)
+        before = pf.previous(
+            [e for e in self.ledger.read(viewer_role=Role.PORTFOLIO_LEAD) if isinstance(e, Event)],
+            trigger.seq,
+        )
+        return pf.write(s.portfolio_root / str(trigger.seq), facts, before)
+
     def keep_signal_responses(self, trigger: Event, records: Sequence[object]) -> Path:
         """A signal scan's openFDA responses, kept as the run's inputs (phase 5 step 3a)."""
         from meridian.agents.portfolio.safety_signal_scout import responses_frame
@@ -185,6 +205,7 @@ class Container:
             noael_root=self.settings.preclinical.noael_root,
             inventory_root=self.settings.preclinical.inventory_root,
             signal_root=self.settings.signal_root,
+            portfolio_root=self.settings.portfolio_root,
             log=log,
         )
 
@@ -227,6 +248,7 @@ class Container:
             noael_root=self.settings.preclinical.noael_root,
             inventory_root=self.settings.preclinical.inventory_root,
             signal_root=self.settings.signal_root,
+            portfolio_root=self.settings.portfolio_root,
             agent_timeouts=dict(rt.agent_timeouts),
         )
 
@@ -439,6 +461,7 @@ class Container:
             send_root=self.send_root(),
             noael_root=self.settings.preclinical.noael_root,
             inventory_root=self.settings.preclinical.inventory_root,
+            portfolio_root=self.settings.portfolio_root,
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
             placement_wait_seconds=s.placement_wait_seconds,
         )
@@ -472,6 +495,7 @@ class Container:
             operational_cuts=self.settings.cuts.operational,
             operational_executors=self.settings.cuts.operational_executors,
             prepare_noael=self.write_noael_extract,
+            prepare_portfolio=self.write_portfolio_facts,
             keep_fetched=self.keep_signal_responses,
         )
 

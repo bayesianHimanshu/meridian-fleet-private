@@ -1569,6 +1569,8 @@ app.add_typer(dispatcher_app, name="dispatcher")
 from meridian.cli_leakcheck import leakcheck  # noqa: E402 (registered last, like substrate)
 
 app.command("leakcheck")(leakcheck)
+from meridian.cli_portfolio import portfolio_app  # noqa: E402 (phase 5 step 3a)
 from meridian.cli_signals import signals_app  # noqa: E402 (phase 5 step 3a)
 
 app.add_typer(signals_app, name="signals")
+app.add_typer(portfolio_app, name="portfolio")

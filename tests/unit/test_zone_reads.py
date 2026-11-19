@@ -87,11 +87,12 @@ def test_applied_hashes_now_differ_where_the_rules_differ() -> None:
     for name in policies.ALL_POLICIES:
         groups.setdefault(policies.applied_sha256(name), []).append(name)
     assert sorted(sorted(g) for g in groups.values()) == [
-        ["portfolio", "rbqm", "study_ops"],
+        ["portfolio"],
         ["portfolio_signal"],
         ["preclinical"],
         ["quality"],
         ["quality.audit_trail"],
+        ["rbqm", "study_ops"],
         ["rbqm.narrator"],
         ["safety", "safety.sae_reconciler"],
         ["safety.local_model"],

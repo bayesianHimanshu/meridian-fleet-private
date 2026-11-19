@@ -109,6 +109,7 @@ def test_the_worker_reads_the_safety_terms_next_to_its_config(
         CONFIG.parent / "translational_monitoring.toml",
         config_dir / "translational_monitoring.toml",
     )
+    shutil.copy(CONFIG.parent / "gates.toml", config_dir / "gates.toml")
     elsewhere = tmp_path / "work"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)

@@ -111,6 +111,7 @@ rbqm = "substrate"
 quality = "substrate"
 "quality.audit_trail" = "substrate"
 preclinical = "substrate"  # phase 5 step 1: the SEND study, no network
+portfolio = "substrate"  # phase 5 step 3b: the portfolio facts, no network
 
 # Agent Substrate on the local kind cluster (phase 4a). version and commit pin the release
 # ate-system was deployed from; the install record must name the same version.
@@ -207,6 +208,8 @@ enabled = [
     "preclinical.ind_readiness",
     "preclinical.translational_bridge",
     "portfolio.safety_signal_scout",
+    "portfolio.pipeline_intelligence",
+    "portfolio.stage_gate_pack",
 ]
 
 [agents.kri_monitor]
@@ -408,3 +411,13 @@ context = [
 ]
 indication_caveat = "Reported with a drug for schizophrenia, this term is confounded by indication: the illness being treated, not necessarily an effect of the drug."
 visible_to = ["medical_monitor", "portfolio_lead"]
+
+[agents.pipeline_intelligence]
+# portfolio.pipeline_intelligence 1.0.0 (phase 5 step 3b; docs/stage-gate-notes.md):
+# a PortfolioOutlook event per review, from the facts the portfolio lead may see.
+visible_to = ["portfolio_lead", "qa_auditor"]
+
+[agents.stage_gate_pack]
+# portfolio.stage_gate_pack 1.0.0 (phase 5 step 3b): the evidence pack of a gate request,
+# from config/gates.toml. Never go or no-go; the portfolio lead records a GateDecision.
+visible_to = ["portfolio_lead", "qa_auditor"]

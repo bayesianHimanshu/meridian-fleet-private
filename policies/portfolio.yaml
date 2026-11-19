@@ -15,8 +15,7 @@ filesystem_policy:
   read_write:
     - /tmp
     - /stage/meta
-    - /stage/blinded
-    - /stage/ops
+    - /stage/portfolio
 landlock:
   compatibility: hard_requirement
 process:

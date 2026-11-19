@@ -15,6 +15,10 @@ from meridian.api.models import (
     FindingDetail,
     FindingPage,
     Fleet,
+    GateDecisionBody,
+    GateDecisionView,
+    GateRequestBody,
+    GatesView,
     Health,
     IndReadinessView,
     LedgerPage,
@@ -24,13 +28,16 @@ from meridian.api.models import (
     ObservationItem,
     ObservationRequest,
     ObservationResponse,
+    OutlookView,
     PersonView,
     Portfolio,
     PreclinicalEndpoints,
     PreclinicalStudy,
     RbqmSites,
     Reconciliation,
+    Recorded,
     ReviewQueue,
+    ReviewRequest,
     SafetySignalsView,
     StudySummary,
     TmfCompletenessView,
@@ -298,3 +305,41 @@ def safety_signals(repo: Repo) -> SafetySignalsView:
     disproportionate reporting with PRR, ROR and counts, the label comparison, the data
     date and FAERS's caveats (portfolio.safety_signal_scout). Never incidences or causes."""
     return repo.safety_signals()
+
+
+# ---- the portfolio's reviews and gates (phase 5 step 3b)
+
+
+@router.get("/portfolio/outlook", tags=["portfolio"])
+def portfolio_outlook(repo: Repo) -> OutlookView:
+    """The latest PortfolioOutlook (portfolio.pipeline_intelligence): per asset a status,
+    the top risks with their ledger seqs, the facts and the changes since the previous
+    outlook. Information only. The portfolio lead and the QA auditor."""
+    return repo.outlook()
+
+
+@router.post("/portfolio/reviews", tags=["portfolio"], status_code=201)
+def portfolio_request_review(body: ReviewRequest, repo: Repo) -> Recorded:
+    """Portfolio lead only: ask for an outlook (PortfolioReviewRequested). The agents answer
+    it on their next run."""
+    return repo.request_review(body)
+
+
+@router.get("/portfolio/gates", tags=["portfolio"])
+def portfolio_gates(repo: Repo) -> GatesView:
+    """The gates of config/gates.toml and every gate request with its evidence pack and
+    decision. The pack never says go or no-go. The portfolio lead and the QA auditor."""
+    return repo.gates()
+
+
+@router.post("/portfolio/gates", tags=["portfolio"], status_code=201)
+def portfolio_request_gate(body: GateRequestBody, repo: Repo) -> Recorded:
+    """Portfolio lead only: ask for a gate's evidence pack (GateRequest)."""
+    return repo.request_gate(body)
+
+
+@router.post("/portfolio/gates/{request_seq}/decision", tags=["portfolio"], status_code=201)
+def portfolio_decide_gate(request_seq: int, body: GateDecisionBody, repo: Repo) -> GateDecisionView:
+    """Portfolio lead only: go, conditional go (with conditions) or no-go on the request's
+    evidence pack, with a rationale (GateDecision). Once per request (409 after)."""
+    return repo.decide_gate(request_seq, body)

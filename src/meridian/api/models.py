@@ -10,7 +10,11 @@ from meridian.domain.events import (
     AssessmentCandidate,
     AssessmentStatus,
     Event,
+    GateDecision,
+    GatePack,
+    GateRequest,
     NarrativeStatus,
+    PortfolioOutlook,
     RedactedEvent,
     SubstrateRun,
     Verdict,
@@ -1252,3 +1256,103 @@ class SafetySignalsView(BaseModel):
     triage: str = ""
     context: list[str] = Field(default_factory=list)
     requests: int
+
+
+# ---- the portfolio's reviews and gates (phase 5 step 3b)
+
+
+class ReviewRequest(BaseModel):
+    model_config = _FROZEN
+
+    note: Annotated[str, Field(max_length=500)] | None = None
+
+
+class GateRequestBody(BaseModel):
+    model_config = _FROZEN
+
+    asset_id: Annotated[str, Field(min_length=1, max_length=32)]
+    gate: Annotated[str, Field(pattern=r"^[a-z_]{1,64}$")]
+    note: Annotated[str, Field(max_length=500)] | None = None
+
+
+class GateDecisionBody(BaseModel):
+    model_config = _FROZEN
+
+    pack_seq: int
+    decision: Literal["go", "conditional_go", "no_go"]
+    conditions: list[Annotated[str, Field(min_length=3, max_length=500)]] = Field(
+        default_factory=list
+    )
+    rationale: Annotated[str, Field(max_length=4000)]
+
+
+class Recorded(BaseModel):
+    """What the API recorded: the event's seq and its id."""
+
+    model_config = _FROZEN
+
+    seq: int
+    id: str
+
+
+class OutlookView(BaseModel):
+    """The latest PortfolioOutlook, as recorded, with its seq. Information only."""
+
+    model_config = _FROZEN
+
+    status: Literal["outlook", "none"]
+    seq: int | None = None
+    recorded_at: datetime | None = None
+    outlook: PortfolioOutlook | None = None
+    # Reviews asked for that have no outlook yet (run the agents to answer them).
+    pending_reviews: list[int] = Field(default_factory=list)
+    narrated: bool = False  # no narrator in this step
+
+
+class GateCriterionDef(BaseModel):
+    model_config = _FROZEN
+
+    id: str
+    title: str
+    basis: Literal["regulation", "policy"]
+    source: str | None
+    section: str | None
+
+
+class GateDef(BaseModel):
+    model_config = _FROZEN
+
+    asset_id: str
+    gate: str
+    title: str
+    criteria: list[GateCriterionDef]
+
+
+class GateDecisionView(BaseModel):
+    model_config = _FROZEN
+
+    seq: int
+    recorded_at: datetime
+    decision: GateDecision
+
+
+class GateRequestView(BaseModel):
+    model_config = _FROZEN
+
+    seq: int
+    recorded_at: datetime
+    request: GateRequest
+    pack_seq: int | None
+    pack: GatePack | None
+    decision: GateDecisionView | None
+
+
+class GatesView(BaseModel):
+    """The gates of config/gates.toml, and every gate request with its evidence pack and
+    decision (newest first). The agent never says go or no-go; the portfolio lead does."""
+
+    model_config = _FROZEN
+
+    gates: list[GateDef]
+    requests: list[GateRequestView]
+    can_request: bool  # the caller is the portfolio lead

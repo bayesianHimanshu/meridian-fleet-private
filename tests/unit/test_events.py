@@ -8,10 +8,12 @@ from meridian.domain.enums import DecisionAction, EventType, Role, Severity, Vis
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    AssetOutlook,
     AttributionCorrection,
     AuditReviewRequested,
     ContainmentCheck,
     ContainmentCheckCompleted,
+    CriterionResult,
     DataCut,
     DocumentFiled,
     Event,
@@ -20,10 +22,17 @@ from meridian.domain.events import (
     FindingAssessment,
     FindingNarrative,
     FindingRaised,
+    GateDecision,
+    GatePack,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     NoaelDecision,
+    OpenItem,
+    OutlookFact,
     PolicyDenied,
+    PortfolioOutlook,
+    PortfolioReviewRequested,
     QualityObservation,
     SendStudyLoaded,
     SignalScanRequested,
@@ -190,7 +199,65 @@ PAYLOADS: list[EventPayload] = [
         explanation="Started from the CLI by an operator, not by the medical monitor.",
         corrected_by="operator:test",
     ),
-]
+    PortfolioReviewRequested(
+        review_id="REVIEW-20261120T000000Z", requested_by="rahul.iyer", reason="requested"
+    ),
+    GateRequest(
+        gate_request_id="GATE-20261120T000000Z",
+        asset_id="MRD-101",
+        gate="ind_submission",
+        requested_by="rahul.iyer",
+    ),
+    PortfolioOutlook(
+        agent_id="portfolio.pipeline_intelligence",
+        agent_version="1.0.0",
+        trigger_seq=7,
+        review_id="REVIEW-20261120T000000Z",
+        dedup_key="k",
+        summary="s",
+        previous_outlook_seq=None,
+        assets=(
+            AssetOutlook(
+                asset_id="MRD-110",
+                status="static",
+                static=True,
+                status_text="On track",
+                facts=(
+                    OutlookFact(key="static:stage", group="static", label="Stage",
+                                value="phase_1", status="static", seq=None, static=True),
+                ),
+                risks=(),
+                changes=("First outlook: nothing to compare with.",),
+            ),
+        ),
+    ),
+    GatePack(
+        agent_id="portfolio.stage_gate_pack",
+        agent_version="1.0.0",
+        trigger_seq=8,
+        gate_request_id="GATE-20261120T000000Z",
+        dedup_key="k2",
+        asset_id="MRD-101",
+        gate="ind_submission",
+        gate_title="IND submission",
+        summary="s",
+        criteria=(
+            CriterionResult(id="noael_decided", title="t", basis="policy", evidence="e",
+                            status="met", explanation="x", seqs=(3,)),
+        ),
+        open_items=(OpenItem(criterion_id="noael_decided", text="t"),),
+    ),
+    GateDecision(
+        gate_request_seq=8,
+        pack_seq=9,
+        asset_id="MRD-101",
+        gate="ind_submission",
+        decision="conditional_go",
+        conditions=("Close the four gaps",),
+        rationale="Go once the readiness gaps are closed.",
+        decided_by="rahul.iyer",
+    ),
+]  # fmt: skip
 
 ADAPTER: TypeAdapter[EventPayload] = TypeAdapter(EventPayload)
 

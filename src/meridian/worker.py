@@ -40,6 +40,7 @@ from meridian.data.study_store import (
     MissingTableError,
     NoaelStageReader,
     ParquetStudyReader,
+    PortfolioStageReader,
     SendStudyReader,
     StudyAccessError,
     StudyReader,
@@ -50,10 +51,13 @@ from meridian.domain.events import (
     AuditReviewRequested,
     DataCut,
     Event,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     NoaelDecision,
+    PortfolioReviewRequested,
     SendStudyLoaded,
+    portfolio_study,
 )
 from meridian.platform.agent_settings import (
     IND_REQUIREMENTS_FILE,
@@ -65,6 +69,7 @@ from meridian.platform.agent_settings import (
 )
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
+from meridian.portfolio.gates import GATES_FILE, load_gates
 from meridian.preclinical.noael_stage import read_noael_context
 
 EXIT_OK = 0
@@ -143,6 +148,11 @@ def load_agents_settings(path: Path) -> AgentsSettings:
     if "mapping" not in bridge:
         mapping = load_translational_mapping(path.parent / TRANSLATIONAL_FILE)
         agents = {**agents, "translational_bridge": {**bridge, "mapping": mapping.model_dump()}}
+    # And the stage gates (config/gates.toml, phase 5 step 3b).
+    gate = dict(agents.get("stage_gate_pack", {}))
+    if "gates" not in gate:
+        gates = load_gates(path.parent / GATES_FILE)
+        agents = {**agents, "stage_gate_pack": {**gate, "gates": gates.model_dump()}}
     return AgentsSettings.model_validate(agents)
 
 
@@ -203,6 +213,17 @@ def execute(
             # An asset's study inventory (phase 5 step 2): only inventory/ is staged.
             study = InventoryStageReader.at_cut_dir(
                 cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.asset_id
+            )
+        elif isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+            # A portfolio review or gate request (phase 5 step 3b): only portfolio/ is
+            # staged, the facts the host built as the portfolio lead sees them.
+            cut = (
+                trigger.payload.review_id
+                if isinstance(trigger.payload, PortfolioReviewRequested)
+                else trigger.payload.gate_request_id
+            )
+            study = PortfolioStageReader.at_cut_dir(
+                cut_dir, cut_id=cut, study_id=portfolio_study(trigger)
             )
         elif isinstance(trigger.payload, DataCut):
             ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}

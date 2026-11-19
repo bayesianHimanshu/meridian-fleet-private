@@ -38,6 +38,7 @@ from meridian.data.stage_layout import (
     NARR,
     NOAEL,
     OPS,
+    PORTFOLIO,
     SEND,
     SIGNAL,
     STAGE_AREAS,
@@ -56,6 +57,7 @@ __all__ = [
     "NARR",
     "NOAEL",
     "OPS",
+    "PORTFOLIO",
     "SEND",
     "SIGNAL",
     "STAGE_AREAS",
@@ -156,6 +158,8 @@ ZONE_READS: dict[str, tuple[str, ...]] = {
     "safety": (META, BLINDED),
     "quality": (META, BLINDED, TMF),
     "unblinded": (META, BLINDED, OPS, UNBLINDED),
+    # Phase 5 step 3b: the portfolio facts, built by the host as the portfolio lead.
+    "portfolio": (META, PORTFOLIO),
 }
 POLICIES: dict[str, ZonePolicy] = {zone: ZonePolicy(zone, ZONE_READS[zone]) for zone in ZONES}
 
@@ -461,11 +465,14 @@ BOUNDARIES: dict[str, ZonePolicy] = {
     "preclinical": ZonePolicy("preclinical", ZONE_READS["preclinical"]),
     # The signal boundary: the trigger and recorded responses, and openFDA's two GETs.
     "signal": ZonePolicy("signal", reads=(META, SIGNAL), network=(OPENFDA_RULE,)),
+    # The portfolio boundary: the trigger and the portfolio facts, no network.
+    "portfolio": ZonePolicy("portfolio", reads=(META, PORTFOLIO)),
 }
 # The boundary each zone is proved against.
 ZONE_BOUNDARY: dict[str, str] = {
     **dict.fromkeys(ZONES, "blinded"),
     "preclinical": "preclinical",
+    "portfolio": "portfolio",
     "quality": "quality",
     "unblinded": "unblinded",
 }

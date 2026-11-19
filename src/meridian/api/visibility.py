@@ -24,10 +24,15 @@ from meridian.domain.events import (
     FindingAssessment,
     FindingNarrative,
     FindingRaised,
+    GateDecision,
+    GatePack,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
+    PortfolioOutlook,
+    PortfolioReviewRequested,
     QualityObservation,
     RedactedEvent,
     SendStudyLoaded,
@@ -108,6 +113,18 @@ def observation_id_of(finding: Finding) -> str | None:
     return None
 
 
+# Phase 5 step 3b: who reads the portfolio's reviews, outlooks, gate requests, evidence
+# packs and gate decisions in full (the QA auditor may raise an observation on a decision).
+PORTFOLIO_ROLES = frozenset({Role.PORTFOLIO_LEAD, Role.QA_AUDITOR})
+PORTFOLIO_EVENTS = (
+    PortfolioReviewRequested,
+    PortfolioOutlook,
+    GateRequest,
+    GatePack,
+    GateDecision,
+)
+
+
 def redact_with_findings(
     role: Role,
     entry: LedgerEntry,
@@ -126,6 +143,8 @@ def redact_with_findings(
         hidden = True  # a NOAEL, a SEND load, a preclinical run: preclinical roles only
     if isinstance(p, QualityObservation) and p.observation_id not in visible_observation_ids:
         hidden = True
+    if isinstance(p, PORTFOLIO_EVENTS) and role not in PORTFOLIO_ROLES:
+        hidden = True  # phase 5 step 3b: the portfolio lead's reviews, outlooks and gates
     if hidden:
         return RedactedEvent(
             seq=shown.seq,

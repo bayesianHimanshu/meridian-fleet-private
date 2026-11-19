@@ -108,5 +108,18 @@
       },
       "open_items": 1
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "criteria": {
+        "noael_decided": "met",
+        "starting_dose_accepted": "met",
+        "ind_gaps_resolved": "met",
+        "monitoring_accepted": "met",
+        "no_open_high_preclinical": "met",
+        "safety_signals_reviewed": "not_met"
+      },
+      "open_items": 1
+    }
   }
 }

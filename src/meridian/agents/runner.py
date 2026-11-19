@@ -45,17 +45,24 @@ from meridian.domain.events import (
     EventPayload,
     FetchedInput,
     FindingRaised,
+    GatePack,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
+    PortfolioOutlook,
+    PortfolioReviewRequested,
     SendStudyLoaded,
     SignalScanRequested,
     SubstrateRun,
+    portfolio_study,
 )
 from meridian.domain.findings import Finding
 from meridian.ledger.store import DuplicateDedupKeyError
 from meridian.platform.clock import Clock
+from meridian.portfolio.reports import REPORT_KINDS
+from meridian.portfolio.reports import payload as report_payload
 
 
 class RunOutcome(Protocol):
@@ -212,6 +219,7 @@ class AgentRunner:
         lost_worker_retries: int = 1,
         prepare_noael: Callable[[Event, str, Sequence[Event]], object] | None = None,
         keep_fetched: Callable[[Event, Sequence[Any]], object] | None = None,
+        prepare_portfolio: Callable[[Event], object] | None = None,
     ) -> None:
         """operational_cuts ([cuts] operational) may only be processed by one of
         operational_executors ([cuts] operational_executors), decided per run (a zoned
@@ -232,6 +240,9 @@ class AgentRunner:
         self._decision_study: dict[int, str] = {}  # acceptance seq -> its proposal's study
         # Phase 5 step 3a: keeps a run's fetched responses as its inputs (var/signals).
         self._keep_fetched = keep_fetched
+        # Phase 5 step 3b: writes a portfolio review's or gate request's facts, built by
+        # the host as the portfolio lead, before the run is planned.
+        self._prepare_portfolio = prepare_portfolio
         self._recorded_runs: dict[tuple[str, str | None, int], set[Provenance]] | None = None
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
@@ -298,6 +309,8 @@ class AgentRunner:
             return p.asset_id
         if isinstance(p, HumanDecision) and trigger.seq in self._decision_study:
             return self._decision_study[trigger.seq]
+        if isinstance(p, PortfolioReviewRequested | GateRequest):
+            return portfolio_study(trigger)
         return self._study_id
 
     def _bridge_triggers(self) -> list[Event]:
@@ -354,6 +367,10 @@ class AgentRunner:
             return p.cut_id
         if isinstance(p, SignalScanRequested):
             return p.scan_id
+        if isinstance(p, PortfolioReviewRequested):
+            return p.review_id
+        if isinstance(p, GateRequest):
+            return p.gate_request_id
         if isinstance(p, NoaelDecision | HumanDecision):
             study = self._study_of(trigger)
             loads = [
@@ -435,6 +452,17 @@ class AgentRunner:
                 for e in self._ledger.read(event_types=[EventType.SIGNAL_SCAN_REQUESTED])
                 if isinstance(e, Event) and isinstance(e.payload, SignalScanRequested)
             ],
+            # Phase 5 step 3b: every portfolio review and gate request.
+            EventType.PORTFOLIO_REVIEW_REQUESTED: [
+                e
+                for e in self._ledger.read(event_types=[EventType.PORTFOLIO_REVIEW_REQUESTED])
+                if isinstance(e, Event)
+            ],
+            EventType.GATE_REQUEST: [
+                e
+                for e in self._ledger.read(event_types=[EventType.GATE_REQUEST])
+                if isinstance(e, Event)
+            ],
         }
         cut_of = {t.seq: self._cut_of(t, send) for events in by_type.values() for t in events}
         triggers = {
@@ -482,6 +510,13 @@ class AgentRunner:
                     if isinstance(e, Event)
                 ]
                 self._prepare_noael(trigger, cut, events)
+            if isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+                if self._prepare_portfolio is None:
+                    report.failed.append(
+                        (registered.agent.agent_id, trigger.seq, "no portfolio facts writer")
+                    )
+                    continue
+                self._prepare_portfolio(trigger)
             plan = self._plan(registered, trigger, report)
             if plan is not None:
                 planned.append(_Planned(registered, trigger, cut, plan))
@@ -582,6 +617,8 @@ class AgentRunner:
                 return p.cut_id
             if isinstance(p, InventoryLoaded | SignalScanRequested):
                 return self._cut_of(t, send)
+            if isinstance(p, PortfolioReviewRequested | GateRequest):
+                return self._cut_of(t, send)  # always operational (phase 5 step 3b)
             if isinstance(p, NoaelDecision | HumanDecision):
                 cut = self._cut_of(t, send)
                 return cut if cut in self._operational else None
@@ -750,7 +787,7 @@ class AgentRunner:
             return
 
         for draft in drafts:
-            self._record(p.registered, draft, report, study)
+            self._record(p.registered, draft, report, study, trigger.seq)
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -772,14 +809,51 @@ class AgentRunner:
         report.completed.append((agent.agent_id, trigger.seq))
         log.info("agent.completed", drafts=len(drafts))
 
+    def _record_report(
+        self,
+        registered: RegisteredAgent,
+        draft: FindingDraft,
+        report: RunReport,
+        study_id: str | None,
+        trigger_seq: int,
+    ) -> None:
+        """A report draft (phase 5 step 3b) becomes its event, PortfolioOutlook or GatePack,
+        never a finding. Once per dedup key, as a finding is."""
+        agent = registered.agent
+        if draft.dedup_key in self._reported():
+            report.findings_skipped.append(draft.dedup_key)
+            return
+        self._append(
+            agent.agent_id,
+            agent.visibility,
+            report_payload(draft, agent.agent_id, agent.version, trigger_seq),
+            study_id,
+        )
+        report.findings_appended.append(draft.dedup_key)
+
+    def _reported(self) -> set[str]:
+        return {
+            e.payload.dedup_key
+            for e in self._ledger.read(
+                event_types=[EventType.PORTFOLIO_OUTLOOK, EventType.GATE_PACK]
+            )
+            if isinstance(e, Event) and isinstance(e.payload, PortfolioOutlook | GatePack)
+        }
+
     def _record(
         self,
         registered: RegisteredAgent,
         draft: FindingDraft,
         report: RunReport,
         study_id: str | None = None,
+        trigger_seq: int | None = None,
     ) -> None:
         agent = registered.agent
+        if draft.kind in REPORT_KINDS:
+            if trigger_seq is None:
+                raise ValueError("a report draft needs its trigger")
+            self._record_report(registered, draft, report, study_id, trigger_seq)
+            return
         if self._ledger.find_by_dedup_key(draft.dedup_key) is not None:
             report.findings_skipped.append(draft.dedup_key)
             return

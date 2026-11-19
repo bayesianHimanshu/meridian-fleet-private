@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from meridian.domain.enums import Role
 from meridian.platform.tmf_reference import TmfReference, load_tmf_reference
+from meridian.portfolio.gates import Gates, load_gates
 
 
 class AgentConfig(BaseModel):
@@ -478,3 +479,16 @@ class SignalScoutConfig(AgentConfig):
     label_synonyms: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     context: tuple[str, ...] = ()
     indication_caveat: str = ""
+
+
+class PipelineIntelligenceConfig(AgentConfig):
+    """portfolio.pipeline_intelligence 1.0.0 (docs/stage-gate-notes.md)."""
+
+    visible_to: tuple[Role, ...] = (Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)
+
+
+class StageGatePackConfig(AgentConfig):
+    """portfolio.stage_gate_pack 1.0.0: the gates of config/gates.toml (pre-registered)."""
+
+    gates: Gates = Field(default_factory=load_gates)
+    visible_to: tuple[Role, ...] = (Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)

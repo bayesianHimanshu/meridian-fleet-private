@@ -7,7 +7,9 @@ without importing the ledger store, ingestion, faults or evals.
 from typing import Any
 
 from meridian.agents.base import Agent, AgentConfig
+from meridian.agents.portfolio.pipeline_intelligence import PipelineIntelligence
 from meridian.agents.portfolio.safety_signal_scout import SafetySignalScout
+from meridian.agents.portfolio.stage_gate_pack import StageGatePack
 from meridian.agents.preclinical.dose_translation import DoseTranslation
 from meridian.agents.preclinical.ind_readiness import IndReadiness
 from meridian.agents.preclinical.tox_study_monitor import ToxStudyMonitor
@@ -36,6 +38,8 @@ def build_registry(cfg: AgentsSettings) -> AgentRegistry:
         (IndReadiness(), cfg.ind_readiness),
         (TranslationalBridge(), cfg.translational_bridge),
         (SafetySignalScout(), cfg.safety_signal_scout),
+        (PipelineIntelligence(), cfg.pipeline_intelligence),
+        (StageGatePack(), cfg.stage_gate_pack),
     ]
     unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
     if unknown:
