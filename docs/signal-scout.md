@@ -181,3 +181,11 @@ reporting that follows the indication, not evidence of harm. MRD-201 studies the
 Alzheimer's disease; these reports come from another population.
 
 **The FAERS caveats apply to every line above** (quoted in the method section).
+
+### A mistake in the record, said plainly
+
+The scan was started with `meridian signals scan --by karan.mehta`, so its
+SignalScanRequested (seq 19985) records the medical monitor as having asked for it. He did
+not: Claude Code started it while building this step. The default, `meridian.signals`,
+was the right value. The ledger is append-only, so the event stays as it is; this note is
+the correction. No decision was recorded on any signal.

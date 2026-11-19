@@ -3,13 +3,13 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: preclinical-638a520b14fa-m384
+  name: preclinical-0215f7c5ea01-m384
 workerSelector:
   matchLabels:
     workload: meridian
 containers:
   - name: worker
-    image: "localhost:5001/meridian-agent@sha256:638a520b14fa6176c42591b82e4424a33292e01c67d5a65df3c3707c85b83963"
+    image: "localhost:5001/meridian-agent@sha256:0215f7c5ea01051d46676b918eb46264129d6f8cc7d2796c2576da0df13013f9"
     command:
       - "/opt/meridian/venv/bin/meridian-worker"
       - serve

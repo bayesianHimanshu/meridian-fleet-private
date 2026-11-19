@@ -164,8 +164,17 @@ nonclinical inventory against ICH M3(R2)
 ([docs/fih-dose-notes.md](docs/fih-dose-notes.md),
 [docs/ind-readiness-eval.md](docs/ind-readiness-eval.md)).
 
+Step 3a: MRD-101's accepted dose is its own first-in-human starting dose (not MRD-110's);
+preclinical.translational_bridge maps the NOAEL's target organs to cited Phase 1
+monitoring with safety margins ([docs/translational-notes.md](docs/translational-notes.md));
+portfolio.safety_signal_scout reports signals of disproportionate reporting for MRD-201's
+drug from openFDA in the portfolio_signal zone, and compares them with the US label
+([docs/signal-scout.md](docs/signal-scout.md)).
+
 ```sh
 uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
+uv run meridian signals scan                 # one openFDA scan, in its OpenShell sandbox
+uv run meridian signals replay --trigger SEQ # the same scan on its kept responses
 uv run python scripts/ind_stress.py          # the IND readiness stress set (run once)
 ```
 
