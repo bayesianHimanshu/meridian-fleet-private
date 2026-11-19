@@ -176,6 +176,8 @@ DECIDERS: dict[FindingKind, frozenset[Role]] = {
     FindingKind.DOSE_PROPOSAL: frozenset({Role.MEDICAL_MONITOR, Role.TOXICOLOGIST}),
     # Phase 5 step 3a: a monitoring recommendation is the medical monitor's alone.
     FindingKind.MONITORING_RECOMMENDATION: frozenset({Role.MEDICAL_MONITOR}),
+    # Phase 5 step 3a: a signal of disproportionate reporting, the medical monitor's too.
+    FindingKind.REPORTING_SIGNAL: frozenset({Role.MEDICAL_MONITOR}),
     FindingKind.QA_OBSERVATION: frozenset(
         {Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD}
     ),

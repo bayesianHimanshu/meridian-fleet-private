@@ -39,6 +39,8 @@ class FindingKind(StrEnum):
     IND_READINESS = "ind_readiness"
     # Phase 5 step 3a: how a first-in-human study should monitor the NOAEL's target organs.
     MONITORING_RECOMMENDATION = "monitoring_recommendation"
+    # Phase 5 step 3a: a signal of disproportionate reporting in public FAERS data.
+    REPORTING_SIGNAL = "reporting_signal"
 
 
 class EventType(StrEnum):
@@ -57,6 +59,7 @@ class EventType(StrEnum):
     SEND_STUDY_LOADED = "send_study_loaded"
     NOAEL_DECISION = "noael_decision"
     INVENTORY_LOADED = "inventory_loaded"
+    SIGNAL_SCAN_REQUESTED = "signal_scan_requested"
 
 
 class DecisionAction(StrEnum):

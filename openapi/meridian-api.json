@@ -176,6 +176,20 @@
             ],
             "title": "Executor"
           },
+          "fetched": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FetchedInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched"
+          },
           "review_from_seq": {
             "anyOf": [
               {
@@ -2136,7 +2150,8 @@
                 "noael_decision": "#/components/schemas/NoaelDecision",
                 "policy_denied": "#/components/schemas/PolicyDenied",
                 "quality_observation": "#/components/schemas/QualityObservation",
-                "send_study_loaded": "#/components/schemas/SendStudyLoaded"
+                "send_study_loaded": "#/components/schemas/SendStudyLoaded",
+                "signal_scan_requested": "#/components/schemas/SignalScanRequested"
               },
               "propertyName": "type"
             },
@@ -2185,6 +2200,9 @@
               },
               {
                 "$ref": "#/components/schemas/InventoryLoaded"
+              },
+              {
+                "$ref": "#/components/schemas/SignalScanRequested"
               }
             ],
             "title": "Payload"
@@ -2251,7 +2269,8 @@
           "quality_observation",
           "send_study_loaded",
           "noael_decision",
-          "inventory_loaded"
+          "inventory_loaded",
+          "signal_scan_requested"
         ],
         "title": "EventType",
         "type": "string"
@@ -2403,6 +2422,49 @@
           "primary_evidence_sha256"
         ],
         "title": "EvidenceChangedSince",
+        "type": "object"
+      },
+      "FetchedInput": {
+        "additionalProperties": false,
+        "description": "One request a run made to a public source and what came back (phase 5 step 3a:\nportfolio.safety_signal_scout and openFDA). The body itself is kept on the host as the\nrun's input (var/signals/<trigger seq>); this records which one it was.",
+        "properties": {
+          "bytes": {
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "last_updated": {
+            "title": "Last Updated",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "query",
+          "status",
+          "sha256",
+          "last_updated",
+          "bytes"
+        ],
+        "title": "FetchedInput",
         "type": "object"
       },
       "Finding": {
@@ -2848,7 +2910,8 @@
           "tox_signal",
           "dose_proposal",
           "ind_readiness",
-          "monitoring_recommendation"
+          "monitoring_recommendation",
+          "reporting_signal"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -3730,6 +3793,28 @@
           "source_sha256"
         ],
         "title": "InventoryLoaded",
+        "type": "object"
+      },
+      "LabelReaction": {
+        "additionalProperties": false,
+        "properties": {
+          "reaction": {
+            "title": "Reaction",
+            "type": "string"
+          },
+          "signal_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signal Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reaction",
+          "signal_terms"
+        ],
+        "title": "LabelReaction",
         "type": "object"
       },
       "LatestNarrative": {
@@ -6212,6 +6297,206 @@
         "title": "RunTrace",
         "type": "object"
       },
+      "SafetySignalsView": {
+        "additionalProperties": false,
+        "description": "The Safety signals view (phase 5 step 3a): the latest scan of openFDA for MRD-201's\ndrug, every tested term with its disproportionality, the signals, and the comparison\nwith the US label. Reporting signals, not incidences or causes.",
+        "properties": {
+          "all_reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Reports"
+          },
+          "caveats": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "caveats_source": {
+            "title": "Caveats Source",
+            "type": "string"
+          },
+          "data_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Date"
+          },
+          "drug": {
+            "title": "Drug",
+            "type": "string"
+          },
+          "drug_reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Reports"
+          },
+          "label_effective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Effective"
+          },
+          "label_most_common": {
+            "items": {
+              "$ref": "#/components/schemas/LabelReaction"
+            },
+            "title": "Label Most Common",
+            "type": "array"
+          },
+          "label_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Set Id"
+          },
+          "label_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Version"
+          },
+          "not_signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalRow"
+            },
+            "title": "Not Signals",
+            "type": "array"
+          },
+          "product_query": {
+            "title": "Product Query",
+            "type": "string"
+          },
+          "requests": {
+            "title": "Requests",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Id"
+          },
+          "scan_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Seq"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalRow"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "signals_listed": {
+            "title": "Signals Listed",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "scanned",
+              "not_scanned",
+              "responses_missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "terms_with_drug": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms With Drug"
+          },
+          "tested": {
+            "title": "Tested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "study_id",
+          "drug",
+          "status",
+          "scan_id",
+          "scan_seq",
+          "data_date",
+          "product_query",
+          "drug_reports",
+          "all_reports",
+          "terms_with_drug",
+          "tested",
+          "signals",
+          "not_signals",
+          "label_set_id",
+          "label_version",
+          "label_effective",
+          "signals_listed",
+          "label_most_common",
+          "rule",
+          "caveats",
+          "caveats_source",
+          "requests"
+        ],
+        "title": "SafetySignalsView",
+        "type": "object"
+      },
       "SendStudyLoaded": {
         "additionalProperties": false,
         "description": "A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical\nagents, as DataCut is of the clinical ones. Its study is the toxicology study's own id\n(MRD-101-TOX-01), never a clinical study's, so no clinical agent or page picks it up.",
@@ -6257,6 +6542,189 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "SignalRow": {
+        "additionalProperties": false,
+        "properties": {
+          "chi2": {
+            "title": "Chi2",
+            "type": "number"
+          },
+          "drug_reports": {
+            "title": "Drug Reports",
+            "type": "integer"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "label_listed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Listed"
+          },
+          "prr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr"
+          },
+          "prr_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr High"
+          },
+          "prr_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr Low"
+          },
+          "reports": {
+            "title": "Reports",
+            "type": "integer"
+          },
+          "ror": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror"
+          },
+          "ror_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror High"
+          },
+          "ror_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror Low"
+          },
+          "signal": {
+            "title": "Signal",
+            "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "term_reports": {
+            "title": "Term Reports",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "term",
+          "reports",
+          "drug_reports",
+          "term_reports",
+          "prr",
+          "prr_low",
+          "prr_high",
+          "ror",
+          "ror_low",
+          "ror_high",
+          "chi2",
+          "signal",
+          "label_listed",
+          "finding_id",
+          "status"
+        ],
+        "title": "SignalRow",
+        "type": "object"
+      },
+      "SignalScanRequested": {
+        "additionalProperties": false,
+        "description": "A scan of public spontaneous reports for a study's drug (phase 5 step 3a): the\ntrigger of portfolio.safety_signal_scout. scan_id names the scan's cut.",
+        "properties": {
+          "requested_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requested By",
+            "type": "string"
+          },
+          "scan_id": {
+            "pattern": "^SCAN-[0-9]{8}T[0-9]{6}Z$",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "signal_scan_requested",
+            "default": "signal_scan_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "scan_id",
+          "requested_by"
+        ],
+        "title": "SignalScanRequested",
+        "type": "object"
       },
       "SiteCount": {
         "additionalProperties": false,
@@ -9135,6 +9603,76 @@
         "summary": "Review Queue",
         "tags": [
           "findings"
+        ]
+      }
+    },
+    "/api/v1/safety/signals": {
+      "get": {
+        "description": "The latest scan of public FAERS data (openFDA) for MRD-201's drug: signals of\ndisproportionate reporting with PRR, ROR and counts, the label comparison, the data\ndate and FAERS's caveats (portfolio.safety_signal_scout). Never incidences or causes.",
+        "operationId": "safety_signals_api_v1_safety_signals_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafetySignalsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Signals",
+        "tags": [
+          "safety"
         ]
       }
     },

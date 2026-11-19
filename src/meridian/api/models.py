@@ -1147,3 +1147,61 @@ class TranslationalView(BaseModel):
     why: str
     current: RecommendationView | None
     superseded: list[str]
+
+
+class SignalRow(BaseModel):
+    model_config = _FROZEN
+
+    term: str
+    reports: int  # a: reports with the drug and the term
+    drug_reports: int
+    term_reports: int  # a + c
+    prr: float | None
+    prr_low: float | None
+    prr_high: float | None
+    ror: float | None
+    ror_low: float | None
+    ror_high: float | None
+    chi2: float
+    signal: bool
+    label_listed: bool | None
+    finding_id: str | None
+    status: str | None
+
+
+class LabelReaction(BaseModel):
+    model_config = _FROZEN
+
+    reaction: str
+    signal_terms: list[str]  # signal terms whose words name it (exact phrase)
+
+
+class SafetySignalsView(BaseModel):
+    """The Safety signals view (phase 5 step 3a): the latest scan of openFDA for MRD-201's
+    drug, every tested term with its disproportionality, the signals, and the comparison
+    with the US label. Reporting signals, not incidences or causes."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    drug: str
+    status: Literal["scanned", "not_scanned", "responses_missing"]
+    scan_id: str | None
+    scan_seq: int | None
+    data_date: str | None
+    product_query: str
+    drug_reports: int | None
+    all_reports: int | None
+    terms_with_drug: int | None
+    tested: int
+    signals: list[SignalRow]
+    not_signals: list[SignalRow]
+    label_set_id: str | None
+    label_version: str | None
+    label_effective: str | None
+    signals_listed: int
+    label_most_common: list[LabelReaction]
+    rule: str
+    caveats: list[str]
+    caveats_source: str
+    requests: int

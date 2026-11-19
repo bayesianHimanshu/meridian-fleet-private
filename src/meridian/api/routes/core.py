@@ -31,6 +31,7 @@ from meridian.api.models import (
     RbqmSites,
     Reconciliation,
     ReviewQueue,
+    SafetySignalsView,
     StudySummary,
     TmfCompletenessView,
     TranslationalView,
@@ -289,3 +290,11 @@ def preclinical_translational(study: str, repo: Repo) -> TranslationalView:
     (preclinical.translational_bridge): per target organ what to measure and when, with
     its sources, and the safety margins. A proposal, never a decision."""
     return repo.translational(study)
+
+
+@router.get("/safety/signals", tags=["safety"])
+def safety_signals(repo: Repo) -> SafetySignalsView:
+    """The latest scan of public FAERS data (openFDA) for MRD-201's drug: signals of
+    disproportionate reporting with PRR, ROR and counts, the label comparison, the data
+    date and FAERS's caveats (portfolio.safety_signal_scout). Never incidences or causes."""
+    return repo.safety_signals()

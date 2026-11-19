@@ -90,6 +90,7 @@ def context_from_settings(
         send_root=settings.preclinical.send_root,
         preclinical_assets=((settings.preclinical.asset_id, settings.preclinical.study_id),),
         inventory_root=settings.preclinical.inventory_root,
+        signal_root=settings.signal_root,
     )
 
 

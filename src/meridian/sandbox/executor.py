@@ -32,6 +32,7 @@ from meridian.data.study_store import (
     InventoryStageReader,
     LayeredStudyReader,
     NoaelStageReader,
+    SignalStageReader,
     StudyReader,
 )
 from meridian.domain.events import (
@@ -42,8 +43,11 @@ from meridian.domain.events import (
     InventoryLoaded,
     NoaelDecision,
     SendStudyLoaded,
+    SignalScanRequested,
     SubstrateRun,
 )
+from meridian.portfolio.document import ResponseRecord, SignalDocument
+from meridian.portfolio.store import signal_dir
 from meridian.preclinical.noael_stage import noael_dir
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
@@ -53,6 +57,7 @@ from meridian.sandbox.policies import (
     META,
     NOAEL,
     SEND,
+    SIGNAL,
     TMF,
     expected_effective,
     policy_for_agent,
@@ -75,6 +80,8 @@ from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 INPROCESS = "inprocess"
 OPENSHELL = "openshell"
 WORKER = "/opt/meridian/venv/bin/meridian-worker"
+SIGNAL_WORKER = "/opt/meridian/venv/bin/meridian-signal-worker"
+SIGNAL_AGENT = "portfolio.safety_signal_scout"
 STDERR_TAIL = 2000
 
 
@@ -96,6 +103,9 @@ class ExecutionResult:
     substrate: SubstrateRun | None = None
     # Wall-clock milliseconds of each step of the run (not recorded in the ledger).
     phases_ms: tuple[tuple[str, int], ...] = ()
+    # Phase 5 step 3a: what the run fetched from a public source (portfolio_signal), bodies
+    # included; the runner keeps them as the run's inputs and records their hashes.
+    fetched: tuple[ResponseRecord, ...] = ()
 
 
 class Executor(Protocol):
@@ -185,11 +195,28 @@ def stage_run(
     send_root: Path | None = None,
     noael_root: Path | None = None,
     inventory_root: Path | None = None,
+    signal_root: Path | None = None,
 ) -> StagedRun:
     """Stage meta/ and the cut areas the policy reads (or the audit extract, or a SEND
     study) under dest, check the stage and the inputs manifest, and return it. Shared by
     the OpenShell and Substrate executors, so both receive the same files."""
     policy = ALL_POLICIES[policy_name]
+    if SIGNAL in policy.reads:
+        # portfolio_signal (phase 5 step 3a): the trigger, and for a replay the run's
+        # recorded responses; never any study data.
+        if not isinstance(trigger.payload, SignalScanRequested):
+            raise ExecutionError(f"trigger {trigger.seq} is not a signal scan")
+        kept = None if signal_root is None else signal_dir(signal_root, trigger.seq) / SIGNAL
+        sources = {SIGNAL: kept} if kept is not None and kept.is_dir() else {}
+        stage = stage_areas(sources, trigger, dest)
+        recomputed = build_manifest(stage)
+        if (stage / META / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():
+            raise ExecutionError("staged files changed after the inputs manifest was written")
+        return StagedRun(
+            stage=stage, areas=(*sources, META), inputs_manifest_sha256=recomputed.sha256()
+        )
+    if isinstance(trigger.payload, SignalScanRequested):
+        raise ExecutionError(f"{agent_id} may not run a signal scan ({policy_name})")
     if SEND in policy.reads:
         # The preclinical zone: a SEND study, never a clinical cut (phase 5 step 1), and
         # since step 2 a study's NOAEL decisions or an asset's study inventory.
@@ -265,7 +292,9 @@ class InProcessExecutor:
         send_reader_factory: Callable[[str], StudyReader] | None = None,
         noael_root: Path | None = None,
         inventory_root: Path | None = None,
+        signal_root: Path | None = None,
     ) -> None:
+        self._signal_root = signal_root  # <signal_root>/<trigger seq>/signal (step 3a)
         self._noael_root = noael_root  # <noael_root>/<trigger seq>/noael (phase 5 step 2)
         self._inventory_root = inventory_root  # <inventory_root>/<asset>/<cut>/inventory
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
@@ -335,9 +364,29 @@ class InProcessExecutor:
             )
         elif isinstance(trigger.payload, NoaelDecision | InventoryLoaded | HumanDecision):
             reader = self._preclinical_reader(agent_id, trigger, cut_id)
+        elif isinstance(trigger.payload, SignalScanRequested):
+            # In process only on recorded responses (a replay): a live scan fetches from
+            # openFDA and runs only in its sandbox (portfolio_signal).
+            kept = None if self._signal_root is None else signal_dir(self._signal_root, trigger.seq)
+            if kept is None or not (kept / SIGNAL).is_dir():
+                raise ExecutionError(
+                    f"no recorded responses for scan seq {trigger.seq}: a live scan runs only "
+                    "in the portfolio_signal sandbox"
+                )
+            reader = SignalStageReader.at_cut_dir(
+                kept, cut_id=trigger.payload.scan_id, study_id=trigger.payload.study_id
+            )
         else:
             reader = self._reader(agent_id, cut_id)
         drafts = run_agent(registered, trigger, reader, log)
+        # A signal scan replayed in process names the kept responses it ran on, as a live
+        # run names those it fetched (the runner records them on ActorWoke).
+        fetched: tuple[ResponseRecord, ...] = ()
+        if isinstance(trigger.payload, SignalScanRequested):
+            fetched = tuple(
+                ResponseRecord.model_validate(r)
+                for r in reader.table("openfda_responses").iter_rows(named=True)
+            )
         return ExecutionResult(
             drafts=tuple(drafts),
             executor=self.name,
@@ -345,6 +394,7 @@ class InProcessExecutor:
             policy_sha256=None,
             duration_ms=_ms(start),
             stderr_tail="",
+            fetched=fetched,
         )
 
     def drain(self) -> None:
@@ -407,9 +457,13 @@ class OpenShellExecutor:
         send_root: Path | None = None,
         noael_root: Path | None = None,
         inventory_root: Path | None = None,
+        signal_root: Path | None = None,
+        agent_timeouts: dict[str, int] | None = None,
     ) -> None:
         self._noael_root = noael_root
         self._inventory_root = inventory_root
+        self._signal_root = signal_root
+        self._agent_timeouts = dict(agent_timeouts or {})
         self._send_root = send_root  # <send_root>/<study>: SEND cuts (preclinical zone)
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
@@ -462,6 +516,7 @@ class OpenShellExecutor:
                 send_root=self._send_root,
                 noael_root=self._noael_root,
                 inventory_root=self._inventory_root,
+                signal_root=self._signal_root,
             )
             stage = staged.stage
             inputs_sha = staged.inputs_manifest_sha256
@@ -472,7 +527,8 @@ class OpenShellExecutor:
             policy_file_sha256 = sha256_bytes(policy_file.read_bytes())
             try:
                 self._client.create(name, self._image, policy_file, uploads(stage))
-                out = self._client.exec(name, self._argv(agent_id), self._timeout)
+                timeout = self._agent_timeouts.get(agent_id, self._timeout)
+                out = self._client.exec(name, self._argv(agent_id), timeout)
                 effective = self._client.policy(name)
                 stderr_tail = out.stderr[-STDERR_TAIL:]
                 if effective.strip() != expected_effective(policy).strip():
@@ -483,9 +539,15 @@ class OpenShellExecutor:
                     raise ExecutionError(
                         f"meridian-worker exited {out.exit_code} in {name}: {stderr_tail}"
                     )
-                drafts = self._parse(
-                    out.stdout, registered.agent.agent_id, registered.agent.version
-                )
+                fetched: tuple[ResponseRecord, ...] = ()
+                if agent_id == SIGNAL_AGENT:
+                    drafts, fetched = self._parse_signal(
+                        out.stdout, registered.agent.agent_id, registered.agent.version
+                    )
+                else:
+                    drafts = self._parse(
+                        out.stdout, registered.agent.agent_id, registered.agent.version
+                    )
                 ok = True
             except OpenShellError as exc:
                 raise ExecutionError(f"openshell failed for {name}: {exc}") from exc
@@ -501,13 +563,14 @@ class OpenShellExecutor:
             inputs_manifest_sha256=inputs_sha,
             policy_file=policy_path(policy_name).as_posix(),
             policy_file_sha256=policy_file_sha256,
+            fetched=fetched,
         )
         log.info("sandbox.run_done", duration_ms=result.duration_ms, drafts=len(drafts))
         return result
 
     def _argv(self, agent_id: str) -> list[str]:
         return [
-            WORKER,
+            SIGNAL_WORKER if agent_id == SIGNAL_AGENT else WORKER,
             "run",
             "--agent",
             agent_id,
@@ -516,6 +579,26 @@ class OpenShellExecutor:
             "--cut-dir",
             SANDBOX_CUT_DIR,
         ]
+
+    @staticmethod
+    def _parse_signal(
+        stdout: str, agent_id: str, version: str
+    ) -> tuple[tuple[FindingDraft, ...], tuple[ResponseRecord, ...]]:
+        """The signal worker's document: the drafts and every response it fetched. A live
+        scan must have fetched (a replay runs in process, on the kept responses)."""
+        try:
+            doc = SignalDocument.loads(stdout)
+        except (ValueError, ValidationError) as exc:
+            raise ExecutionError(f"signal worker stdout is not a signal document: {exc}") from exc
+        if (doc.agent_id, doc.agent_version) != (agent_id, version):
+            raise ExecutionError(
+                f"worker ran {doc.agent_id}@{doc.agent_version}, expected {agent_id}@{version}"
+            )
+        allowed = {"/drug/event.json", "/drug/label.json"}
+        stray = sorted({r.path for r in doc.responses} - allowed)
+        if stray:
+            raise ExecutionError(f"the signal worker reports requests to {stray}")
+        return doc.drafts, doc.responses
 
     @staticmethod
     def _parse(stdout: str, agent_id: str, version: str) -> tuple[FindingDraft, ...]:

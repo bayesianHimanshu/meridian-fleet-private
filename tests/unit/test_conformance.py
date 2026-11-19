@@ -264,6 +264,7 @@ def test_ledger_records_harness_and_openshell_log_denials(tmp_path: Path) -> Non
         ("read_stage_send", "harness"),
         ("read_stage_noael", "harness"),
         ("read_stage_inventory", "harness"),
+        ("read_stage_signal", "harness"),
         ("egress_test_net", "openshell_log"),
     ]
     network = denials[-1]
@@ -297,6 +298,7 @@ def test_a_failed_check_is_still_recorded(tmp_path: Path) -> None:
         "read_stage_send",
         "read_stage_noael",
         "read_stage_inventory",
+        "read_stage_signal",
     ]
     done = events[-1].payload
     assert isinstance(done, ContainmentCheckCompleted)
@@ -408,6 +410,7 @@ def test_narrator_ledger_records(tmp_path: Path) -> None:
         ("read_stage_send", "harness"),
         ("read_stage_noael", "harness"),
         ("read_stage_inventory", "harness"),
+        ("read_stage_signal", "harness"),
         ("egress_example_com", "openshell_log"),
         ("egress_test_net", "openshell_log"),
     ]

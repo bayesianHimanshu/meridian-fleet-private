@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
+import polars as pl
 from fastapi import Depends, Header, HTTPException, Request
 
 from meridian.agents.registry import AgentRegistry
@@ -57,6 +58,13 @@ class ApiContext:
     preclinical_assets: tuple[tuple[str, str], ...] = ()
     # Phase 5 step 2: inventory cuts under <inventory_root>/<asset>/<cut>/inventory.
     inventory_root: Path = Path("data/inventory_cuts")
+    # Phase 5 step 3a: each signal scan's kept openFDA responses.
+    signal_root: Path = Path("var/signals")
+
+    def signal_responses(self, trigger_seq: int) -> pl.DataFrame | None:
+        from meridian.portfolio.store import kept
+
+        return kept(self.signal_root, trigger_seq)
 
     def send_reader(self, study_id: str, cut_id: str) -> StudyReader:
         return SendStudyReader(self.send_root / study_id, cut_id)
@@ -140,6 +148,8 @@ def repository(
             preclinical_assets=dict(ctx.preclinical_assets),
             inventory_reader=ctx.inventory_reader,
             ind_config=ctx.agents.ind_readiness,
+            signal_responses=ctx.signal_responses,
+            signal_config=ctx.agents.safety_signal_scout,
         )
     finally:
         ledger.close()

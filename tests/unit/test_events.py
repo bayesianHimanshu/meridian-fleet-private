@@ -25,6 +25,7 @@ from meridian.domain.events import (
     PolicyDenied,
     QualityObservation,
     SendStudyLoaded,
+    SignalScanRequested,
 )
 from meridian.domain.findings import Decision
 from tests.support import STUDY, T0, make_finding
@@ -173,6 +174,9 @@ PAYLOADS: list[EventPayload] = [
         cut_id="INV-0123abcd",
         path="data/inventory_cuts/MRD-101/INV-0123abcd",
         source_sha256="a" * 64,
+    ),
+    SignalScanRequested(
+        study_id="MRD-201", scan_id="SCAN-20261120T000000Z", requested_by="karan.mehta"
     ),
 ]
 

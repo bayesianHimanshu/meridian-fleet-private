@@ -432,3 +432,37 @@ class TranslationalBridgeConfig(AgentConfig):
         Role.PORTFOLIO_LEAD,
         Role.QA_AUDITOR,
     )
+
+
+FAERS_CAVEATS: tuple[str, ...] = (
+    "There is no certainty that the reported event (adverse event or medication error) "
+    "was actually due to the product.",
+    "FDA does not require that a causal relationship between a product and event be proven",
+    "FDA does not receive reports for every adverse event or medication error that occurs "
+    "with a product.",
+    "Many factors can influence whether or not an event will be reported",
+    "The information in these reports has not been scientifically or otherwise verified as "
+    "to a cause and effect relationship and cannot be used to estimate the incidence of "
+    "these events.",
+)
+
+
+class SignalScoutConfig(AgentConfig):
+    """portfolio.safety_signal_scout 1.0.0 (docs/signal-scout.md, pre-registered)."""
+
+    study_id: str = "MRD-201"
+    drug: str = "xanomeline (with trospium chloride, COBENFY)"
+    base_url: str = "https://api.fda.gov"
+    product_field: str = "patient.drug.openfda.generic_name.exact"
+    product_term: str = "XANOMELINE AND TROSPIUM CHLORIDE"
+    total_field: str = "fulfillexpeditecriteria"
+    limit: int = Field(999, ge=1, le=999)  # 1000 needs an API key
+    min_reports: int = Field(3, ge=1)
+    prr_min: float = Field(2.0, gt=0)
+    chi2_min: float = Field(4.0, ge=0)
+    request_interval_seconds: float = Field(0.3, ge=0)
+    max_requests: int = Field(900, ge=5, le=1000)  # openFDA: 1,000 a day per IP, no key
+    request_timeout_seconds: float = Field(30.0, gt=0)
+    caveats_source: str = "open.fda.gov/apis/drug/event (Disclaimer)"
+    caveats: tuple[str, ...] = FAERS_CAVEATS
+    visible_to: tuple[Role, ...] = (Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD)

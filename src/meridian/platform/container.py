@@ -105,6 +105,15 @@ class Container:
             decisions, trigger, send_cut, self.settings.preclinical.noael_root
         )
 
+    def keep_signal_responses(self, trigger: Event, records: Sequence[object]) -> Path:
+        """A signal scan's openFDA responses, kept as the run's inputs (phase 5 step 3a)."""
+        from meridian.agents.portfolio.safety_signal_scout import responses_frame
+        from meridian.portfolio import openfda as o
+        from meridian.portfolio.store import keep
+
+        responses = [o.Response(**r.model_dump()) for r in records]  # type: ignore[attr-defined]
+        return keep(self.settings.signal_root, trigger.seq, responses_frame(responses))
+
     def write_audit_extract(self, trigger: Event, entries: Sequence[LedgerEntry]) -> Path:
         """The audit extract of an audit review, under <audit_root>/<trigger seq>/audit."""
         p = trigger.payload
@@ -171,6 +180,7 @@ class Container:
             send_reader_factory=self.send_reader,
             noael_root=self.settings.preclinical.noael_root,
             inventory_root=self.settings.preclinical.inventory_root,
+            signal_root=self.settings.signal_root,
             log=log,
         )
 
@@ -212,6 +222,8 @@ class Container:
             send_root=self.send_root(),
             noael_root=self.settings.preclinical.noael_root,
             inventory_root=self.settings.preclinical.inventory_root,
+            signal_root=self.settings.signal_root,
+            agent_timeouts=dict(rt.agent_timeouts),
         )
 
     def narrator_runner(
@@ -456,6 +468,7 @@ class Container:
             operational_cuts=self.settings.cuts.operational,
             operational_executors=self.settings.cuts.operational_executors,
             prepare_noael=self.write_noael_extract,
+            keep_fetched=self.keep_signal_responses,
         )
 
     def registered_versions(self) -> dict[str, str]:

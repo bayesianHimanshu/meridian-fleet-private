@@ -25,7 +25,7 @@ from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 import structlog
 
@@ -43,12 +43,14 @@ from meridian.domain.events import (
     Event,
     EventDraft,
     EventPayload,
+    FetchedInput,
     FindingRaised,
     HumanDecision,
     InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
     SendStudyLoaded,
+    SignalScanRequested,
     SubstrateRun,
 )
 from meridian.domain.findings import Finding
@@ -209,6 +211,7 @@ class AgentRunner:
         operational_executors: Collection[str] = ("openshell", "substrate"),
         lost_worker_retries: int = 1,
         prepare_noael: Callable[[Event, str, Sequence[Event]], object] | None = None,
+        keep_fetched: Callable[[Event, Sequence[Any]], object] | None = None,
     ) -> None:
         """operational_cuts ([cuts] operational) may only be processed by one of
         operational_executors ([cuts] operational_executors), decided per run (a zoned
@@ -227,6 +230,8 @@ class AgentRunner:
         # decisions up to the trigger) for its SEND cut, before the run is planned.
         self._prepare_noael = prepare_noael
         self._decision_study: dict[int, str] = {}  # acceptance seq -> its proposal's study
+        # Phase 5 step 3a: keeps a run's fetched responses as its inputs (var/signals).
+        self._keep_fetched = keep_fetched
         self._recorded_runs: dict[tuple[str, str | None, int], set[Provenance]] | None = None
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
@@ -287,7 +292,7 @@ class AgentRunner:
         preclinical agents (its NOAEL decisions too), the asset (MRD-101) for an inventory,
         else the runner's clinical study."""
         p = trigger.payload
-        if isinstance(p, SendStudyLoaded | NoaelDecision):
+        if isinstance(p, SendStudyLoaded | NoaelDecision | SignalScanRequested):
             return p.study_id
         if isinstance(p, InventoryLoaded):
             return p.asset_id
@@ -347,6 +352,8 @@ class AgentRunner:
         p = trigger.payload
         if isinstance(p, DataCut | SendStudyLoaded | InventoryLoaded):
             return p.cut_id
+        if isinstance(p, SignalScanRequested):
+            return p.scan_id
         if isinstance(p, NoaelDecision | HumanDecision):
             study = self._study_of(trigger)
             loads = [
@@ -358,6 +365,29 @@ class AgentRunner:
             ]
             return loads[-1] if loads else None
         return None
+
+    def _fetched(
+        self, trigger: Event, outcome: RunOutcome | Exception
+    ) -> tuple[FetchedInput, ...] | None:
+        """Phase 5 step 3a: a run that fetched from a public source has its responses kept
+        (keep_fetched) before anything is recorded, and each one named on its ActorWoke."""
+        records = () if isinstance(outcome, Exception) else getattr(outcome, "fetched", ())
+        if not records:
+            return None
+        if self._keep_fetched is None:
+            raise ValueError("a run fetched public data and no store for it is set")
+        self._keep_fetched(trigger, records)
+        return tuple(
+            FetchedInput(
+                path=r.path,
+                query=r.query,
+                status=r.status,
+                sha256=r.sha256,
+                last_updated=r.last_updated,
+                bytes=len(r.body.encode("utf-8")),
+            )
+            for r in records
+        )
 
     def _append(
         self,
@@ -397,8 +427,14 @@ class AgentRunner:
             EventType.SEND_STUDY_LOADED: send,
             EventType.NOAEL_DECISION: self._noael_triggers(),
             EventType.INVENTORY_LOADED: self._inventory_triggers(),
-            # Phase 5 step 3a: the bridge's triggers (NoaelDecisions and acceptances).
+            # Phase 5 step 3a: the bridge's triggers (NoaelDecisions and acceptances), and
+            # every signal scan.
             EventType.HUMAN_DECISION: self._bridge_triggers(),
+            EventType.SIGNAL_SCAN_REQUESTED: [
+                e
+                for e in self._ledger.read(event_types=[EventType.SIGNAL_SCAN_REQUESTED])
+                if isinstance(e, Event) and isinstance(e.payload, SignalScanRequested)
+            ],
         }
         cut_of = {t.seq: self._cut_of(t, send) for events in by_type.values() for t in events}
         triggers = {
@@ -544,8 +580,8 @@ class AgentRunner:
             p = t.payload
             if isinstance(p, DataCut) and p.cut_id in self._operational:
                 return p.cut_id
-            if isinstance(p, InventoryLoaded):
-                return p.cut_id
+            if isinstance(p, InventoryLoaded | SignalScanRequested):
+                return self._cut_of(t, send)
             if isinstance(p, NoaelDecision | HumanDecision):
                 cut = self._cut_of(t, send)
                 return cut if cut in self._operational else None
@@ -682,6 +718,7 @@ class AgentRunner:
                 started_at=started_at,
                 attempt=attempt if attempt > 1 else None,
                 worker_lost=None if lost is None else f"{type(lost).__name__}: {lost}"[:1000],
+                fetched=self._fetched(trigger, outcome),
             ),
             study,
         )

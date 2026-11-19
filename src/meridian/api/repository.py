@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
+import polars as pl
 from pydantic import ValidationError
 
 from meridian.agents.base import zone_of
@@ -58,6 +59,7 @@ from meridian.api.models import (
     Fleet,
     FleetAgent,
     IndReadinessView,
+    LabelReaction,
     LatestNarrative,
     LedgerPage,
     MarginView,
@@ -86,6 +88,8 @@ from meridian.api.models import (
     ReviewQueue,
     RunEvent,
     RunTrace,
+    SafetySignalsView,
+    SignalRow,
     SiteFlag,
     StartingDose,
     StudySummary,
@@ -104,6 +108,7 @@ from meridian.domain.dedup import make_dedup_key, parse_dedup_key
 from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
     INVENTORY_CUT_PREFIX,
+    SCAN_CUT_PREFIX,
     ActorSuspended,
     ActorWoke,
     ContainmentCheckCompleted,
@@ -119,6 +124,7 @@ from meridian.domain.events import (
     NoaelDecision,
     QualityObservation,
     SendStudyLoaded,
+    SignalScanRequested,
 )
 from meridian.domain.findings import Decision, Evidence, Finding
 from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
@@ -126,6 +132,7 @@ from meridian.ledger.verify import verify
 from meridian.platform.agent_settings import (
     AuditTrailReviewerConfig,
     IndReadinessConfig,
+    SignalScoutConfig,
     TmfCompletenessConfig,
     ToxStudyMonitorConfig,
 )
@@ -193,6 +200,8 @@ class Snapshot:
     send_loads: dict[int, str] = field(default_factory=dict)
     # Inventory loads (phase 5 step 2): trigger seq -> (asset, inventory cut id).
     inventory_loads: dict[int, tuple[str, str]] = field(default_factory=dict)
+    # Signal scans (phase 5 step 3a): trigger seq -> scan id.
+    scans: dict[int, str] = field(default_factory=dict)
     cut_events: dict[int, Event] = field(default_factory=dict)
     raised: dict[str, _Raised] = field(default_factory=dict)
     narratives: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
@@ -232,6 +241,8 @@ class Snapshot:
                 snap.send_loads[shown.seq] = p.cut_id
             elif isinstance(p, InventoryLoaded):
                 snap.inventory_loads[shown.seq] = (p.asset_id, p.cut_id)
+            elif isinstance(p, SignalScanRequested):
+                snap.scans[shown.seq] = p.scan_id
             elif isinstance(p, FindingRaised):
                 if p.finding.finding_id is not None and visibility.can_see_finding(role, p.finding):
                     parts = parse_dedup_key(p.dedup_key)
@@ -503,12 +514,15 @@ def _latest_wins(snap: Snapshot) -> None:
     """
     proposals: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
     readiness: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
+    signals: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
     for r in snap.raised.values():
         f = r.finding
         if f.kind in (FindingKind.DOSE_PROPOSAL, FindingKind.MONITORING_RECOMMENDATION):
             proposals[(f.agent_id, f.study_id)].append(r)
         elif f.kind is FindingKind.IND_READINESS:
             readiness[(f.agent_id, f.study_id)].append(r)
+        elif f.kind is FindingKind.REPORTING_SIGNAL:
+            signals[(f.agent_id, f.study_id)].append(r)
     for members in proposals.values():
         newest = max(members, key=lambda r: r.event.seq)
         for r in members:
@@ -540,6 +554,35 @@ def _latest_wins(snap: Snapshot) -> None:
                 snap.retired_by.pop(r.finding_id, None)
             elif r.finding_id not in snap.superseded_by:
                 snap.retired_by[r.finding_id] = versions.get((agent, seq), "")
+    _latest_scan_wins(snap, signals)
+
+
+def _latest_scan_wins(snap: Snapshot, signals: dict[tuple[str, str], list[_Raised]]) -> None:
+    """Phase 5 step 3a: the newest signal scan the agent completed is current; a signal of
+    an older scan is superseded by the same term's finding in it, or retired."""
+    latest: dict[str, tuple[int, str]] = {}  # agent -> (trigger seq, version)
+    for e in snap.suspended:
+        p = e.payload
+        if (
+            isinstance(p, ActorSuspended)
+            and p.trigger_seq in snap.scans
+            and (p.agent_id not in latest or p.trigger_seq > latest[p.agent_id][0])
+        ):
+            latest[p.agent_id] = (p.trigger_seq, p.agent_version or "")
+    for (agent, _study), members in signals.items():
+        if agent not in latest:
+            continue
+        seq, version = latest[agent]
+        cut = snap.scans[seq]
+        on_latest = {r.check: r for r in members if r.cut_id == cut}
+        for r in members:
+            if r.cut_id == cut:
+                continue
+            twin = on_latest.get(r.check)
+            if twin is not None:
+                snap.superseded_by[r.finding_id] = twin.finding_id
+            else:
+                snap.retired_by[r.finding_id] = version
 
 
 def primary_displays(f: Finding) -> list[str]:
@@ -673,7 +716,12 @@ class Repository:
         preclinical_assets: Mapping[str, str] | None = None,
         inventory_reader: Callable[[str, str], StudyReader] | None = None,
         ind_config: IndReadinessConfig | None = None,
+        signal_responses: Callable[[int], pl.DataFrame | None] | None = None,
+        signal_config: SignalScoutConfig | None = None,
     ) -> None:
+        # Phase 5 step 3a: a scan's kept openFDA responses, and the scout's config.
+        self._signal_responses = signal_responses
+        self._signal_config = signal_config
         # Phase 5 step 2: (asset, inventory cut) to its reader, and the readiness rules.
         self._inventory_reader = inventory_reader
         self._ind_config = ind_config
@@ -702,7 +750,7 @@ class Repository:
     def scope(self, cut_id: str) -> CutScope:
         """A data cut's scope. Findings about the ledger itself (audit findings, QA
         observations; cut "LEDGER") are about the live study: operational."""
-        if cut_id == LEDGER_SCOPE or cut_id.startswith(INVENTORY_CUT_PREFIX):
+        if cut_id == LEDGER_SCOPE or cut_id.startswith((INVENTORY_CUT_PREFIX, SCAN_CUT_PREFIX)):
             return "operational"
         return "operational" if cut_id in self._operational else "evaluation"
 
@@ -2362,6 +2410,133 @@ class Repository:
                 "applicable": len(applicable),
                 "requirements": rows,
             }
+        )
+
+    # ---- public safety signals (phase 5 step 3a)
+
+    def safety_signals(self) -> SafetySignalsView:
+        """The latest completed scan of openFDA for the study's drug: every tested term,
+        the signals with their findings, and the label comparison. Shown to the scout's
+        roles (the medical monitor and the portfolio lead)."""
+        from meridian.agents.portfolio.safety_signal_scout import AGENT_ID, analyse, responses_from
+        from meridian.portfolio import openfda as o
+
+        cfg = self._signal_config
+        if cfg is None:
+            raise NotFoundError("the signal scout is not configured")
+        if self.role not in set(cfg.visible_to):
+            raise ForbiddenError(f"{self.role.value} does not see the safety signals")
+        snap = self.snapshot()
+        done = sorted(
+            (
+                e.payload.trigger_seq
+                for e in snap.suspended
+                if isinstance(e.payload, ActorSuspended)
+                and e.payload.agent_id == AGENT_ID
+                and e.payload.trigger_seq in snap.scans
+            ),
+        )
+        rule = (
+            f"Evans et al. 2001: at least {cfg.min_reports} reports, PRR at least "
+            f"{cfg.prr_min:g}, chi-squared (Yates) at least {cfg.chi2_min:g}"
+        )
+        empty = SafetySignalsView(
+            study_id=cfg.study_id,
+            drug=cfg.drug,
+            status="not_scanned",
+            scan_id=None,
+            scan_seq=None,
+            data_date=None,
+            product_query=f'{cfg.product_field}:"{cfg.product_term}"',
+            drug_reports=None,
+            all_reports=None,
+            terms_with_drug=None,
+            tested=0,
+            signals=[],
+            not_signals=[],
+            label_set_id=None,
+            label_version=None,
+            label_effective=None,
+            signals_listed=0,
+            label_most_common=[],
+            rule=rule,
+            caveats=list(cfg.caveats),
+            caveats_source=cfg.caveats_source,
+            requests=0,
+        )
+        if not done:
+            return empty
+        seq = done[-1]
+        scan_id = snap.scans[seq]
+        frame = None if self._signal_responses is None else self._signal_responses(seq)
+        if frame is None:
+            return empty.model_copy(
+                update={"status": "responses_missing", "scan_id": scan_id, "scan_seq": seq}
+            )
+        scan = analyse(responses_from(frame), cfg)
+        by_term = {
+            r.check.split(":", 1)[1]: r
+            for r in snap.raised.values()
+            if r.finding.agent_id == AGENT_ID and r.cut_id == scan_id
+        }
+
+        def row(t: object) -> SignalRow:
+            from meridian.agents.portfolio.safety_signal_scout import TermResult
+
+            assert isinstance(t, TermResult)
+            raised = by_term.get(t.term)
+            return SignalRow(
+                term=t.term,
+                reports=t.table.a,
+                drug_reports=t.table.a + t.table.b,
+                term_reports=t.table.a + t.table.c,
+                prr=None if t.prr is None else t.prr.value,
+                prr_low=None if t.prr is None else t.prr.low,
+                prr_high=None if t.prr is None else t.prr.high,
+                ror=None if t.ror is None else t.ror.value,
+                ror_low=None if t.ror is None else t.ror.low,
+                ror_high=None if t.ror is None else t.ror.high,
+                chi2=t.chi2,
+                signal=t.signal,
+                label_listed=t.listed,
+                finding_id=None if raised is None else raised.finding_id,
+                status=None if raised is None else snap.status(raised.finding_id),
+            )
+
+        signals = [row(t) for t in scan.tested if t.signal]
+        signals.sort(key=lambda r: -(r.prr or 0.0))
+        common = [
+            LabelReaction(
+                reaction=reaction,
+                signal_terms=[
+                    r.term for r in signals if o.normalise(r.term) == o.normalise(reaction)
+                ],
+            )
+            for reaction in (scan.label.most_common if scan.label else ())
+        ]
+        return SafetySignalsView(
+            study_id=cfg.study_id,
+            drug=cfg.drug,
+            status="scanned",
+            scan_id=scan_id,
+            scan_seq=seq,
+            data_date=scan.data_date,
+            product_query=f'{cfg.product_field}:"{cfg.product_term}"',
+            drug_reports=scan.drug_reports,
+            all_reports=scan.all_reports,
+            terms_with_drug=scan.terms_with_drug,
+            tested=len(scan.tested),
+            signals=signals,
+            not_signals=[row(t) for t in scan.tested if not t.signal],
+            label_set_id=None if scan.label is None else scan.label.set_id,
+            label_version=None if scan.label is None else scan.label.version,
+            label_effective=None if scan.label is None else scan.label.effective_time,
+            signals_listed=sum(1 for r in signals if r.label_listed),
+            label_most_common=common,
+            rule=rule,
+            caveats=list(cfg.caveats),
+            caveats_source=cfg.caveats_source,
+            requests=frame.height,
         )
 
     # ---- deciding
