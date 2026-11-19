@@ -180,22 +180,36 @@ uv sync
 
 ```sh
 scripts/check.sh            # every check CI runs locally; non-zero on the first failure
+scripts/check.sh --fast     # the pre-commit subset (about 1 minute)
 scripts/check.sh --no-web   # the same without web/
 ```
 
-It runs ruff format --check, ruff check, mypy --strict (src, tests, scripts), pytest
-without the slow and openshell marks, the policy render check, and in `web/` typecheck,
-lint, tests and the generated API types check. A pre-commit hook in `.githooks/` runs it
-before every commit. Enable it once per clone (this repository only, never `--global`):
+The full script runs ruff format --check, ruff check, mypy --strict (src, tests, scripts),
+pytest without the slow, openshell and substrate marks, the policy render check, and in
+`web/` typecheck, lint, tests and the generated API types check. `--fast` runs ruff,
+mypy, the unit tests (`tests/unit`, the same marks), the policy render check and the web
+typecheck and lint; it leaves out the API, property and contract tests, the web tests
+and the API types check.
+
+Two hooks in `.githooks/` run it (phase 5 step 3a; before, one pre-commit hook ran the
+full suite in about 20 minutes):
+
+| Hook | Runs | Time on the laptop |
+|---|---|---|
+| pre-commit | `scripts/check.sh --fast` | about 1 minute (66 s measured) |
+| pre-push | `scripts/check.sh` (everything) | about 20 minutes |
+
+CI runs everything on every pull request, plus the policy prover and the production web
+build. Enable the hooks once per clone (this repository only, never `--global`):
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
 Two commits (ae3a1fd, 52429fb) went in with a failing check before the hook existed. The
-hook checks the working tree, not only what is staged, so stage everything you changed
-or stash the rest. `git commit --no-verify` skips it; don't, unless the commit is known
-to fail and says so.
+hooks check the working tree, not only what is staged or pushed, so stage everything you
+changed (or stash the rest) and push from a clean tree. Never skip them
+(`--no-verify`): a commit or push that fails a check is fixed, not forced.
 
 ## CLI
 
