@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../src/api/client";
+import { firstLines, groupCandidates, noaelProblem } from "../src/views/Preclinical";
 import { renderApp } from "./render";
 import { BASE, finding, server } from "./server";
 
@@ -66,9 +67,25 @@ function decision(over: Partial<Schemas["NoaelDecisionView"]> = {}): Schemas["No
   };
 }
 
+const candidates: Schemas["NoaelCandidate"][] = [
+  { finding_id: "PRE-0007", title: "AST higher with dose in males, main study", status: "open", sex: "M", main_doses: [200], recovery_doses: [] },
+  { finding_id: "PRE-0040", title: "Liver: hypertrophy more frequent with dose in females", status: "open", sex: "F", main_doses: [200], recovery_doses: [200] },
+  { finding_id: "PRE-0050", title: "WBC lower at 2, 20 and 200 mg/kg in males", status: "open", sex: "M", main_doses: [2, 20, 200], recovery_doses: [] },
+  { finding_id: "PRE-0061", title: "Only at recovery: RBC lower in males", status: "open", sex: "M", main_doses: [], recovery_doses: [20, 200] },
+  { finding_id: "PRE-0090", title: "Data quality: lb GGT: too few control values", status: "open", sex: null, main_doses: [], recovery_doses: [] },
+];
+
 function history(current: Schemas["NoaelDecisionView"][], may_record: boolean): Schemas["NoaelHistory"] {
-  return { study_id: STUDY, dose_unit: "mg/kg", doses: [0, 2, 20, 200], current, history: current, may_record };
+  return {
+    study_id: STUDY, dose_unit: "mg/kg", doses: [0, 2, 20, 200], current, history: current, may_record,
+    rationale_min_chars: 200, candidates,
+  };
 }
+
+const RATIONALE =
+  "AST rise and hepatocellular hypertrophy at 200 mg/kg/day were considered adverse together.\n" +
+  "Changes at 20 mg/kg/day lacked a dose response or a correlating lesion.\n" +
+  "Third line of the rationale.\nA fourth line the summary leaves out, with enough words to pass the minimum.";
 
 function preclinical(noael: Schemas["NoaelHistory"]) {
   server.use(
@@ -124,7 +141,7 @@ describe("Preclinical page", () => {
     expect(screen.queryByRole("form", { name: "Record a NOAEL decision" })).toBeNull();
   });
 
-  it("lets the toxicologist record a NOAEL, sending the doses, findings and rationale", async () => {
+  it("groups the findings by sex and dose and records after a summary", async () => {
     preclinical(history([], true));
     let posted: unknown = null;
     let postedRole: string | null = null;
@@ -138,28 +155,109 @@ describe("Preclinical page", () => {
     const user = userEvent.setup();
     renderApp("/preclinical", "leela.nair");
     const form = await screen.findByRole("form", { name: "Record a NOAEL decision" });
+    for (const name of [
+      "Males, from 2 mg/kg",
+      "Males, from 200 mg/kg",
+      "Males, at recovery only",
+      "Females, from 200 mg/kg",
+      "No sex (data quality), no dose group flagged",
+    ]) {
+      expect(within(form).getByRole("group", { name })).toBeTruthy();
+    }
+    expect(within(form).getByRole("link", { name: "open PRE-0007" })).toBeTruthy();
     await user.selectOptions(within(form).getByLabelText("NOAEL"), "20");
     await user.selectOptions(within(form).getByLabelText("LOAEL"), "200");
-    await user.click(await within(form).findByRole("checkbox", { name: /PRE-0007/ }));
-    await user.click(within(form).getByRole("button", { name: "Record the decision" }));
-    expect(await within(form).findByRole("alert")).toBeTruthy(); // the rationale is required
-    await user.type(within(form).getByLabelText("Rationale (required)"), "AST rise and hypertrophy at 200 only.");
-    await user.click(within(form).getByRole("button", { name: "Record the decision" }));
+    const males = within(form).getByRole("group", { name: "Males, from 200 mg/kg" });
+    await user.click(within(males).getByRole("checkbox", { name: /PRE-0007/ }));
+    const females = within(form).getByRole("group", { name: "Females, from 200 mg/kg" });
+    await user.click(within(females).getByRole("checkbox", { name: /PRE-0040/ }));
+    await user.type(within(form).getByLabelText(/Rationale/), "Too short.");
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    expect((await within(form).findByRole("alert")).textContent).toContain("at least 200 characters");
+    expect(posted).toBeNull();
+    await user.clear(within(form).getByLabelText(/Rationale/));
+    await user.type(within(form).getByLabelText(/Rationale/), RATIONALE);
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    const summary = await screen.findByTestId("noael-summary");
+    expect(summary.textContent).toContain("SexBoth sexes");
+    expect(summary.textContent).toContain("NOAEL20 mg/kg");
+    expect(summary.textContent).toContain("LOAEL200 mg/kg");
+    expect(summary.textContent).toContain("Findings (2)");
+    expect(summary.textContent).toContain("PRE-0007 AST higher with dose in males");
+    expect(summary.textContent).toContain("Third line of the rationale.");
+    expect(summary.textContent).not.toContain("A fourth line");
+    expect(summary.textContent).toContain("This is the first both sexes decision");
+    expect(posted).toBeNull(); // nothing is sent before the confirmation
+    await user.click(within(summary).getByRole("button", { name: "Confirm and record" }));
     expect(await screen.findByTestId("noael-recorded")).toBeTruthy();
     expect(posted).toEqual({
-      sex: "combined", established: true, noael_dose: 20, loael_dose: 200, finding_ids: ["PRE-0007"],
-      rationale: "AST rise and hypertrophy at 200 only.", supersedes: null,
+      sex: "combined", established: true, noael_dose: 20, loael_dose: 200, finding_ids: ["PRE-0007", "PRE-0040"],
+      rationale: RATIONALE.trim(), supersedes: null,
     });
     expect(postedRole).toBe("toxicologist");
   });
 
-  it("revises the current decision by naming it, and shows the QA auditor a way to observe it", async () => {
+  it("keeps a sex's decision to that sex's findings and asks for the LOAEL when not established", async () => {
+    preclinical(history([], true));
+    const user = userEvent.setup();
+    renderApp("/preclinical", "leela.nair");
+    const form = await screen.findByRole("form", { name: "Record a NOAEL decision" });
+    await user.click(within(form).getByRole("checkbox", { name: /PRE-0040/ }));
+    await user.selectOptions(within(form).getByLabelText("Sex"), "M");
+    expect(within(form).queryByRole("checkbox", { name: /PRE-0040/ })).toBeNull();
+    expect(within(form).getByText(/0 chosen; males only/)).toBeTruthy();
+    await user.click(within(form).getByRole("checkbox", { name: /NOAEL not established/ }));
+    await user.click(within(form).getByRole("checkbox", { name: /PRE-0050/ }));
+    await user.type(within(form).getByLabelText(/Rationale/), RATIONALE);
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    expect((await within(form).findByRole("alert")).textContent).toContain("needs the LOAEL");
+    await user.selectOptions(within(form).getByLabelText("LOAEL"), "20");
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    expect((await within(form).findByRole("alert")).textContent).toContain("the LOAEL is 2");
+    await user.selectOptions(within(form).getByLabelText("LOAEL"), "2");
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    const summary = await screen.findByTestId("noael-summary");
+    expect(summary.textContent).toContain("NOAELnot established");
+    await user.click(within(summary).getByRole("button", { name: "Back to edit" }));
+    expect(screen.queryByTestId("noael-summary")).toBeNull();
+    expect(within(form).getByRole("button", { name: "Review the decision" })).toBeTruthy();
+  });
+
+  it("says in the summary which decision a revision replaces, and when it was recorded", async () => {
     preclinical(history([decision()], true));
+    let posted: unknown = null;
+    server.use(
+      http.post(`${BASE}/preclinical/${STUDY}/noael`, async ({ request }) => {
+        posted = await request.json();
+        return HttpResponse.json(decision({ decision_id: "NOAEL-ba9876543210", supersedes: "NOAEL-0123456789ab" }), {
+          status: 201,
+        });
+      }),
+    );
+    const user = userEvent.setup();
     renderApp("/preclinical", "leela.nair");
     expect(await screen.findByTestId("noael-current")).toBeTruthy();
     expect(screen.getByText(/NOAEL 20 mg\/kg, LOAEL 200 mg\/kg/)).toBeTruthy();
-    expect(screen.getByText(/This revises/)).toBeTruthy();
+    const form = screen.getByRole("form", { name: "Record a NOAEL decision" });
+    expect(within(form).getByText(/This revises/)).toBeTruthy();
+    await user.selectOptions(within(form).getByLabelText("LOAEL"), "200");
+    await user.click(within(form).getByRole("checkbox", { name: /PRE-0007/ }));
+    await user.type(within(form).getByLabelText(/Rationale/), RATIONALE);
+    await user.click(within(form).getByRole("button", { name: "Review the decision" }));
+    const replaces = await screen.findByTestId("noael-replaces");
+    expect(replaces.textContent).toMatch(/This replaces decision NOAEL-0123456789ab recorded at \S/);
+    await user.click(screen.getByRole("button", { name: "Confirm and record" }));
+    expect(await screen.findByTestId("noael-recorded")).toBeTruthy();
+    expect(posted).toMatchObject({ supersedes: "NOAEL-0123456789ab" });
     expect(screen.queryByRole("button", { name: "Raise an observation" })).toBeNull();
+  });
+
+  it("links each finding a decision rests on", async () => {
+    preclinical(history([decision({ finding_ids: ["PRE-0007", "PRE-0040"] })], false));
+    renderApp("/preclinical", "rahul.iyer");
+    const current = await screen.findByTestId("noael-current");
+    expect(within(current).getByRole("link", { name: "PRE-0007" }).getAttribute("href")).toBe("/findings/PRE-0007");
+    expect(within(current).getByRole("link", { name: "PRE-0040" })).toBeTruthy();
   });
 
   it("offers the QA auditor an observation on the current decision", async () => {
@@ -206,5 +304,40 @@ describe("Portfolio NOAEL field", () => {
     server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json(portfolio({ open_findings: 0, noael_status: "not_shown", noael: [] }))));
     renderApp("/portfolio", "asha.rao");
     expect((await screen.findByTestId("noael-field")).textContent).toContain("not shown to your role");
+  });
+});
+
+describe("NOAEL form rules", () => {
+  const first = candidates[0];
+  if (first === undefined) throw new Error("no candidate");
+  const base = {
+    sex: "combined" as const, established: true, noael: 20, loael: 200, treated: [2, 20, 200],
+    chosen: [first], rationale: "x".repeat(200), minChars: 200,
+  };
+
+  it("are the API's rules", () => {
+    expect(noaelProblem(base)).toBeNull();
+    expect(noaelProblem({ ...base, rationale: "x".repeat(199) })).toContain("at least 200");
+    expect(noaelProblem({ ...base, loael: 20 })).toContain("above the NOAEL");
+    expect(noaelProblem({ ...base, chosen: [] })).toContain("at least one finding");
+    expect(noaelProblem({ ...base, established: false, noael: null, loael: null })).toContain("needs the LOAEL");
+    expect(noaelProblem({ ...base, established: false, noael: null, loael: 20 })).toContain("the LOAEL is 2");
+    expect(noaelProblem({ ...base, sex: "F" })).toContain("PRE-0007 is not a finding about females");
+  });
+
+  it("group by sex, then by the lowest flagged dose", () => {
+    expect(groupCandidates(candidates, "M", "mg/kg").map((g) => [g.label, g.items.map((c) => c.finding_id)])).toEqual([
+      ["Males, from 2 mg/kg", ["PRE-0050"]],
+      ["Males, from 200 mg/kg", ["PRE-0007"]],
+      ["Males, at recovery only", ["PRE-0061"]],
+    ]);
+    expect(groupCandidates(candidates, "combined", "mg/kg").map((g) => g.label)).toContain(
+      "No sex (data quality), no dose group flagged",
+    );
+  });
+
+  it("show the first lines of the rationale", () => {
+    expect(firstLines("one\n\ntwo\nthree\nfour")).toBe("one two three");
+    expect(firstLines("y".repeat(400))).toBe(`${"y".repeat(300)}...`);
   });
 });

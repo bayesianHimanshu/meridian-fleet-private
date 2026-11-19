@@ -14,13 +14,33 @@ recorded by the toxicologist as a `NoaelDecision` event, through the Fleet API o
 - the **findings it rests on**: finding ids that must exist, be visible to the
   toxicologist, and be findings of that study (404 or 422 otherwise); a LOAEL needs at
   least one;
-- a **rationale** of at least 20 characters (required);
+- a **rationale** of at least 200 characters (required; 20 before step 2);
 - **supersedes**: the decision it revises.
 
-Doses must be the study's own dose levels (from TX), in its unit. Append-only: a revised
-NOAEL is a new decision that names the current one in `supersedes`; a new decision for a
-sex that already has one, or one naming a decision that is no longer current, is refused
-(409). Both decisions stay in the ledger; the page shows the current one and the history.
+Doses must be the study's own dose levels (from TX), in its unit.
+
+**Rules added in phase 5 step 2**, checked by the API (422) and again by the form. The first
+NOAEL for MRD-101-TOX-01 broke each of them (docs/noael-assessment-MRD-101-TOX-01.md,
+"Superseded attempts"):
+- a decision for `M` or `F` rests only on findings about that sex (read from each
+  finding's evidence; an unscheduled death's animal from DM); `combined` may cite any;
+- "not established" needs the LOAEL, and it is the lowest dose: not established means an
+  adverse finding at every dose;
+- the LOAEL is above the NOAEL;
+- the rationale has at least 200 characters after trimming (the event's own minimum stays
+  20, so earlier decisions still read).
+
+The form takes several findings in one submission, grouped by sex and by the lowest
+main-study dose where each flags a group (recovery-only and sexless findings in their own
+groups), each with a link to its page. Submitting first shows a summary: sex, NOAEL, LOAEL,
+the findings, the first lines of the rationale, and "This replaces decision NOAEL-... recorded
+at <time>" when a current decision exists for that sex. Nothing is sent until "Confirm and
+record". A finding judged incidental is dismissed on its own page, with its reason; the NOAEL
+form does not dismiss anything.
+
+Append-only: a revised NOAEL is a new decision that names the current one in
+`supersedes`; a new decision for a sex that already has one, or one naming a decision that
+is no longer current, is refused (409). Both decisions stay in the ledger; the page shows the current one and the history.
 
 ## Who sees it
 

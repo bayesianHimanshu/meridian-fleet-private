@@ -3803,6 +3803,63 @@
         "title": "NoaelBrief",
         "type": "object"
       },
+      "NoaelCandidate": {
+        "additionalProperties": false,
+        "description": "A current finding of the study the NOAEL may rest on, with what the form groups it\nby: its sex (None when it has none, for example a data-quality finding) and the\ntreated doses where it flags a group, per phase.",
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "main_doses": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Main Doses",
+            "type": "array"
+          },
+          "recovery_doses": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Recovery Doses",
+            "type": "array"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "enum": [
+                  "M",
+                  "F"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "title",
+          "status",
+          "sex",
+          "main_doses",
+          "recovery_doses"
+        ],
+        "title": "NoaelCandidate",
+        "type": "object"
+      },
       "NoaelDecision": {
         "additionalProperties": false,
         "description": "A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by\nthe toxicologist. Append-only: a revision is a new decision naming the one it\nsupersedes, and both stay in the ledger. The current decision for (study, sex) is the\nlatest one that nothing supersedes. Agents never write this event.",
@@ -4037,6 +4094,13 @@
       "NoaelHistory": {
         "additionalProperties": false,
         "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/NoaelCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
           "current": {
             "items": {
               "$ref": "#/components/schemas/NoaelDecisionView"
@@ -4065,6 +4129,11 @@
           "may_record": {
             "title": "May Record",
             "type": "boolean"
+          },
+          "rationale_min_chars": {
+            "default": 200,
+            "title": "Rationale Min Chars",
+            "type": "integer"
           },
           "study_id": {
             "title": "Study Id",

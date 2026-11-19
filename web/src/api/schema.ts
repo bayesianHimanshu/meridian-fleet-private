@@ -1719,6 +1719,26 @@ export interface components {
             sex: "M" | "F" | "combined";
         };
         /**
+         * NoaelCandidate
+         * @description A current finding of the study the NOAEL may rest on, with what the form groups it
+         *     by: its sex (None when it has none, for example a data-quality finding) and the
+         *     treated doses where it flags a group, per phase.
+         */
+        NoaelCandidate: {
+            /** Finding Id */
+            finding_id: string;
+            /** Main Doses */
+            main_doses: number[];
+            /** Recovery Doses */
+            recovery_doses: number[];
+            /** Sex */
+            sex: ("M" | "F") | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /**
          * NoaelDecision
          * @description A toxicologist's NOAEL for a study (phase 5 step 1), recorded only through the API by
          *     the toxicologist. Append-only: a revision is a new decision naming the one it
@@ -1801,6 +1821,8 @@ export interface components {
         };
         /** NoaelHistory */
         NoaelHistory: {
+            /** Candidates */
+            candidates?: components["schemas"]["NoaelCandidate"][];
             /** Current */
             current: components["schemas"]["NoaelDecisionView"][];
             /** Dose Unit */
@@ -1811,6 +1833,11 @@ export interface components {
             history: components["schemas"]["NoaelDecisionView"][];
             /** May Record */
             may_record: boolean;
+            /**
+             * Rationale Min Chars
+             * @default 200
+             */
+            rationale_min_chars: number;
             /** Study Id */
             study_id: string;
         };

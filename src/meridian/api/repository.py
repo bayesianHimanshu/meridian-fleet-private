@@ -31,6 +31,7 @@ from meridian.api import safety as safety_view
 from meridian.api import tmf as tmf_view
 from meridian.api.identity import Person
 from meridian.api.models import (
+    NOAEL_RATIONALE_MIN,
     AnswerView,
     AssessmentView,
     AssetLive,
@@ -57,6 +58,7 @@ from meridian.api.models import (
     LedgerPage,
     NarrativeView,
     NoaelBrief,
+    NoaelCandidate,
     NoaelDecisionView,
     NoaelHistory,
     NoaelRequest,
@@ -1647,10 +1649,40 @@ class Repository:
         ]
         return preclinical.noael_views(events)
 
+    def _study_findings(self, study_id: str) -> list[_Raised]:
+        """The current preclinical findings of a study this role may see, in id order."""
+        snap = self.snapshot()
+        return sorted(
+            (
+                r
+                for fid, r in snap.raised.items()
+                if r.finding.study_id == study_id
+                and r.finding.agent_id.startswith("preclinical.")
+                and r.finding.kind is FindingKind.TOX_SIGNAL
+                and snap.current(fid)
+            ),
+            key=lambda r: r.finding_id,
+        )
+
     def noael(self, study_id: str) -> NoaelHistory:
         _, reader = self._send_study(study_id)
         doses, unit = preclinical.main_doses(reader)
         views = self._noael_views(study_id)
+        animals = preclinical.design_animals(reader)
+        snap = self.snapshot()
+        candidates = []
+        for r in self._study_findings(study_id):
+            prof = preclinical.finding_profile(r.finding, animals)
+            candidates.append(
+                NoaelCandidate(
+                    finding_id=r.finding_id,
+                    title=r.finding.title,
+                    status=snap.status(r.finding_id),
+                    sex=prof.sex,  # type: ignore[arg-type]
+                    main_doses=list(prof.main_doses),
+                    recovery_doses=list(prof.recovery_doses),
+                )
+            )
         return NoaelHistory(
             study_id=study_id,
             dose_unit=unit,
@@ -1658,6 +1690,8 @@ class Repository:
             current=[v for v in views if v.current],
             history=list(reversed(views)),
             may_record=visibility.can_record_noael(self.role),
+            rationale_min_chars=NOAEL_RATIONALE_MIN,
+            candidates=candidates,
         )
 
     def record_noael(self, study_id: str, body: NoaelRequest) -> NoaelDecisionView:
@@ -1676,12 +1710,43 @@ class Repository:
                     + ", ".join(f"{d:g}" for d in treated)
                     + f" {unit}"
                 )
-        snap = self.snapshot()
+        # Phase 5 step 2: the rules the first NOAEL broke, checked here and not only in the
+        # form. "Not established" names the LOAEL, the lowest dose (every dose was adverse).
+        if not body.established and body.loael_dose is None:
+            raise InvalidDecisionError(
+                "a NOAEL that is not established needs the LOAEL: the lowest dose with an "
+                "adverse finding"
+            )
+        if not body.established and body.loael_dose != min(treated):
+            raise InvalidDecisionError(
+                f"a NOAEL that is not established means an adverse finding at the lowest dose, "
+                f"so the LOAEL is {min(treated):g} {unit}"
+            )
+        if (
+            body.noael_dose is not None
+            and body.loael_dose is not None
+            and body.loael_dose <= body.noael_dose
+        ):
+            raise InvalidDecisionError("the LOAEL must be above the NOAEL")
+        if len(body.rationale.strip()) < NOAEL_RATIONALE_MIN:
+            raise InvalidDecisionError(
+                f"a NOAEL rationale needs at least {NOAEL_RATIONALE_MIN} characters: what is "
+                "adverse at the LOAEL and why the changes at the NOAEL are not (a finding's "
+                "dismissal reason belongs on its own page)"
+            )
+        animals = preclinical.design_animals(reader)
         for fid in body.finding_ids:
             r = self._visible(fid)  # 404 if missing or not visible to the toxicologist
             if r.finding.study_id != study_id or not r.finding.agent_id.startswith("preclinical."):
                 raise InvalidDecisionError(f"{fid} is not a finding of study {study_id}")
-        del snap
+            if body.sex != "combined":
+                sexes = preclinical.finding_profile(r.finding, animals).sexes
+                if sexes != {body.sex}:
+                    about = " and ".join(sorted(sexes)) if sexes else "no sex"
+                    raise InvalidDecisionError(
+                        f"{fid} is about {about}: a {body.sex} decision rests only on "
+                        f"{body.sex} findings (any sex for a combined decision)"
+                    )
 
         def current_id() -> str | None:
             mine = [v for v in self._noael_views(study_id) if v.sex == body.sex and v.current]

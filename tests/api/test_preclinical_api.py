@@ -39,8 +39,13 @@ NOAEL = {
     "established": True,
     "noael_dose": 10.0,
     "loael_dose": 30.0,
-    "rationale": "ALT rise with hypertrophy from 30 mg/kg/day; nothing of note at 10.",
+    "rationale": (
+        "ALT is higher with dose from 30 mg/kg/day and comes with hepatocellular hypertrophy "
+        "at 30 and 100 mg/kg/day, considered adverse together. Nothing of note at 10: no "
+        "group there differs from the concurrent control by the pre-registered rule."
+    ),
 }
+LONG = " The recovery groups and the pathology tables were read with the findings."
 
 
 @pytest.fixture
@@ -102,6 +107,12 @@ def _findings(c: TestClient, role: Role) -> list[dict[str, object]]:
 
 def _pre_ids(c: TestClient) -> list[str]:
     return [str(f["finding_id"]) for f in _findings(c, Role.TOXICOLOGIST)]
+
+
+def _ids_of(c: TestClient, sex: str) -> list[str]:
+    """The study's current findings about one sex, from the NOAEL candidates."""
+    body = c.get(f"/api/v1/preclinical/{TOX}/noael", headers=headers(Role.TOXICOLOGIST)).json()
+    return [x["finding_id"] for x in body["candidates"] if x["sex"] == sex]
 
 
 def test_the_preclinical_roles_are_the_agents_visible_to() -> None:
@@ -197,12 +208,59 @@ def test_not_established_needs_no_dose(fx: Fixture) -> None:
         "sex": "M",
         "established": False,
         "loael_dose": 10.0,
-        "finding_ids": _pre_ids(c)[:1],
-        "rationale": "Changes already at the lowest dose; no NOAEL in this study.",
+        "finding_ids": _ids_of(c, "M")[:1],
+        "rationale": "Changes already at the lowest dose; no NOAEL in this study." + LONG * 3,
     }
     r = c.post(f"/api/v1/preclinical/{TOX}/noael", json=body, headers=headers(Role.TOXICOLOGIST))
     assert r.status_code == 201, r.text
     assert r.json()["noael_dose"] is None
+
+
+def test_the_candidates_carry_sex_and_the_flagged_doses(fx: Fixture) -> None:
+    body = client(fx).get(f"/api/v1/preclinical/{TOX}/noael", headers=headers(Role.TOXICOLOGIST))
+    candidates = body.json()["candidates"]
+    assert body.json()["rationale_min_chars"] == 200
+    alt = [x for x in candidates if x["title"].startswith("ALT higher with dose")]
+    assert sorted(x["sex"] for x in alt) == ["F", "M"]
+    for x in alt:
+        assert x["main_doses"] == [30.0, 100.0], x
+    assert {x["sex"] for x in candidates} <= {"M", "F", None}
+
+
+def test_a_sex_specific_decision_rests_only_on_that_sexs_findings(fx: Fixture) -> None:
+    c = client(fx)
+    url, tox = f"/api/v1/preclinical/{TOX}/noael", headers(Role.TOXICOLOGIST)
+    male, female = _ids_of(c, "M"), _ids_of(c, "F")
+    wrong = c.post(url, json={**NOAEL, "sex": "F", "finding_ids": male[:1]}, headers=tox)
+    assert wrong.status_code == 422
+    assert f"{male[0]} is about M" in wrong.text
+    mixed = {**NOAEL, "sex": "M", "finding_ids": [male[0], female[0]]}
+    assert c.post(url, json=mixed, headers=tox).status_code == 422
+    assert (
+        c.post(url, json={**NOAEL, "sex": "F", "finding_ids": female[:2]}, headers=tox).status_code
+        == 201
+    )
+    both = {**NOAEL, "sex": "combined", "finding_ids": [male[0], female[0]]}
+    assert c.post(url, json=both, headers=tox).status_code == 201  # any sex for combined
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"established": False, "noael_dose": None, "loael_dose": None}, "needs the LOAEL"),
+        ({"established": False, "noael_dose": None, "loael_dose": 30.0}, "the LOAEL is 10"),
+        ({"noael_dose": 30.0, "loael_dose": 10.0}, "must be above the NOAEL"),
+        ({"rationale": "Adverse liver changes from 30 mg/kg/day." * 3}, "at least 200"),
+    ],
+)
+def test_the_api_applies_the_noael_rules(
+    fx: Fixture, change: dict[str, object], message: str
+) -> None:
+    c = client(fx)
+    body = {**NOAEL, "finding_ids": _pre_ids(c)[:1], **change}
+    r = c.post(f"/api/v1/preclinical/{TOX}/noael", json=body, headers=headers(Role.TOXICOLOGIST))
+    assert r.status_code == 422, r.text
+    assert message in r.text
 
 
 def test_a_revision_supersedes_by_name_and_both_are_kept(fx: Fixture) -> None:
@@ -218,7 +276,7 @@ def test_a_revision_supersedes_by_name_and_both_are_kept(fx: Fixture) -> None:
         "loael_dose": 100.0,
         "finding_ids": ids[:2],
         "supersedes": first["decision_id"],
-        "rationale": "On review of the 30 mg/kg/day pathology, the NOAEL is 30.",
+        "rationale": "On review of the 30 mg/kg/day pathology, the NOAEL is 30." + LONG * 3,
     }
     second = c.post(url, json=revised, headers=tox)
     assert second.status_code == 201, second.text
@@ -233,7 +291,7 @@ def test_a_revision_supersedes_by_name_and_both_are_kept(fx: Fixture) -> None:
     assert history["history"][1]["superseded_by"] == second.json()["decision_id"]
     assert history["may_record"] is False
     assert c.get(url, headers=tox).json()["may_record"] is True
-    other_sex = {**NOAEL, "sex": "F", "finding_ids": ids[:1]}
+    other_sex = {**NOAEL, "sex": "F", "finding_ids": _ids_of(c, "F")[:1]}
     assert c.post(url, json=other_sex, headers=tox).status_code == 201  # per sex
 
 

@@ -873,6 +873,11 @@ class PreclinicalEndpoints(BaseModel):
     by_dose: list[DoseSupport]
 
 
+# Phase 5 step 2: the API's minimum for a NOAEL rationale, after trimming. The event keeps
+# its own lower minimum (20) so that decisions recorded before this step still read.
+NOAEL_RATIONALE_MIN = 200
+
+
 class NoaelRequest(BaseModel):
     model_config = _FROZEN
 
@@ -907,6 +912,21 @@ class NoaelDecisionView(BaseModel):
     current: bool
 
 
+class NoaelCandidate(BaseModel):
+    """A current finding of the study the NOAEL may rest on, with what the form groups it
+    by: its sex (None when it has none, for example a data-quality finding) and the
+    treated doses where it flags a group, per phase."""
+
+    model_config = _FROZEN
+
+    finding_id: str
+    title: str
+    status: str
+    sex: Literal["M", "F"] | None
+    main_doses: list[float]
+    recovery_doses: list[float]
+
+
 class NoaelHistory(BaseModel):
     model_config = _FROZEN
 
@@ -916,3 +936,6 @@ class NoaelHistory(BaseModel):
     current: list[NoaelDecisionView]
     history: list[NoaelDecisionView]
     may_record: bool
+    # Phase 5 step 2: what the form needs to apply the API's own rules before submit.
+    rationale_min_chars: int = NOAEL_RATIONALE_MIN
+    candidates: list[NoaelCandidate] = Field(default_factory=list)
