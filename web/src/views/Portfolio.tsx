@@ -1,6 +1,7 @@
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading } from "../components/common";
 import { useApi } from "../queries";
+import { PortfolioReviews } from "./PortfolioReviews";
 
 const STAGES: { id: Schemas["AssetStatic"]["stage"]; label: string }[] = [
   { id: "preclinical", label: "Preclinical" },
@@ -81,6 +82,7 @@ export function PortfolioView() {
           ))}
         </div>
       ) : null}
+      <PortfolioReviews />
     </section>
   );
 }
