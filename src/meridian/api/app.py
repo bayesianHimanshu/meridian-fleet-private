@@ -57,7 +57,6 @@ def load_portfolio(path: Path) -> tuple[PortfolioEntry, ...]:
                 status=AssetStatus(level=a["status_level"], text=a["status_text"]),
             ),
             live_study=bool(a.get("live_study", False)),
-            starting_dose_from=a.get("starting_dose_from"),
         )
         for a in raw
     )

@@ -5121,6 +5121,10 @@
             "title": "Finding Id",
             "type": "string"
           },
+          "recorded_title": {
+            "title": "Recorded Title",
+            "type": "string"
+          },
           "seq": {
             "title": "Seq",
             "type": "integer"
@@ -5149,6 +5153,7 @@
           "finding_id",
           "seq",
           "title",
+          "recorded_title",
           "summary",
           "check",
           "status",
@@ -6180,7 +6185,7 @@
       },
       "StartingDose": {
         "additionalProperties": false,
-        "description": "MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:\nthe medical monitor accepted the current proposal. not_shown: a role outside the\nproposal's roles (then nothing else is filled).",
+        "description": "A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there\nis none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:\nthe medical monitor accepted the current proposal. not_shown: a role outside the\nproposal's roles (then nothing else is filled).",
         "properties": {
           "chain": {
             "items": {

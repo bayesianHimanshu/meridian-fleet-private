@@ -2197,6 +2197,8 @@ export interface components {
             decision_reason: string | null;
             /** Finding Id */
             finding_id: string;
+            /** Recorded Title */
+            recorded_title: string;
             /** Seq */
             seq: number;
             /** Status */
@@ -2535,7 +2537,8 @@ export interface components {
         };
         /**
          * StartingDose
-         * @description MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+         * @description A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there
+         *     is none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:
          *     the medical monitor accepted the current proposal. not_shown: a role outside the
          *     proposal's roles (then nothing else is filled).
          */

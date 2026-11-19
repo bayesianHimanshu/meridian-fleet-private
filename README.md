@@ -158,7 +158,7 @@ down. Summary, measurements against kind, costs and gaps:
 Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
 toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
 [docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
-API; preclinical.dose_translation proposes MRD-110's maximum recommended starting dose by
+API; preclinical.dose_translation proposes MRD-101's first-in-human maximum recommended starting dose by
 FDA's 2005 method and the medical monitor decides it; preclinical.ind_readiness checks the
 nonclinical inventory against ICH M3(R2)
 ([docs/fih-dose-notes.md](docs/fih-dose-notes.md),

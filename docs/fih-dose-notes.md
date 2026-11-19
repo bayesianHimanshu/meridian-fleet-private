@@ -1,5 +1,8 @@
 # From a NOAEL to a first human dose: notes for MRD-101 (phase 5 step 2)
 
+The dose is MRD-101's own first-in-human starting dose (corrected in step 3a: MRD-110 is a
+separate asset). The medical monitor accepted PRE-0232 as provisional (seq 19966).
+
 What preclinical.dose_translation and preclinical.ind_readiness do, the numbers for
 MRD-101-TOX-01, and what they leave out. Method: FDA, "Estimating the Maximum Safe
 Starting Dose in Initial Clinical Trials for Therapeutics in Adult Healthy Volunteers"
@@ -98,8 +101,8 @@ pharmacology study without a GLP status.
 ## What this inventory leaves out
 
 - **Reproductive toxicity** (M3(R2) XI): men can enter early trials on the repeat-dose
-  histopathology; women of childbearing potential need more. MRD-110's population is not
-  modelled, so these are not checked.
+  histopathology; women of childbearing potential need more. MRD-101's first-in-human
+  population is not modelled, so these are not checked.
 - **Acute toxicity, local tolerance, immunotoxicity, phototoxicity, abuse liability,
   juvenile studies**: case by case in M3(R2); not listed.
 - **Carcinogenicity**: not needed before first-in-human, but this study's liver tumours at

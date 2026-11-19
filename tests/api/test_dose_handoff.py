@@ -1,7 +1,8 @@
 """The hand-off to the clinic (phase 5 step 2), end to end through the API and the runner:
 no proposal without a NOAEL decision; a NOAEL wakes preclinical.dose_translation; the
 medical monitor decides the proposal and the toxicologist whose NOAEL it rests on may not;
-an accepted proposal is MRD-110's planned starting dose with its chain; a revised NOAEL
+an accepted proposal is MRD-101's planned first-in-human starting dose with its chain
+(phase 5 step 3a: not MRD-110's, a separate asset); a revised NOAEL
 gives a new proposal that supersedes the old; "not established" gives no starting dose;
 and the IND readiness checklist with its percentage, live on the portfolio."""
 
@@ -132,7 +133,7 @@ def client(fx: Fixture) -> TestClient:
         portfolio=(
             *fx.context().portfolio,
             PortfolioEntry("MRD-101", STATIC, False),
-            PortfolioEntry("MRD-110", STATIC, False, starting_dose_from="MRD-101"),
+            PortfolioEntry("MRD-110", STATIC, False),
         ),
     )
     return TestClient(create_app(ctx))
@@ -180,9 +181,9 @@ def test_no_proposal_without_a_noael_decision(fx: Fixture) -> None:
     panel = c.get(f"/api/v1/preclinical/{TOX}/dose-translation", headers=headers(Role.TOXICOLOGIST))
     assert panel.json()["status"] == "no_decision"
     assert "records nothing" in panel.json()["why"]
-    assert _asset(c, Role.PORTFOLIO_LEAD, "MRD-110")["starting_dose"]["status"] == "no_decision"
+    assert _asset(c, Role.PORTFOLIO_LEAD, "MRD-101")["starting_dose"]["status"] == "no_decision"
     # The medical monitor is told nothing preclinical until a proposal exists.
-    assert _asset(c, Role.MEDICAL_MONITOR, "MRD-110")["starting_dose"] == {
+    assert _asset(c, Role.MEDICAL_MONITOR, "MRD-101")["starting_dose"] == {
         "status": "no_proposal",
         "dose_mg": None,
         "mrsd_mg_per_kg": None,
@@ -221,7 +222,7 @@ def test_the_handoff_from_noael_to_planned_starting_dose(fx: Fixture) -> None:
     assert c.post(url, json=accept, headers=headers(Role.PORTFOLIO_LEAD)).status_code == 403
     assert c.post(url, json=accept, headers=headers(Role.QA_AUDITOR)).status_code == 403
     assert c.post(url, json=accept, headers=headers(Role.MEDICAL_MONITOR)).status_code == 201
-    live = _asset(c, Role.PORTFOLIO_LEAD, "MRD-110")["starting_dose"]
+    live = _asset(c, Role.PORTFOLIO_LEAD, "MRD-101")["starting_dose"]
     assert live["status"] == "planned"
     assert live["dose_mg"] == pytest.approx(10 / 6.2 / 10 * 60)
     assert live["human_weight_kg"] == pytest.approx(60.0)
@@ -234,7 +235,7 @@ def test_the_handoff_from_noael_to_planned_starting_dose(fx: Fixture) -> None:
     assert all(isinstance(link["seq"], int) for link in live["chain"])
     assert _asset(c, Role.TOXICOLOGIST, "MRD-101")["starting_dose"]["status"] == "planned"
     for role in CLINICAL:
-        assert _asset(c, role, "MRD-110")["starting_dose"] == {
+        assert _asset(c, role, "MRD-101")["starting_dose"] == {
             "status": "not_shown",
             "dose_mg": None,
             "mrsd_mg_per_kg": None,
@@ -273,7 +274,7 @@ def test_a_revised_noael_supersedes_the_proposal(fx: Fixture) -> None:
     by_id = {p["finding_id"]: p for p in everything}
     assert by_id[old["finding_id"]]["superseded_by"] == new["finding_id"]
     assert "29 mg" in new["title"]  # 30 / 6.2 / 10 x 60 = 29.03
-    live = _asset(c, Role.MEDICAL_MONITOR, "MRD-110")["starting_dose"]
+    live = _asset(c, Role.MEDICAL_MONITOR, "MRD-101")["starting_dose"]
     assert live["status"] == "proposed"
     assert f"the accepted {old['finding_id']} was superseded" in live["why"]
     panel = c.get(
@@ -290,7 +291,7 @@ def test_not_established_gives_no_starting_dose(fx: Fixture) -> None:
     c = client(fx)
     (p,) = _proposals(c, Role.MEDICAL_MONITOR)
     assert p["title"].startswith("No starting dose can be derived")
-    assert _asset(c, Role.MEDICAL_MONITOR, "MRD-110")["starting_dose"]["status"] == (
+    assert _asset(c, Role.MEDICAL_MONITOR, "MRD-101")["starting_dose"]["status"] == (
         "no_starting_dose"
     )
     panel = c.get(
@@ -335,3 +336,36 @@ def test_the_roles_are_the_agents_visible_to() -> None:
         Role.MEDICAL_MONITOR,
         Role.TOXICOLOGIST,
     }
+
+
+def test_the_dose_is_mrd101s_own_and_mrd110_shows_none(fx: Fixture) -> None:
+    """Phase 5 step 3a: MRD-110 is a separate asset already in phase 1. The accepted
+    proposal is MRD-101's planned first-in-human starting dose, derived at read time; the
+    ledger keeps the text dose_translation 1.0.0 recorded."""
+    c = client(fx)
+    _noael(c)
+    run(fx, {"preclinical.dose_translation"})
+    c = client(fx)
+    (p,) = _proposals(c, Role.MEDICAL_MONITOR)
+    assert p["title"].startswith("Proposed MRD-110 starting dose")  # as recorded, unchanged
+    c.post(
+        f"/api/v1/findings/{p['finding_id']}/decisions",
+        json={"action": "accepted", "reason": "Provisional."},
+        headers=headers(Role.MEDICAL_MONITOR),
+    )
+    for role in (Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD):
+        assets = c.get("/api/v1/portfolio", headers=headers(role)).json()["assets"]
+        by_id = {a["asset_id"]: a for a in assets}
+        assert by_id["MRD-110"]["live"] is None
+        dose = by_id["MRD-101"]["live"]["starting_dose"]
+        assert dose["status"] == "planned"
+        proposal = next(link for link in dose["chain"] if link["step"] == "proposal")
+        assert proposal["label"] == (
+            "Proposed first-in-human starting dose for MRD-101: 9.68 mg for a 60 kg adult "
+            "(MRSD 0.161 mg/kg)"
+        )
+    panel = c.get(
+        f"/api/v1/preclinical/{TOX}/dose-translation", headers=headers(Role.TOXICOLOGIST)
+    ).json()["current"]
+    assert panel["title"].startswith("Proposed first-in-human starting dose for MRD-101")
+    assert panel["recorded_title"].startswith("Proposed MRD-110 starting dose")

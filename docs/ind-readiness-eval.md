@@ -200,3 +200,12 @@ in the same template: PRE-0232 (seq 19958), a proposed starting dose of 1.94 mg 
 60 kg adult from the combined NOAEL of 2 mg/kg (docs/fih-dose-notes.md), drafts identical
 to an in-process run (`c1728dfe...`). It is open: no decision was recorded on it. After the
 pass `meridian ledger verify` is ok at 19,965 events.
+
+### Correction (phase 5 step 3a)
+
+The pre-registration above says the planned trial is "MRD-110, single and multiple
+ascending doses". That was wrong: MRD-110 is a separate asset already in phase 1; the
+trial these requirements serve is MRD-101's own first-in-human study. No design for it is
+recorded anywhere, so the same assumption is kept (single and multiple ascending doses, at
+most 14 days of dosing, multiple doses). Nothing in the rules, the inventory or the
+results changes; the text above is left as it was committed.

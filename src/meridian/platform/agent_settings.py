@@ -368,7 +368,8 @@ class IndReadinessConfig(AgentConfig):
     """preclinical.ind_readiness 1.0.0 (docs/ind-readiness-eval.md, pre-registered)."""
 
     asset_id: str = "MRD-101"
-    # MRD-110, single and multiple ascending doses: at most 14 days of dosing.
+    # MRD-101's first-in-human trial, assumed single and multiple ascending doses of at most
+    # 14 days (no design is recorded anywhere; MRD-110 is a separate asset).
     planned_clinical_duration_days: int = Field(14, ge=1)
     multiple_dose: bool = True
     planned_submission_date: date = date(2027, 4, 1)

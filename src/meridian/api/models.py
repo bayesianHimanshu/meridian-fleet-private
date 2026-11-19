@@ -543,7 +543,8 @@ class ChainLink(BaseModel):
 
 
 class StartingDose(BaseModel):
-    """MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+    """A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there
+    is none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:
     the medical monitor accepted the current proposal. not_shown: a role outside the
     proposal's roles (then nothing else is filled)."""
 
@@ -1002,7 +1003,9 @@ class ProposalView(BaseModel):
 
     finding_id: str
     seq: int
+    # Derived at read time (phase 5 step 3a); recorded_title is the text in the ledger.
     title: str
+    recorded_title: str
     summary: str
     check: str
     status: str

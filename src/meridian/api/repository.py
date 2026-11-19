@@ -624,9 +624,6 @@ class PortfolioEntry:
     asset_id: str
     static: AssetStatic
     live_study: bool
-    # Phase 5 step 2: the preclinical asset whose accepted dose proposal is this asset's
-    # planned starting dose (MRD-110's is MRD-101's).
-    starting_dose_from: str | None = None
 
 
 ScopeFilter = Literal["operational", "evaluation", "all"]
@@ -1614,17 +1611,9 @@ class Repository:
         queue = self.review_queue().items
         open_count = sum(1 for item in queue if item.study_id == self._study_id)
 
-        sources = {a.asset_id: a.starting_dose_from for a in self._portfolio}
-
         def live(asset_id: str) -> AssetLive | None:
             if asset_id == self._study_id:
                 return AssetLive(open_findings=open_count)
-            source = sources.get(asset_id)
-            if source is not None and source in self._preclinical_assets:
-                return AssetLive(
-                    open_findings=0,
-                    starting_dose=self.starting_dose(self._preclinical_assets[source]),
-                )
             study = self._preclinical_assets.get(asset_id)
             if study is None:
                 return None
@@ -1911,6 +1900,26 @@ class Repository:
         assert isinstance(last, HumanDecision)
         return last
 
+    def _asset_of_study(self, study_id: str) -> str:
+        return next((a for a, s in self._preclinical_assets.items() if s == study_id), study_id)
+
+    def _proposal_title(self, r: _Raised) -> str:
+        """The proposal's title, derived at read time from its values and its study's asset
+        (phase 5 step 3a). dose_translation 1.0.0 recorded "Proposed MRD-110 starting dose";
+        MRD-110 is a separate asset, and the dose is the asset's own first-in-human starting
+        dose. The ledger keeps the recorded text (recorded_title)."""
+        values = {e.statistic: e for e in r.finding.evidence}
+        start = values.get("mrsd:starting_dose_mg")
+        mrsd = values.get("mrsd:mrsd_mg_per_kg")
+        asset = self._asset_of_study(r.finding.study_id)
+        if start is None or mrsd is None:
+            return r.finding.title
+        weight = start.threshold if start.threshold is not None else start.value / mrsd.value
+        return (
+            f"Proposed first-in-human starting dose for {asset}: {start.value:.3g} mg for a "
+            f"{weight:g} kg adult (MRSD {mrsd.value:.3g} mg/kg)"
+        )
+
     def _proposal_view(self, r: _Raised) -> ProposalView:
         snap = self.snapshot()
         history = snap.decisions.get(r.finding_id, [])
@@ -1932,7 +1941,8 @@ class Repository:
         return ProposalView(
             finding_id=r.finding_id,
             seq=r.event.seq,
-            title=r.finding.title,
+            title=self._proposal_title(r),
+            recorded_title=r.finding.title,
             summary=r.finding.summary,
             check=r.check.split(":", 1)[0],
             status=snap.status(r.finding_id),

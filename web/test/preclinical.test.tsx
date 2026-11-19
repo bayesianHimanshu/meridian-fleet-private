@@ -104,7 +104,8 @@ function doseView(over: Partial<Schemas["DoseTranslationView"]> = {}): Schemas["
   return {
     study_id: STUDY, status: "proposed", why: "The current NOAEL converted by FDA's 2005 method.",
     current: {
-      finding_id: "PRE-0240", seq: 19950, title: "Proposed MRD-110 starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)",
+      finding_id: "PRE-0240", seq: 19950, title: "Proposed first-in-human starting dose for MRD-101: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)",
+      recorded_title: "Proposed MRD-110 starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)",
       summary: "", check: "dose_proposal", status: "accepted", basis_decision_id: "NOAEL-cd4154d72a20", steps: DOSE_STEPS,
       decided_by: "karan.mehta", decided_seq: 19960, decision_reason: "Agreed.",
     },
@@ -347,13 +348,13 @@ describe("Portfolio NOAEL field", () => {
     expect(field.textContent).toContain("NOAEL: 20 mg/kg (both sexes)");
   });
 
-  it("shows MRD-110's planned starting dose with the chain behind it", async () => {
+  it("shows MRD-101's planned first-in-human starting dose with the chain behind it", async () => {
     server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json({
       assets: [{
-        asset_id: "MRD-110",
-        static: { title: "First-in-human SAD/MAD", stage: "phase_1", indication: "Healthy volunteers", intervention: null,
-          milestone: "MAD cohort 3 dosing", milestone_due: "Jan 2027", progress_percent: 55, probability_of_success: "52%",
-          status: { level: "good", text: "On track" } },
+        asset_id: "MRD-101",
+        static: { title: "Oral ALK5 inhibitor", stage: "preclinical", indication: "Fibrosis", intervention: null,
+          milestone: "IND submission", milestone_due: "Q2 2027", progress_percent: 72, probability_of_success: null,
+          status: { level: "warning", text: "Dog study in-life" } },
         live: {
           open_findings: 0,
           starting_dose: {
@@ -362,7 +363,7 @@ describe("Portfolio NOAEL field", () => {
             chain: [
               { step: "study", label: "MRD-101-TOX-01, SEND cut TOX-FINAL", ref: STUDY, who: "system.ingest", seq: 19601 },
               { step: "noael", label: "NOAEL 2 mg/kg (combined), NOAEL-cd4154d72a20", ref: "NOAEL-cd4154d72a20", who: "leela.nair", seq: 19943 },
-              { step: "proposal", label: "Proposed MRD-110 starting dose", ref: "PRE-0240", who: "preclinical.dose_translation", seq: 19950 },
+              { step: "proposal", label: "Proposed first-in-human starting dose for MRD-101", ref: "PRE-0240", who: "preclinical.dose_translation", seq: 19950 },
               { step: "decision", label: "accepted by karan.mehta", ref: "PRE-0240", who: "karan.mehta", seq: 19960 },
             ],
           },
@@ -371,13 +372,13 @@ describe("Portfolio NOAEL field", () => {
     })));
     renderApp("/portfolio", "karan.mehta");
     const field = await screen.findByTestId("dose-field");
-    expect(field.textContent).toContain("Planned starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)");
+    expect(field.textContent).toContain("Planned first-in-human starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)");
     const chain = within(field).getByRole("list", { name: "From the study to the starting dose" });
     const links = within(chain).getAllByRole("listitem").map((li) => li.textContent);
     expect(links).toEqual([
       "Study: MRD-101-TOX-01, SEND cut TOX-FINAL (system.ingest), ledger seq 19601",
       "NOAEL: NOAEL 2 mg/kg (combined), NOAEL-cd4154d72a20 (leela.nair), ledger seq 19943",
-      "Proposal: Proposed MRD-110 starting dose (preclinical.dose_translation), ledger seq 19950",
+      "Proposal: Proposed first-in-human starting dose for MRD-101 (preclinical.dose_translation), ledger seq 19950",
       "Decision: accepted by karan.mehta (karan.mehta), ledger seq 19960",
     ]);
     expect(screen.queryByText(/open findings to review/)).toBeNull();
@@ -391,7 +392,7 @@ describe("Portfolio NOAEL field", () => {
     renderApp("/portfolio", "rahul.iyer");
     expect((await screen.findByTestId("ind-field")).textContent).toContain("IND readiness: 63.6% of first-in-human requirements met");
     const dose = screen.getByTestId("dose-field");
-    expect(dose.textContent).toContain("No starting dose yet");
+    expect(dose.textContent).toContain("No first-in-human starting dose yet");
     expect(dose.textContent).toContain("No NOAEL decision is recorded");
   });
 

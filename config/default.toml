@@ -341,9 +341,10 @@ citation = "section V.A, Table 1: Dog, km 20, divide animal dose by 1.8 (or mult
 [agents.ind_readiness]
 # preclinical.ind_readiness 1.0.0 (phase 5 step 2), pre-registered in
 # docs/ind-readiness-eval.md before its code. The requirements are
-# config/ind_requirements.toml. MRD-110 is single and multiple ascending doses in healthy
-# volunteers: at most 14 days of dosing. The IND is planned for Q2 2027 (the portfolio):
-# its first day.
+# config/ind_requirements.toml. The planned trial is MRD-101's own first-in-human study,
+# assumed single and multiple ascending doses in healthy volunteers of at most 14 days of
+# dosing (step 2 took this from MRD-110 by mistake; MRD-110 is a separate asset, and no
+# MRD-101 design is recorded). The IND is planned for Q2 2027 (the portfolio): its first day.
 asset_id = "MRD-101"
 planned_clinical_duration_days = 14
 multiple_dose = true
