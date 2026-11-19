@@ -21,6 +21,7 @@ IMAGE_SOURCES = (
     "config/sites.toml",
     "config/safety_terms.toml",
     "config/tmf_expected.toml",
+    "config/ind_requirements.toml",
     "docker/agent.Dockerfile",
     ".dockerignore",
 )

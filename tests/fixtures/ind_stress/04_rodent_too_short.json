@@ -24,5 +24,13 @@
       ],
       "percent_met": 90.9
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_rodent:MRD-101-DRF-01"
+      ],
+      "percent_met": 90.9
+    }
   }
 }

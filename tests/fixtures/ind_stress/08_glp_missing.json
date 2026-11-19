@@ -17,5 +17,13 @@
       ],
       "percent_met": 90.9
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "glp_status_missing:genotoxicity_gene_mutation:MRD-101-GT-01"
+      ],
+      "percent_met": 90.9
+    }
   }
 }

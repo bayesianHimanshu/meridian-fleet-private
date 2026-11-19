@@ -16,5 +16,11 @@
       "findings": [],
       "percent_met": 100.0
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
   }
 }

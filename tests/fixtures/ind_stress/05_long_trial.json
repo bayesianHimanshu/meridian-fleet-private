@@ -14,5 +14,14 @@
       ],
       "percent_met": 81.8
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_nonrodent:MRD-101-TOX-02",
+        "duration_short:repeat_dose_rodent:MRD-101-TOX-01"
+      ],
+      "percent_met": 81.8
+    }
   }
 }

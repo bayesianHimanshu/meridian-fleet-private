@@ -156,3 +156,24 @@ an IND; `report_not_ready` measures the programme against its own plan (a QA-aud
 for every pivotal study at submission), not against a regulatory minimum.
 
 ## Results
+
+Run on 20 Nov 2026, preclinical.ind_readiness 1.0.0 at commit `87256d0`; the
+pre-registration (`cf72d99`) unchanged.
+
+### Stress set (12 cases, run once): 12 as ideal
+
+`scripts/ind_stress.py`, actuals written into each fixture under `actual["1.0.0"]`: every
+case gives exactly its ideal findings and percentage.
+
+**Said plainly:** before that formal run, two of its inputs had already been run by unit
+tests written with the agent: the real inventory (the ideal of `real_inventory`, as
+pre-registered above) and the complete base (the starting point of every generated
+fault). Both matched; no rule or ideal was changed. The other ten cases were first run in
+the formal run.
+
+### Generated faults
+
+40 seeds, every kind generated (drop, shorten, delay_report, blank_glp); each raises
+exactly its expected finding and nothing else. The module is
+`meridian.preclinical.ind_cases`, not `inventory_faults` as written above: it also builds
+the stress cases.

@@ -21,5 +21,14 @@
       ],
       "percent_met": 81.8
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "required_study_missing:repeat_dose_nonrodent",
+        "required_study_missing:toxicokinetics_nonrodent"
+      ],
+      "percent_met": 81.8
+    }
   }
 }
