@@ -80,3 +80,41 @@ Trigger: PortfolioReviewRequested, from the portfolio lead through the API, or m
 operator, not installed by this project).
 
 The cloud narrator's optional summary is not built in this step (see the step summary).
+
+## As it came out (20 Nov 2026)
+
+Gate stress set, run once at `f9a869b`'s parent: **10 of 10 as ideal**. Image from
+`5c794f1` (clean); templates `*-8f6cc7caae90-m384`; Substrate conformance of the
+portfolio policy: pass (no egress, no write to /opt/meridian); `meridian policy prove`:
+portfolio within its boundary.
+
+**The first outlook.** `meridian portfolio review-due` recorded the scheduled review for
+2026-11 (seq 20137, requested_by system.schedule, by operator:himanshu): no person asked
+for it. portfolio.pipeline_intelligence ran in a Substrate actor; PortfolioOutlook seq
+20139, first outlook.
+
+| Asset | Status | Top risks (seqs) |
+|---|---|---|
+| MRD-101 | at risk | PRE-0221 and PRE-0222, unscheduled deaths at 200 mg/kg (19915, 19916), high; 4 IND readiness gaps open (19961 to 19964), medium |
+| MRD-201 | needs attention | 9 priority safety signals not yet reviewed (20107 to 20115), medium. QTL: not shown to the portfolio lead. SAE reconciliation on DC-BASE: 0 mismatches (run seq 17790) |
+| MRD-110 | static (On track) | none: static fields only |
+| MRD-301 | static (On track) | none: static fields only |
+
+MRD-101's facts: NOAEL 2 mg/kg for M, F and combined (19941 to 19943); starting dose
+accepted (19966); IND readiness 64%, 7 of 11 (19956); monitoring accepted (20067); and
+every open tox finding the portfolio lead sees.
+
+**The IND gate pack for MRD-101: a dry run, not recorded.** A GateRequest is the
+portfolio lead's to make, through the Command Center. Claude Code did not record one as
+rahul.iyer. The same rules on the same facts:
+
+| Criterion | Basis | Status | Seqs |
+|---|---|---|---|
+| noael_decided | 21 CFR 312.23(a)(8)(ii)(a) | met | 19941, 19942, 19943 |
+| starting_dose_accepted | 21 CFR 312.23(a)(6)(iii)(e) | met | 19966 |
+| ind_gaps_resolved | 21 CFR 312.23(a)(8) | not met: 4 of 4 gaps open (PRE-0233 to 0236) | 19956, 19961 to 19964 |
+| monitoring_accepted | 21 CFR 312.23(a)(6)(iii)(g) | met | 20067 |
+| no_open_high_preclinical | policy | not met: PRE-0221, PRE-0222 open | 19915, 19916 |
+| safety_signals_reviewed | policy | not applicable: no scan for MRD-101 | |
+
+Six open items. It is the stress case `like_mrd101_today`, as its ideal.
