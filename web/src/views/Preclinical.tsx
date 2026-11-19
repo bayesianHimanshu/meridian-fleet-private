@@ -23,6 +23,10 @@ const CHECK_TEXT: Record<string, string> = {
   pairwise_change: "Change without a trend",
   dose_related_incidence: "Dose-related incidence",
   pairwise_incidence: "Higher incidence without a trend",
+  recovery_only_change: "Change only at recovery",
+  recovery_only_incidence: "Incidence only at recovery",
+  organ_weight_secondary_to_bw: "May be secondary to lower body weight",
+  neoplasm: "Neoplasm in a treated group",
 };
 
 function num(v: number | null | undefined): string {

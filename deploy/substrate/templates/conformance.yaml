@@ -3,13 +3,13 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: conformance-39e5e8f82643-m384
+  name: conformance-9afb2a96aecf-m384
 workerSelector:
   matchLabels:
     workload: meridian
 containers:
   - name: worker
-    image: "localhost:5001/meridian-agent@sha256:39e5e8f82643137e182b5a9712927f1762d182448c67e335f32786e67d3d6a7f"
+    image: "localhost:5001/meridian-agent@sha256:9afb2a96aecf9f827352696ba12562c485132ec20c5fc99eab1d714b48a00919"
     command:
       - "/opt/meridian/venv/bin/meridian-worker"
       - probe

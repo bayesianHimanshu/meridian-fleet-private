@@ -105,7 +105,9 @@ def preclinical_eval(
     base_sha = hashlib.sha256(canonical_json(manifest.model_dump(mode="json")).encode()).hexdigest()
     run = run_checks(cfg, p.study_id)
     if which == "null":
-        results = evaluate_null(base, run)
+        hem = cfg.magnitude_pct.get("hematology", 10.0)
+        plain = run_checks(cfg.model_copy(update={"red_cell_magnitude_pct": hem}), p.study_id)
+        results = evaluate_null(base, run, plain)
     else:
         results = evaluate_set(which, base, cfg, run, base_sha, s.ground_truth_dir / "preclinical")
     out = s.evals_dir / "preclinical" / f"{which}.json"

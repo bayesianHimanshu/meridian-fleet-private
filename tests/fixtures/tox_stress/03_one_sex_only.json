@@ -2,13 +2,21 @@
   "actual": {
     "1.0.0": [
       "dose_related_change:lb:AST:F:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:AST:F:main"
     ]
   },
   "case": "one_sex_only",
   "description": "AST rises with dose in females only. Ideal: a finding for females, none for males.",
-  "ideal": [
-    "dose_related_change:lb:AST:F:main"
-  ],
+  "ideal": {
+    "1.0.0": [
+      "dose_related_change:lb:AST:F:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:AST:F:main"
+    ]
+  },
   "spec": {
     "effects": [
       {

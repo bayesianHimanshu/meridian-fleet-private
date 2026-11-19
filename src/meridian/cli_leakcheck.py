@@ -26,6 +26,7 @@ ZONE_AGENTS = {
     "safety.sae_reconciler": ("safety.sae_reconciler",),
     "quality": ("quality.tmf_completeness",),
     "quality.audit_trail": ("quality.audit_trail_reviewer",),
+    "preclinical": ("preclinical.tox_study_monitor",),  # phase 5 step 1b
 }
 
 
@@ -37,7 +38,7 @@ def leakcheck(
     env: Annotated[str, typer.Option("--env", help="kind or gke; must match [substrate] target.")],
     zones: Annotated[
         list[str] | None,
-        typer.Option("--zone", help="A substrate policy to run; repeatable. Default: all four."),
+        typer.Option("--zone", help="A substrate policy to run; repeatable. Default: all."),
     ] = None,
     runs: Annotated[int, typer.Option("--runs", min=1)] = 20,
     cut_id: Annotated[str, typer.Option("--cut")] = "DC-BASE",
@@ -85,6 +86,22 @@ def leakcheck(
                 if isinstance(e, Event) and isinstance(e.payload, AuditReviewRequested)
             ]
         audit_trigger = audit[-1] if audit else None
+        send_trigger = None
+        if "preclinical" in chosen:
+            from meridian.data.send import send_study_events
+            from meridian.domain.events import SendStudyLoaded
+
+            p = base.preclinical
+            with Container.build(base) as c1:
+                loads = [
+                    e
+                    for e in send_study_events(c1.ledger, p.study_id)
+                    if isinstance(e.payload, SendStudyLoaded) and e.payload.cut_id == p.cut_id
+                ]
+            if not loads:
+                typer.echo(f"error: {p.study_id}/{p.cut_id} is not ingested", err=True)
+                raise typer.Exit(code=2)
+            send_trigger = loads[-1]
         roots = sp.make_copies(
             canary=canary,
             dest=Path(tmp),
@@ -95,15 +112,21 @@ def leakcheck(
             etmf_root=base.etmf_root,
             audit_root=base.audit_root,
             audit_seq=None if audit_trigger is None else audit_trigger.seq,
+            send=(base.preclinical.send_root, base.preclinical.study_id, base.preclinical.cut_id)
+            if send_trigger is not None
+            else None,
         )
-        settings = base.model_copy(
-            update={
-                "curated_root": roots.curated_root,
-                "safety_root": roots.safety_root,
-                "etmf_root": roots.etmf_root,
-                "audit_root": roots.audit_root,
-            }
-        )
+        update: dict[str, object] = {
+            "curated_root": roots.curated_root,
+            "safety_root": roots.safety_root,
+            "etmf_root": roots.etmf_root,
+            "audit_root": roots.audit_root,
+        }
+        if roots.send_root is not None:
+            update["preclinical"] = base.preclinical.model_copy(
+                update={"send_root": roots.send_root}
+            )
+        settings = base.model_copy(update=update)
         with Container.build(settings) as c:
             from meridian.cli import _configure_logging
 
@@ -127,6 +150,9 @@ def leakcheck(
                     if audit_trigger is None:
                         continue
                     t, cut = audit_trigger, "LEDGER"
+                if agent == "preclinical.tox_study_monitor":
+                    assert send_trigger is not None
+                    t, cut = send_trigger, settings.preclinical.cut_id
                 try:
                     r = executor.run(agent, t, cut)
                 except ExecutionError as exc:

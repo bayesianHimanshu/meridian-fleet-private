@@ -1,14 +1,17 @@
-"""preclinical.tox_study_monitor 1.0.0: what changed with dose in a repeat-dose study.
+"""preclinical.tox_study_monitor 1.1.0: what changed with dose in a repeat-dose study.
 
-Rules: docs/preclinical-eval.md (pre-registered before this code was written). The
-analysis is meridian.preclinical.analysis; this module turns each endpoint, sex and phase
-that meets a rule into a finding, and each kind of unusable record into a data-quality
-finding. Against the concurrent control only. The agent says "dose-related" or "no trend
-with dose"; it never judges adversity and never proposes a NOAEL or a LOAEL, which the
-toxicologist records (NoaelDecision). One bad record never fails the run.
+Rules: docs/preclinical-eval.md (1.0.0, and the 1.1.0 changes, each pre-registered before
+its code was written). The analysis is meridian.preclinical.analysis and the 1.1.0 rules
+meridian.preclinical.rules; this module words each item they raise as a finding: one per
+endpoint and sex with the recovery status as evidence, recovery-only changes, relative organ
+weights that may be secondary to lower body weight, neoplasms, unscheduled deaths with their
+cause, and each kind of unusable record as a data-quality finding. Against the concurrent
+control only. The agent says "dose-related" or "no trend with dose"; it never judges
+adversity and never proposes a NOAEL or a LOAEL, which the toxicologist records
+(NoaelDecision). One bad record never fails the run.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 import polars as pl
@@ -32,9 +35,17 @@ from meridian.preclinical.analysis import (
     Summary,
     analyse,
 )
+from meridian.preclinical.rules import (
+    DeathItem,
+    EndpointItem,
+    NeoplasmItem,
+    RecoveryStatus,
+    SecondaryItem,
+    raise_findings,
+)
 
 AGENT_ID = "preclinical.tox_study_monitor"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 VISIBLE_TO_MAX = frozenset({Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR})
 DOMAINS = ("bg", "bw", "cl", "dd", "dm", "ds", "ex", "fw", "lb", "ma", "mi", "om", "ts", "tx")
 SEX = {"M": "males", "F": "females"}
@@ -76,9 +87,15 @@ def _tables(study: StudyReader) -> dict[str, pl.DataFrame]:
     return out
 
 
-def _group_evidence(s: Summary, g: GroupStat, unit: str) -> Evidence:
+def _group_evidence(
+    s: Summary, g: GroupStat, unit: str, *, primary: bool | None = None
+) -> Evidence:
     ep = s.endpoint
     where = f"SEX={s.sex}; PHASE={s.phase}; DOSE={g.dose:g} {unit}"
+    role: Literal["primary", "supporting"] = (
+        "primary" if (g.flagged if primary is None else primary) else "supporting"
+    )
+    at = "" if s.phase == MAIN else " (recovery)"
     if ep.kind == "continuous":
         tail = (
             ""
@@ -96,9 +113,9 @@ def _group_evidence(s: Summary, g: GroupStat, unit: str) -> Evidence:
             statistic=f"group_mean:{ep.endpoint}",
             value=g.mean if g.mean is not None else 0.0,
             expected=s.groups[0].mean,
-            role="primary" if g.flagged else "supporting",
+            role=role,
             direction=direction,
-            display=f"{_dose(g, unit)}: {_num(g.mean)} {ep.unit} (n = {g.n}{tail})".replace(
+            display=f"{_dose(g, unit)}{at}: {_num(g.mean)} {ep.unit} (n = {g.n}{tail})".replace(
                 " )", ")"
             ),
         )
@@ -111,15 +128,15 @@ def _group_evidence(s: Summary, g: GroupStat, unit: str) -> Evidence:
         statistic=f"incidence:{ep.endpoint}",
         value=g.affected / g.n if g.n else 0.0,
         expected=s.groups[0].affected / s.groups[0].n if s.groups[0].n else None,
-        role="primary" if g.flagged else "supporting",
+        role=role,
         direction="none" if g.rank == 0 else "high",
-        display=f"{_dose(g, unit)}: {g.affected} of {g.n}{sev}{tail}",
+        display=f"{_dose(g, unit)}{at}: {g.affected} of {g.n}{sev}{tail}",
     )
 
 
 def _trend_evidence(s: Summary, cfg: ToxStudyMonitorConfig) -> Evidence:
     continuous = s.endpoint.kind == "continuous"
-    name = "Jonckheere-Terpstra" if continuous else "Cochran-Armitage"
+    name = "Jonckheere-Terpstra" if continuous else "Cochran-Armitage, exact"
     alpha = cfg.alpha_trend if continuous else cfg.alpha_incidence_trend
     return Evidence(
         source=f"send:{s.endpoint.endpoint.split(':')[0]}",
@@ -128,10 +145,11 @@ def _trend_evidence(s: Summary, cfg: ToxStudyMonitorConfig) -> Evidence:
         value=s.trend_p if s.trend_p is not None else 1.0,
         threshold=alpha,
         role="primary"
-        if s.check in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE)
+        if s.check in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE) and s.phase == MAIN
         else "supporting",
         direction="none",
-        display=f"trend across doses {_p(s.trend_p)} ({name})",
+        display=f"trend across doses{'' if s.phase == MAIN else ' (recovery)'} "
+        f"{_p(s.trend_p)} ({name})",
     )
 
 
@@ -169,11 +187,190 @@ def _text(s: Summary, unit: str) -> tuple[str, str]:
             title = f"{ep.label} more frequent at {at} in {who}, no trend with dose"
             lead = f"Incidence is higher at {at} ({base}) with no significant trend"
         rule = "Incidence against the concurrent control; severity grades are in the evidence"
-    summary = (
-        f"{lead}. Trend {_p(s.trend_p)}. {rule}. The toxicologist decides what this means "
-        "for the NOAEL."
-    )
+    summary = f"{lead}. Trend {_p(s.trend_p)}. {rule}."
     return title, summary
+
+
+DECIDES = " The toxicologist decides what this means for the NOAEL."
+
+
+def _change(value: float | None, kind: str) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:+.0f}%" if kind == "continuous" else f"{value:+.0f} points"
+
+
+def _recovery_evidence(main: Summary, r: RecoveryStatus, unit: str) -> list[Evidence]:
+    kind = main.endpoint.kind
+    status = Evidence(
+        source=f"send:{main.endpoint.endpoint.split(':')[0]}",
+        selector=f"SEX={main.sex}; PHASE=recovery; DOSE={r.dose:g} {unit}",
+        statistic=f"recovery_status:{main.endpoint.endpoint}",
+        value=r.recovery_change if r.recovery_change is not None else 0.0,
+        expected=r.main_change,
+        role="supporting",
+        direction="none",
+        display=f"recovery at {r.dose:g} {unit}: {r.status} "
+        f"({_change(r.main_change, kind)} at the end of dosing, "
+        f"{_change(r.recovery_change, kind)} after recovery)",
+    )
+    rows = (
+        [_group_evidence(r.summary, g, unit, primary=False) for g in r.summary.groups]
+        if r.summary is not None
+        else []
+    )
+    return [status, *rows]
+
+
+def _endpoint_draft_text(item: EndpointItem, unit: str) -> tuple[str, str]:
+    s = item.summary
+    if item.recovery is None:
+        title, summary = _text(s, unit)
+        if s.phase != MAIN:
+            title = f"Only at recovery: {title}"
+            summary = (
+                f"{summary} The main study shows no such change in {SEX[s.sex]}: it appears "
+                "only after the recovery period."
+            )
+        return title, summary + DECIDES
+    title, summary = _text(s, unit)
+    r = item.recovery
+    tail = f" At recovery ({r.dose:g} {unit}): {r.status}" + (
+        f", {_change(r.main_change, s.endpoint.kind)} at the end of dosing and "
+        f"{_change(r.recovery_change, s.endpoint.kind)} after recovery."
+        if r.status != "not assessed"
+        else "."
+    )
+    return title, summary + tail + DECIDES
+
+
+def _secondary_text(item: SecondaryItem, unit: str) -> tuple[str, str, list[Evidence]]:
+    who = f"{SEX[item.sex]}, {PHASE[item.phase]}"
+    bw = item.body_weight
+    parts = []
+    evidence = [
+        Evidence(
+            source="send:bw",
+            selector=f"SEX={item.sex}; PHASE={item.phase}; DOSE={item.dose:g} {unit}",
+            statistic="group_mean:bw:BW",
+            value=bw.mean if bw.mean is not None else 0.0,
+            role="primary",
+            direction="low",
+            display=f"body weight at {item.dose:g} {unit}: {bw.pct:+.0f}% against control"
+            if bw.pct is not None
+            else f"body weight at {item.dose:g} {unit}",
+        )
+    ]
+    for rel, absolute in item.organs:
+        g = next(x for x in rel.groups if x.rank == item.rank)
+        a = (
+            next((x for x in absolute.groups if x.rank == item.rank), None)
+            if absolute is not None
+            else None
+        )
+        organ = rel.endpoint.label.removesuffix(" weight relative to body weight")
+        absolute_text = (
+            f"absolute {a.pct:+.0f}%, not flagged"
+            if a is not None and a.pct is not None
+            else "absolute not analysed"
+        )
+        parts.append(f"{organ} {g.pct:+.0f}% ({absolute_text})")
+        evidence.append(_group_evidence(rel, g, unit, primary=True))
+        if a is not None and absolute is not None:
+            evidence.append(_group_evidence(absolute, a, unit, primary=False))
+    title = (
+        f"Relative organ weights changed at {item.dose:g} {unit} in {who}: may be secondary "
+        "to lower body weight"
+    )
+    summary = (
+        f"Body weight at {item.dose:g} {unit} is "
+        f"{bw.pct:+.0f}% against control. Organ weights relative to body weight are flagged "
+        f"at that dose with no matching change in absolute weight: {'; '.join(parts)}. "
+        "These may be secondary to lower body weight rather than an effect on the organs." + DECIDES
+    )
+    return title, summary, evidence
+
+
+def _neoplasm_text(item: NeoplasmItem, unit: str) -> tuple[str, str, list[Evidence]]:
+    first = item.summaries[0]
+    label = first.endpoint.label
+    phases = []
+    evidence: list[Evidence] = []
+    for s in item.summaries:
+        counts = ", ".join(
+            f"{'control' if g.rank == 0 else f'{g.dose:g} {unit}'} {g.affected} of {g.n}"
+            for g in s.groups
+        )
+        phases.append(f"{PHASE[s.phase]}: {counts}")
+        evidence += [
+            _group_evidence(s, g, unit, primary=g.rank > 0 and g.affected > 0) for g in s.groups
+        ]
+    main = next((s for s in item.summaries if s.phase == MAIN), None)
+    trend = (
+        f" Trend in the main study {_p(main.trend_p)} (Cochran-Armitage, exact)."
+        if main is not None
+        else ""
+    )
+    if main is not None:
+        evidence.append(
+            Evidence(
+                source="send:mi",
+                selector=f"SEX={main.sex}; PHASE={main.phase}",
+                statistic=f"trend_p:{main.endpoint.endpoint}",
+                value=main.trend_p if main.trend_p is not None else 1.0,
+                role="supporting",
+                direction="none",
+                display=f"trend across doses {_p(main.trend_p)} (Cochran-Armitage, exact)",
+            )
+        )
+    title = f"Neoplasm in treated {SEX[item.sex]}: {label}"
+    summary = (
+        f"{label} is a neoplasm, found in at least one animal of a treated group; any "
+        f"neoplasm in a treated group is raised, whatever the statistics. "
+        f"{'; '.join(phases)}.{trend}" + DECIDES
+    )
+    return title, summary, evidence
+
+
+def _death_text(item: DeathItem, unit: str) -> tuple[str, str, list[Evidence]]:
+    who = f"{'male' if item.sex == 'M' else 'female'}, {item.dose:g} {unit}, {PHASE[item.phase]}"
+    day = f"day {item.day:g}" if item.day is not None else "an unrecorded day"
+    disposition = item.disposition.lower() or "an unscheduled death"
+    if item.cause_source == "MI":
+        cause = "Cause in MI (marked as related to death): " + "; ".join(item.causes) + "."
+    elif item.cause_source == "DD":
+        cause = "Cause in DD (death diagnosis): " + "; ".join(item.causes) + "."
+    else:
+        cause = "No cause recorded in MI or DD."
+    title = f"Unscheduled death in a treated group: {who}, {day}"
+    summary = (
+        f"Animal {item.usubjid} ({who}) was a {disposition} on {day}. {cause} Any unscheduled "
+        "death in a treated group is raised, whatever the statistics." + DECIDES
+    )
+    evidence = [
+        Evidence(
+            source="send:ds",
+            selector=f"USUBJID={item.usubjid}",
+            statistic="unscheduled_death:day",
+            value=item.day if item.day is not None else 0.0,
+            role="primary",
+            direction="none",
+            display=f"{item.usubjid}: {disposition}, {day}",
+        )
+    ]
+    for c in item.causes:
+        evidence.append(
+            Evidence(
+                source="send:mi" if item.cause_source == "MI" else "send:dd",
+                selector=f"USUBJID={item.usubjid}",
+                statistic="unscheduled_death:cause",
+                value=0.0,
+                role="primary",
+                direction="none",
+                display=f"cause: {c}",
+            )
+        )
+    return title, summary, evidence
 
 
 def _problem_text(p: Problem) -> tuple[str, str, list[Evidence]]:
@@ -231,8 +428,9 @@ class ToxStudyMonitor:
             raise ValueError(
                 f"trigger is for SEND cut {trigger.payload.cut_id}, the reader for {study.cut_id}"
             )
-        analysis = analyse(_tables(study), cfg)
-        drafts = self.drafts(analysis, cfg, study.study_id, study.cut_id)
+        tables = _tables(study)
+        analysis = analyse(tables, cfg)
+        drafts = self.drafts(analysis, cfg, study.study_id, study.cut_id, tables)
         ctx.log.info(
             "tox.analysed",
             endpoints=len(analysis.summaries),
@@ -242,27 +440,39 @@ class ToxStudyMonitor:
         return drafts
 
     def drafts(
-        self, analysis: Analysis, cfg: ToxStudyMonitorConfig, study_id: str, cut_id: str
+        self,
+        analysis: Analysis,
+        cfg: ToxStudyMonitorConfig,
+        study_id: str,
+        cut_id: str,
+        tables: Mapping[str, pl.DataFrame] | None = None,
     ) -> list[FindingDraft]:
+        tables = tables or {}
         unit = analysis.design.dose_unit
         out: list[FindingDraft] = []
-        for s in analysis.summaries:
-            if s.check is None:
-                continue
-            title, summary = _text(s, unit)
-            evidence = [_group_evidence(s, g, unit) for g in s.groups] + [_trend_evidence(s, cfg)]
-            dose_related = s.check in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE)
+        for item in raise_findings(analysis, tables, cfg).items:
+            if isinstance(item, EndpointItem):
+                s = item.summary
+                title, summary = _endpoint_draft_text(item, unit)
+                evidence = [_group_evidence(s, g, unit) for g in s.groups]
+                evidence.append(_trend_evidence(s, cfg))
+                if item.recovery is not None:
+                    evidence += _recovery_evidence(s, item.recovery, unit)
+                dose_related = item.rule in (DOSE_RELATED_CHANGE, DOSE_RELATED_INCIDENCE)
+                severity = Severity.MEDIUM if dose_related else Severity.LOW
+                score = 1.0 - (s.trend_p if s.trend_p is not None else 1.0)
+            elif isinstance(item, SecondaryItem):
+                title, summary, evidence = _secondary_text(item, unit)
+                severity, score = Severity.LOW, 0.3
+            elif isinstance(item, NeoplasmItem):
+                title, summary, evidence = _neoplasm_text(item, unit)
+                severity, score = Severity.MEDIUM, 0.9
+            else:
+                title, summary, evidence = _death_text(item, unit)
+                severity, score = Severity.HIGH, 1.0
             out.append(
                 self._draft(
-                    cfg,
-                    study_id,
-                    cut_id,
-                    f"{s.check}:{s.key}",
-                    title,
-                    summary,
-                    evidence,
-                    Severity.MEDIUM if dose_related else Severity.LOW,
-                    1.0 - (s.trend_p if s.trend_p is not None else 1.0),
+                    cfg, study_id, cut_id, item.check, title, summary, evidence, severity, score
                 )
             )
         for p in analysis.problems:

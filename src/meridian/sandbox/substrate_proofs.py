@@ -78,6 +78,7 @@ class CanaryRoots:
     etmf_root: Path
     audit_root: Path
     planted: tuple[str, ...]
+    send_root: Path | None = None
 
 
 def make_copies(
@@ -91,9 +92,13 @@ def make_copies(
     etmf_root: Path,
     audit_root: Path,
     audit_seq: int | None,
+    send: tuple[Path, str, str] | None = None,
 ) -> CanaryRoots:
     """Copies of the cut's blinded and ops areas, the safety and eTMF snapshots of the
-    cut, and one audit extract, with the canary planted in each."""
+    cut, and one audit extract, with the canary planted in each; with send (send_root,
+    SEND study id, SEND cut id, phase 5 step 1b), a copy of that SEND cut too, the canary
+    in MI's MIORRES, a column the preclinical agent never reads (so it cannot reach a
+    finding)."""
     planted: list[str] = []
     roots = {
         "curated": (curated_root, ("blinded", "ops")),
@@ -116,12 +121,22 @@ def make_copies(
         extract = target / "audit_extract.parquet"
         plant(extract, "DECISION_REASON", canary)
         planted.append(extract.relative_to(dest).as_posix())
+    send_root = None
+    if send is not None:
+        root, send_study, send_cut = send
+        target = dest / "send" / send_study / send_cut
+        shutil.copytree(root / send_study / send_cut, target)
+        mi = target / "send" / "mi.parquet"
+        plant(mi, "MIORRES", canary)
+        planted.append(mi.relative_to(dest).as_posix())
+        send_root = dest / "send"
     return CanaryRoots(
         curated_root=dest / "curated",
         safety_root=dest / "safety",
         etmf_root=dest / "etmf",
         audit_root=dest / "audit",
         planted=tuple(planted),
+        send_root=send_root,
     )
 
 

@@ -22,7 +22,7 @@ def main() -> None:
     for path in sorted(FIXTURES.glob("*.json")):
         case = json.loads(path.read_text())
         actual = sorted(run(build(StudySpec.model_validate(case["spec"])), "TOX-STRESS"))
-        ideal = case["ideal"]
+        ideal = case["ideal"][VERSION]
         same = actual == ideal
         agree += same
         missing = sorted(set(ideal) - set(actual))

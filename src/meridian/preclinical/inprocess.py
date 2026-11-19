@@ -76,10 +76,14 @@ def run_copy(
 
 def run_checks(
     cfg: ToxStudyMonitorConfig, study_id: str
-) -> Callable[[Mapping[str, pl.DataFrame], str], list[str]]:
-    """A function (tables, cut id) to the checks of the drafts, for meridian.evals."""
+) -> Callable[[Mapping[str, pl.DataFrame], str], dict[str, str]]:
+    """A function (tables, cut id) to the checks of the drafts, each with its summary
+    text, for meridian.evals."""
 
-    def run(tables: Mapping[str, pl.DataFrame], cut_id: str) -> list[str]:
-        return [d.dedup_key.rsplit("|", 1)[1] for d in run_copy(tables, cfg, study_id, cut_id)]
+    def run(tables: Mapping[str, pl.DataFrame], cut_id: str) -> dict[str, str]:
+        return {
+            d.dedup_key.rsplit("|", 1)[1]: d.summary
+            for d in run_copy(tables, cfg, study_id, cut_id)
+        }
 
     return run

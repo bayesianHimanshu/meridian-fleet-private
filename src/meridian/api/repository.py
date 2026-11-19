@@ -168,6 +168,9 @@ class Snapshot:
 
     role: Role
     cuts: dict[int, DataCut] = field(default_factory=dict)
+    # SEND study loads (phase 5): trigger seq -> SEND cut id, so a newer version's run on a
+    # SEND cut retires what it no longer raises, as a run on a DataCut does.
+    send_loads: dict[int, str] = field(default_factory=dict)
     cut_events: dict[int, Event] = field(default_factory=dict)
     raised: dict[str, _Raised] = field(default_factory=dict)
     narratives: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
@@ -203,6 +206,8 @@ class Snapshot:
             if isinstance(p, DataCut):
                 snap.cuts[shown.seq] = p
                 snap.cut_events[shown.seq] = shown
+            elif isinstance(p, SendStudyLoaded):
+                snap.send_loads[shown.seq] = p.cut_id
             elif isinstance(p, FindingRaised):
                 if p.finding.finding_id is not None and visibility.can_see_finding(role, p.finding):
                     parts = parse_dedup_key(p.dedup_key)
@@ -431,7 +436,7 @@ def _retirement(snap: Snapshot) -> dict[str, str]:
     """For each finding a newer version did not supersede: the newest newer version of the
     same agent that completed a run on the same cut (an ActorSuspended for that cut's
     DataCut) without raising the same (kind, site, check)."""
-    cut_of = {seq: cut.cut_id for seq, cut in snap.cuts.items()}
+    cut_of = {seq: cut.cut_id for seq, cut in snap.cuts.items()} | snap.send_loads
     completed: dict[tuple[str, str], set[str]] = defaultdict(set)  # (agent, cut) -> versions
     for e in snap.suspended:
         p = e.payload
@@ -1616,12 +1621,14 @@ class Repository:
         if self._tox_config is None:
             raise NotFoundError("preclinical analysis is not configured")
         cut = loaded.payload.cut_id
+        snap = self.snapshot()
         by_check = {
             r.check: fid
-            for fid, r in self.snapshot().raised.items()
+            for fid, r in snap.raised.items()
             if r.finding.study_id == study_id
             and r.cut_id == cut
             and r.finding.agent_id.startswith("preclinical.")
+            and snap.current(fid)  # the newest version's, neither superseded nor retired
         }
         return preclinical.endpoints_view(
             reader, self._tox_config, study_id=study_id, cut_id=cut, finding_by_check=by_check
