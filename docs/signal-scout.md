@@ -270,3 +270,44 @@ PROJECTILE, MANIA, HYPERHIDROSIS, GASTROINTESTINAL DISORDER, SEDATION, ANGER, HY
 BRAIN FOG and COLD SWEAT (9), plus any of the four retried terms that qualify. 1.0.0's 76
 findings leave the queue by the existing per-scan rule: superseded where 1.0.1 raises the
 same term on the new scan, retired otherwise.
+
+## 1.0.1, as it came out (20 Nov 2026)
+
+Image from `1ac4bb8` (clean). portfolio_signal conformance passed (twice; the second run
+was started by mistake). `meridian signals scan --reuse 19985`: SignalScanRequested seq
+20105, scan SCAN-20261119T223555Z (the host clock's UTC), requested by operator:himanshu,
+in the OpenShell sandbox.
+
+- 4 queries asked again (DRUG INTERACTION, HICCUPS, HYPERSEXUALITY, INABILITY TO AFFORD
+  MEDICATION): each answered 200 on the first try, data date 2026-10-28. The retry was
+  not needed live; it is tested only on a fake.
+- 258 responses (254 reused, 4 new); **250 terms tested, none unanswered; 78 signals**
+  (76 as before, plus HICCUPS, a = 4, PRR 3.71, and HYPERSEXUALITY, a = 4, PRR 16.7, both
+  weak). DRUG INTERACTION (PRR 0.38) and INABILITY TO AFFORD MEDICATION (chi-squared 3.7)
+  are not signals.
+- Tiers: listed 20 (GASTROOESOPHAGEAL REFLUX DISEASE now matches the label's
+  "gastrointestinal reflux disease"), indication 18, use 6, weak 25, **priority 9**:
+  exactly the 9 pre-registered.
+
+| Priority signal | a | PRR (95% CI) | ROR | Chi-squared |
+|---|---:|---|---:|---:|
+| vomiting projectile | 10 | 26.37 (14.19 to 49.01) | 26.46 | 218.6 |
+| mania | 23 | 10.64 (7.08 to 15.99) | 10.72 | 191.3 |
+| brain fog | 12 | 5.82 (3.31 to 10.24) | 5.84 | 43.2 |
+| sedation | 20 | 5.81 (3.75 to 8.99) | 5.84 | 74.9 |
+| hyperhidrosis | 97 | 5.73 (4.71 to 6.96) | 5.90 | 375.8 |
+| gastrointestinal disorder | 62 | 5.26 (4.12 to 6.73) | 5.36 | 210.7 |
+| cold sweat | 12 | 5.18 (2.94 to 9.11) | 5.19 | 36.4 |
+| anger | 18 | 4.05 (2.55 to 6.42) | 4.07 | 38.4 |
+| hypersomnia | 15 | 3.98 (2.40 to 6.59) | 4.00 | 30.6 |
+
+- `meridian signals replay --trigger 20105`: 9 drafts, sha256 `93f697211ed77615`,
+  identical.
+- 1.0.0's 76 findings: 9 superseded by 1.0.1's on the new scan, 67 retired. The medical
+  monitor's review queue: **76 before, 9 after** (all reporting signals). The portfolio
+  lead's: 175 before, 108 after.
+
+Not every priority signal is new to a reader of the label. Sedation is close to the
+label's somnolence, and vomiting projectile to vomiting. The exact-phrase rule (with
+spellings and one synonym) does not equate them; the medical monitor will see both side
+by side.
