@@ -37,5 +37,14 @@
       "noael_ratio": 10.0,
       "loael_ratio": null
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {},
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": null
+    }
   }
 }

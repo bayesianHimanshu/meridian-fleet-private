@@ -114,3 +114,36 @@ CTCAE grades adverse events; it does not say when to measure or stop. Where a so
 sets no frequency or stopping rule, the entry says so.
 
 ## Results
+
+Run on 20 Nov 2026, preclinical.translational_bridge 1.0.0 at commit `43b2816`; the
+pre-registration (`e34b1ff`) unchanged.
+
+### Stress set (10 cases, run once): 10 as ideal
+
+`scripts/bridge_stress.py`, each case through the host's extract writer and the agent;
+actuals in each fixture under `actual["1.0.0"]`.
+
+| Case | Ideal | 1.0.0 |
+|---|---|---|
+| liver_only | liver; 10 x, 100 x | as ideal |
+| heart_only | heart; 10 x, 100 x | as ideal |
+| no_adverse_finding | no organ; 10 x, no LOAEL margin | as ideal |
+| unmapped_organ | liver; adrenal unmapped | as ideal |
+| revised_noael | heart only | as ideal |
+| not_established | liver; no ratios | as ideal |
+| kidney_haem_bw | kidney, haematology, body weight | as ideal |
+| sexes_differ | liver and heart; basis F | as ideal |
+| death_unmapped | liver; the death unmapped | as ideal |
+| proposal_open | liver; margins against the proposed dose | as ideal |
+
+**Said plainly:** before the formal run, a unit test ran the pre-registered expectation for
+MRD-101 (liver and heart, 10 x and 100 x) through the same code; it matched.
+
+**A rule the pre-registration did not settle, and how it was settled before the formal
+run:** *which* proposal is current. A NOAEL decision always comes before the proposal
+derived from it, so a proposal read "as of the trigger" can never be the one resting on
+that decision, and could be a stale one resting on a revised decision. The host therefore
+takes the study's newest proposal whose basis is a current decision, as the ledger stands
+when it writes the extract, with its latest status. Found by a unit test
+(`test_an_open_proposal_is_said_to_be_not_accepted`), fixed before any stress case ran;
+`test_a_proposal_on_a_revised_noael_is_not_used` covers the stale case.

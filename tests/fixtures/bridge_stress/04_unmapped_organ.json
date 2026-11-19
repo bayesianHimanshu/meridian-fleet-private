@@ -57,5 +57,20 @@
       "noael_ratio": 10.0,
       "loael_ratio": 100.0
     }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "liver": [
+          "PRE-0101"
+        ]
+      },
+      "unmapped": [
+        "PRE-0105"
+      ],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
   }
 }
