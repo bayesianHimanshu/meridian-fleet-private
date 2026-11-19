@@ -15,7 +15,21 @@ LM = "lm"  # the local model's job
 TMF = "tmf"  # the eTMF index of the cut (quality zone only)
 AUDIT = "audit"  # the audit extract of the ledger (quality.audit_trail only)
 SEND = "send"  # a nonclinical SEND study (preclinical zone only)
-STAGE_AREAS: tuple[str, ...] = (META, BLINDED, OPS, UNBLINDED, NARR, LM, TMF, AUDIT, SEND)
+NOAEL = "noael"  # a study's NOAEL decisions, staged by the host (preclinical zone only)
+INVENTORY = "inventory"  # an asset's nonclinical study inventory (preclinical zone only)
+STAGE_AREAS: tuple[str, ...] = (
+    META,
+    BLINDED,
+    OPS,
+    UNBLINDED,
+    NARR,
+    LM,
+    TMF,
+    AUDIT,
+    SEND,
+    NOAEL,
+    INVENTORY,
+)
 
 
 def stage_path(area: str) -> str:

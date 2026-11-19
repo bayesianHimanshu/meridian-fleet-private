@@ -125,3 +125,31 @@ def preclinical_eval(
     )
     typer.echo(json.dumps(summarise(results), indent=2, sort_keys=True))
     typer.echo(f"wrote {out}")
+
+
+@preclinical_app.command("inventory-load")
+def preclinical_inventory_load() -> None:
+    """Write the committed nonclinical inventory (data/inventory/<asset>/inventory.csv) as
+    a cut under [preclinical] inventory_root and record InventoryLoaded once per cut: the
+    trigger of preclinical.ind_readiness (docs/ind-readiness-eval.md)."""
+    from meridian.preclinical.inputs import record_inventory, write_inventory
+
+    with Container.build(Settings()) as c:
+        p = c.settings.preclinical
+        try:
+            cut, path, sha = write_inventory(p.inventory_file, p.inventory_root, p.asset_id)
+        except (OSError, ValueError) as exc:
+            raise _fail(exc) from exc
+        event, appended = record_inventory(
+            c.ledger,
+            c.ledger,
+            occurred_at=c.clock.now(),
+            actor="system.ingest",
+            asset_id=p.asset_id,
+            cut_id=cut,
+            path=path,
+            source_sha256=sha,
+        )
+        typer.echo(f"inventory {p.asset_id}/{cut} at {path} (csv sha256 {sha[:16]})")
+        verb = "appended" if appended else "already recorded"
+        typer.echo(f"InventoryLoaded {verb} at ledger seq {event.seq}")

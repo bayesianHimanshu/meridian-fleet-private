@@ -35,8 +35,10 @@ from meridian.data.study_store import (
     TMF_STAGE_AREA,
     TMF_ZONES,
     AuditStageReader,
+    InventoryStageReader,
     LayeredStudyReader,
     MissingTableError,
+    NoaelStageReader,
     ParquetStudyReader,
     SendStudyReader,
     StudyAccessError,
@@ -44,10 +46,23 @@ from meridian.data.study_store import (
     TmfStageReader,
 )
 from meridian.domain.audit import LEDGER_SCOPE
-from meridian.domain.events import AuditReviewRequested, DataCut, Event, SendStudyLoaded
-from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
+from meridian.domain.events import (
+    AuditReviewRequested,
+    DataCut,
+    Event,
+    InventoryLoaded,
+    NoaelDecision,
+    SendStudyLoaded,
+)
+from meridian.platform.agent_settings import (
+    IND_REQUIREMENTS_FILE,
+    SAFETY_TERMS_FILE,
+    load_ind_requirements,
+    load_safety_terms,
+)
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
+from meridian.preclinical.noael_stage import read_noael_context
 
 EXIT_OK = 0
 EXIT_BAD_ARGS = 2
@@ -115,6 +130,11 @@ def load_agents_settings(path: Path) -> AgentsSettings:
     if "reference" not in tmf:
         reference = load_tmf_reference(path.parent / TMF_EXPECTED_FILE)
         agents = {**agents, "tmf_completeness": {**tmf, "reference": reference.model_dump()}}
+    # And the first-in-human requirements (config/ind_requirements.toml, phase 5 step 2).
+    ind = dict(agents.get("ind_readiness", {}))
+    if "requirements" not in ind:
+        requirements = load_ind_requirements(path.parent / IND_REQUIREMENTS_FILE)
+        agents = {**agents, "ind_readiness": {**ind, "requirements": requirements.model_dump()}}
     return AgentsSettings.model_validate(agents)
 
 
@@ -162,6 +182,19 @@ def execute(
             # A SEND study (preclinical zone): only send/ is staged, and read.
             study = SendStudyReader.at_cut_dir(
                 cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.study_id
+            )
+        elif isinstance(trigger.payload, NoaelDecision):
+            # A NOAEL decision (phase 5 step 2): send/ and noael/ are staged; the SEND cut
+            # comes from the host's context table, the decisions from noael/.
+            study_id, send_cut = read_noael_context(cut_dir)
+            send = SendStudyReader.at_cut_dir(cut_dir, cut_id=send_cut, study_id=study_id)
+            study = LayeredStudyReader(
+                send, NoaelStageReader.at_cut_dir(cut_dir, cut_id=send_cut, study_id=study_id)
+            )
+        elif isinstance(trigger.payload, InventoryLoaded):
+            # An asset's study inventory (phase 5 step 2): only inventory/ is staged.
+            study = InventoryStageReader.at_cut_dir(
+                cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.asset_id
             )
         elif isinstance(trigger.payload, DataCut):
             ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}

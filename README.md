@@ -153,6 +153,22 @@ pass of 910 runs in 270 s, leak checks and conformance passing, the cluster sinc
 down. Summary, measurements against kind, costs and gaps:
 [docs/phase4b-summary.md](docs/phase4b-summary.md).
 
+## Phase 5 status (preclinical)
+
+Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
+toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
+[docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
+API; preclinical.dose_translation proposes MRD-110's maximum recommended starting dose by
+FDA's 2005 method and the medical monitor decides it; preclinical.ind_readiness checks the
+nonclinical inventory against ICH M3(R2)
+([docs/fih-dose-notes.md](docs/fih-dose-notes.md),
+[docs/ind-readiness-eval.md](docs/ind-readiness-eval.md)).
+
+```sh
+uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
+uv run python scripts/ind_stress.py          # the IND readiness stress set (run once)
+```
+
 ## Setup
 
 ```sh

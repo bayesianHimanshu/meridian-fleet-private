@@ -491,6 +491,27 @@ class SendStudyLoaded(BaseModel):
     path: Annotated[str, Field(min_length=1)]
 
 
+# An inventory cut is named INV-<first 8 hex of its CSV's sha256>. It is always the asset's
+# own plan, never an evaluation copy: operational wherever cuts are scoped.
+INVENTORY_CUT_PREFIX = "INV-"
+
+
+class InventoryLoaded(BaseModel):
+    """An asset's nonclinical study inventory loaded (phase 5 step 2): the trigger of
+    preclinical.ind_readiness. Its study is the asset (MRD-101): the inventory belongs to
+    the programme, not to one study. path is where the host keeps the cut."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.INVENTORY_LOADED] = EventType.INVENTORY_LOADED
+    asset_id: StudyId
+    cut_id: Annotated[
+        str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    ]
+    path: Annotated[str, Field(min_length=1)]
+    source_sha256: Sha256Hex
+
+
 NOAEL_SEXES = ("M", "F", "combined")
 
 
@@ -555,7 +576,8 @@ EventPayload = Annotated[
     | AuditReviewRequested
     | QualityObservation
     | SendStudyLoaded
-    | NoaelDecision,
+    | NoaelDecision
+    | InventoryLoaded,
     Field(discriminator="type"),
 ]
 

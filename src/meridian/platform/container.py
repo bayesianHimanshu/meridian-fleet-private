@@ -94,6 +94,17 @@ class Container:
     def send_reader(self, cut_id: str) -> SendStudyReader:
         return SendStudyReader(self.send_root(), cut_id)
 
+    def write_noael_extract(
+        self, trigger: Event, send_cut: str, decisions: Sequence[Event]
+    ) -> Path:
+        """A NOAEL decision run's extract of the ledger (phase 5 step 2), under
+        <noael_root>/<trigger seq>/noael."""
+        from meridian.preclinical.inputs import write_noael_extract
+
+        return write_noael_extract(
+            decisions, trigger, send_cut, self.settings.preclinical.noael_root
+        )
+
     def write_audit_extract(self, trigger: Event, entries: Sequence[LedgerEntry]) -> Path:
         """The audit extract of an audit review, under <audit_root>/<trigger seq>/audit."""
         p = trigger.payload
@@ -158,6 +169,8 @@ class Container:
             tmf_reader_factory=self.etmf_reader,
             audit_root=self.settings.audit_root,
             send_reader_factory=self.send_reader,
+            noael_root=self.settings.preclinical.noael_root,
+            inventory_root=self.settings.preclinical.inventory_root,
             log=log,
         )
 
@@ -197,6 +210,8 @@ class Container:
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
             send_root=self.send_root(),
+            noael_root=self.settings.preclinical.noael_root,
+            inventory_root=self.settings.preclinical.inventory_root,
         )
 
     def narrator_runner(
@@ -406,6 +421,8 @@ class Container:
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
             send_root=self.send_root(),
+            noael_root=self.settings.preclinical.noael_root,
+            inventory_root=self.settings.preclinical.inventory_root,
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
             placement_wait_seconds=s.placement_wait_seconds,
         )
@@ -438,6 +455,7 @@ class Container:
             log=log,
             operational_cuts=self.settings.cuts.operational,
             operational_executors=self.settings.cuts.operational_executors,
+            prepare_noael=self.write_noael_extract,
         )
 
     def registered_versions(self) -> dict[str, str]:

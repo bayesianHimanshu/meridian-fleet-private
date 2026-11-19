@@ -26,6 +26,8 @@ from meridian.data.ops_synth import OpsSynthParams
 from meridian.platform.agent_settings import (
     AuditTrailReviewerConfig,
     CsmConfig,
+    DoseTranslationConfig,
+    IndReadinessConfig,
     KriMonitorConfig,
     QtlDetectorConfig,
     SaeReconcilerConfig,
@@ -92,6 +94,12 @@ class PreclinicalSettings(BaseModel):
     base_url: str = POINTCROSS_BASE_URL
     raw_dir: Path = Path("data/raw/send_pointcross")
     send_root: Path = Path("data/send")
+    # Phase 5 step 2: the NOAEL decisions staged for preclinical.dose_translation, one
+    # folder per trigger (<noael_root>/<trigger seq>/noael), written by the host from the
+    # ledger; and the nonclinical inventory cuts (<inventory_root>/<asset>/<cut>/inventory).
+    noael_root: Path = Path("var/preclinical/noael")
+    inventory_root: Path = Path("data/inventory_cuts")
+    inventory_file: Path = Path("data/inventory/MRD-101/inventory.csv")
     timeout_seconds: float = 120.0
     # Domain to the sha256 of its .xpt at the pinned commit; fetch and ingest refuse others.
     files: dict[str, str] = Field(default_factory=dict)
@@ -110,6 +118,8 @@ class AgentsSettings(BaseModel):
     tmf_completeness: TmfCompletenessConfig = Field(default_factory=TmfCompletenessConfig)
     audit_trail_reviewer: AuditTrailReviewerConfig = Field(default_factory=AuditTrailReviewerConfig)
     tox_study_monitor: ToxStudyMonitorConfig = Field(default_factory=ToxStudyMonitorConfig)
+    dose_translation: DoseTranslationConfig = Field(default_factory=DoseTranslationConfig)
+    ind_readiness: IndReadinessConfig = Field(default_factory=IndReadinessConfig)
 
 
 class RuntimeSettings(BaseModel):

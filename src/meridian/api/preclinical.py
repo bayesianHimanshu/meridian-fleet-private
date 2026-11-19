@@ -4,6 +4,7 @@ the agent itself uses (meridian.preclinical.analysis) and ledger events; who may
 record anything is decided by the Repository through meridian.api.visibility."""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 import polars as pl
 
@@ -19,6 +20,7 @@ from meridian.api.models import (
 )
 from meridian.data.study_store import MissingTableError, StudyReader
 from meridian.domain.events import Event, NoaelDecision
+from meridian.domain.findings import Finding
 from meridian.platform.agent_settings import ToxStudyMonitorConfig
 from meridian.preclinical.analysis import (
     DOSE_RELATED_CHANGE,
@@ -92,6 +94,73 @@ def main_doses(reader: StudyReader) -> tuple[list[float], str]:
     t = tables(reader)
     design = read_design(t["dm"], t["tx"], t.get("ds"))
     return design.doses(MAIN), design.dose_unit
+
+
+def design_animals(reader: StudyReader) -> pl.DataFrame:
+    """Every analysed animal: USUBJID, SEX, phase and dose (meridian.preclinical.analysis)."""
+    t = tables(reader)
+    return read_design(t["dm"], t["tx"], t.get("ds")).animals
+
+
+@dataclass(frozen=True, slots=True)
+class FindingProfile:
+    """Which sex a preclinical finding is about and the treated doses where it flags a
+    group, per phase, read from its evidence. A finding about one animal (an unscheduled
+    death) names it by USUBJID; its sex, phase and dose come from the study design."""
+
+    sexes: frozenset[str]
+    main_doses: tuple[float, ...]
+    recovery_doses: tuple[float, ...]
+
+    @property
+    def sex(self) -> str | None:
+        return next(iter(self.sexes)) if len(self.sexes) == 1 else None
+
+
+def _fields(selector: str) -> dict[str, str]:
+    out = {}
+    for part in selector.split(";"):
+        key, eq, value = part.strip().partition("=")
+        if eq:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def _dose(text: str) -> float | None:
+    try:
+        return float(text.split()[0])
+    except IndexError, ValueError:
+        return None
+
+
+def finding_profile(finding: Finding, animals: pl.DataFrame) -> FindingProfile:
+    sexes: set[str] = set()
+    doses: dict[str, set[float]] = {"main": set(), "recovery": set()}
+    by_animal = {
+        str(r["USUBJID"]): r
+        for r in animals.select("USUBJID", "SEX", "phase", "dose").iter_rows(named=True)
+    }
+    for e in finding.evidence:
+        f = _fields(e.selector)
+        if "SEX" in f:
+            sexes.add(f["SEX"])
+            dose = _dose(f.get("DOSE", ""))
+            if e.role == "primary" and dose is not None and dose > 0 and f.get("PHASE") in doses:
+                doses[f["PHASE"]].add(dose)
+        elif "USUBJID" in f and f["USUBJID"] in by_animal:
+            a = by_animal[f["USUBJID"]]
+            sexes.add(str(a["SEX"]))
+            if e.role == "primary" and float(a["dose"]) > 0 and a["phase"] in doses:
+                doses[str(a["phase"])].add(float(a["dose"]))
+        elif "ENDPOINT" in f:  # a data-quality finding: <endpoint>:<sex>:<phase>, if any
+            parts = f["ENDPOINT"].split(":")
+            if len(parts) >= 3 and parts[-2] in ("M", "F"):
+                sexes.add(parts[-2])
+    return FindingProfile(
+        frozenset(sexes & {"M", "F"}),
+        tuple(sorted(doses["main"])),
+        tuple(sorted(doses["recovery"])),
+    )
 
 
 def endpoints_view(

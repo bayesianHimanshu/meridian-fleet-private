@@ -238,4 +238,5 @@ data/evals/
 data/safety_db/
 data/etmf/
 data/send/
+data/inventory_cuts/
 deploy/gke/env.sh

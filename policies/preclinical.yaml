@@ -16,6 +16,8 @@ filesystem_policy:
     - /tmp
     - /stage/meta
     - /stage/send
+    - /stage/noael
+    - /stage/inventory
 landlock:
   compatibility: hard_requirement
 process:

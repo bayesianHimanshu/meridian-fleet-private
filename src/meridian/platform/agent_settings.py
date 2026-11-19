@@ -3,6 +3,7 @@ the eval harness can read thresholds without importing any agent code."""
 
 import os
 import tomllib
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -278,3 +279,98 @@ class AuditTrailReviewerConfig(AgentConfig):
     # Audit findings name people and runs, never subjects; segregation of duties keeps them
     # to QA and clinical operations (clinical_ops_lead decides; qa_auditor never decides).
     visible_to: tuple[Role, ...] = (Role.CLINICAL_OPS_LEAD, Role.QA_AUDITOR)
+
+
+# Phase 5 step 2. The FDA 2005 guidance's figures, each with its citation; the agent uses
+# no factor that is not here (docs/fih-dose-notes.md).
+FDA_2005 = (
+    "FDA, Guidance for Industry: Estimating the Maximum Safe Starting Dose in Initial "
+    "Clinical Trials for Therapeutics in Adult Healthy Volunteers (July 2005)"
+)
+
+
+class SpeciesConversion(AgentConfig):
+    """One row of the guidance's Table 1 (section V.A): to convert an animal dose in
+    mg/kg to the human equivalent dose in mg/kg, divide by divide_by (or multiply by
+    multiply_by); km converts mg/kg to mg/m2."""
+
+    km: float = Field(gt=0)
+    divide_by: float = Field(gt=0)
+    multiply_by: float = Field(gt=0)
+    citation: str = Field(min_length=1)
+
+
+class DoseTranslationConfig(AgentConfig):
+    """preclinical.dose_translation 1.0.0: NOAEL to HED to MRSD by the FDA 2005 guidance."""
+
+    guidance: str = FDA_2005
+    # Table 1, by SEND TS SPECIES. A species not listed gets no starting dose.
+    conversions: dict[str, SpeciesConversion] = Field(default_factory=dict)
+    human_km: float = Field(37.0, gt=0)
+    human_km_citation: str = "section V.A, Table 1: Human, km 37"
+    # Section VII: "The default safety factor that should normally be used is 10."
+    safety_factor: float = Field(10.0, ge=1)
+    safety_factor_citation: str = (
+        'section VII: "The default safety factor that should normally be used is 10."'
+    )
+    # Table 1, footnote a: "Assumes 60 kg human."
+    human_weight_kg: float = Field(60.0, gt=0)
+    human_weight_citation: str = 'section V.A, Table 1, footnote a: "Assumes 60 kg human."'
+    visible_to: tuple[Role, ...] = (
+        Role.TOXICOLOGIST,
+        Role.MEDICAL_MONITOR,
+        Role.PORTFOLIO_LEAD,
+        Role.QA_AUDITOR,
+    )
+
+
+class IndRequirement(AgentConfig):
+    """One requirement of config/ind_requirements.toml, with its guidance and section."""
+
+    id: str = Field(pattern=r"^[a-z0-9_]+$")
+    title: str = Field(min_length=1)
+    study_types: tuple[str, ...] = Field(min_length=1)
+    species_class: str
+    duration: Literal["table1", "none"]
+    applies: Literal["always", "multiple_dose"]
+    source: str = Field(min_length=1)
+    section: str = Field(min_length=1)
+    quote: str = Field(min_length=1)
+    note: str = ""
+
+
+class IndRequirements(AgentConfig):
+    classes: dict[str, tuple[str, ...]]
+    requirements: tuple[IndRequirement, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _known_classes(self) -> IndRequirements:
+        for r in self.requirements:
+            if r.species_class != "any" and r.species_class not in self.classes:
+                raise ValueError(f"{r.id}: unknown species class {r.species_class!r}")
+        if len({r.id for r in self.requirements}) != len(self.requirements):
+            raise ValueError("a requirement id is used twice")
+        return self
+
+
+IND_REQUIREMENTS_FILE = "ind_requirements.toml"
+
+
+def load_ind_requirements(path: Path | None = None) -> IndRequirements:
+    """config/ind_requirements.toml next to the config file in use."""
+    config = os.environ.get(CONFIG_FILE_ENV)
+    default = (Path(config).parent if config else Path("config")) / IND_REQUIREMENTS_FILE
+    with (path or default).open("rb") as handle:
+        return IndRequirements.model_validate(tomllib.load(handle))
+
+
+class IndReadinessConfig(AgentConfig):
+    """preclinical.ind_readiness 1.0.0 (docs/ind-readiness-eval.md, pre-registered)."""
+
+    asset_id: str = "MRD-101"
+    # MRD-110, single and multiple ascending doses: at most 14 days of dosing.
+    planned_clinical_duration_days: int = Field(14, ge=1)
+    multiple_dose: bool = True
+    planned_submission_date: date = date(2027, 4, 1)
+    requirements: IndRequirements = Field(default_factory=load_ind_requirements)
+    visible_to: tuple[Role, ...] = (Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)

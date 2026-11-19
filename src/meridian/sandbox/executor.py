@@ -29,21 +29,28 @@ from meridian.data.study_store import (
     SEND_ZONES,
     TMF_ZONES,
     AuditStageReader,
+    InventoryStageReader,
     LayeredStudyReader,
+    NoaelStageReader,
     StudyReader,
 )
 from meridian.domain.events import (
     AuditReviewRequested,
     DataCut,
     Event,
+    InventoryLoaded,
+    NoaelDecision,
     SendStudyLoaded,
     SubstrateRun,
 )
+from meridian.preclinical.noael_stage import noael_dir
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
     AUDIT,
+    INVENTORY,
     META,
+    NOAEL,
     SEND,
     TMF,
     expected_effective,
@@ -57,9 +64,9 @@ from meridian.sandbox.staging import (
     SANDBOX_TRIGGER,
     assert_clean_stage,
     cut_areas_for,
+    stage_areas,
     stage_audit,
     stage_cut,
-    stage_send,
     uploads,
 )
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
@@ -118,6 +125,51 @@ class StagedRun:
     inputs_manifest_sha256: str
 
 
+def preclinical_sources(
+    agent_id: str,
+    trigger: Event,
+    cut_id: str,
+    send_root: Path | None,
+    noael_root: Path | None,
+    inventory_root: Path | None,
+) -> dict[str, Path]:
+    """The host folders a preclinical run reads, by area, for its trigger: the SEND cut
+    for a SendStudyLoaded; the SEND cut and the NOAEL extract for a NoaelDecision; the
+    inventory cut for an InventoryLoaded."""
+    p = trigger.payload
+    if not isinstance(p, SendStudyLoaded | NoaelDecision | InventoryLoaded):
+        raise ExecutionError(
+            f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}, a NOAEL decision "
+            "or an inventory load"
+        )
+    if isinstance(p, InventoryLoaded):
+        if p.cut_id != cut_id:
+            raise ExecutionError(f"trigger {trigger.seq} is not the inventory load of {cut_id}")
+        if inventory_root is None:
+            raise ExecutionError(f"{agent_id} reads an inventory; no inventory store is set")
+        area = inventory_root / p.asset_id / cut_id / INVENTORY
+        if not area.is_dir():
+            raise ExecutionError(f"no inventory cut {cut_id} under {inventory_root}")
+        return {INVENTORY: area}
+    if send_root is None:
+        raise ExecutionError(f"{agent_id} reads a SEND study; no SEND store is set")
+    send_dir = send_root / cut_id / SEND
+    if not send_dir.is_dir():
+        raise ExecutionError(f"no SEND cut {cut_id} under {send_root}")
+    if isinstance(p, SendStudyLoaded):
+        if p.cut_id != cut_id:
+            raise ExecutionError(f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}")
+        return {SEND: send_dir}
+    if isinstance(p, NoaelDecision):
+        if noael_root is None:
+            raise ExecutionError(f"{agent_id} reads NOAEL decisions; no NOAEL extract is set")
+        area = noael_dir(noael_root, trigger.seq) / NOAEL
+        if not area.is_dir():
+            raise ExecutionError(f"no NOAEL extract for trigger {trigger.seq} under {noael_root}")
+        return {SEND: send_dir, NOAEL: area}
+    raise AssertionError(p)  # unreachable: the trigger types are checked above
+
+
 def stage_run(
     *,
     agent_id: str,
@@ -130,28 +182,30 @@ def stage_run(
     etmf_root: Path | None,
     audit_root: Path | None,
     send_root: Path | None = None,
+    noael_root: Path | None = None,
+    inventory_root: Path | None = None,
 ) -> StagedRun:
     """Stage meta/ and the cut areas the policy reads (or the audit extract, or a SEND
     study) under dest, check the stage and the inputs manifest, and return it. Shared by
     the OpenShell and Substrate executors, so both receive the same files."""
     policy = ALL_POLICIES[policy_name]
     if SEND in policy.reads:
-        # The preclinical zone: a SEND study, never a clinical cut (phase 5 step 1).
-        if not isinstance(trigger.payload, SendStudyLoaded) or trigger.payload.cut_id != cut_id:
-            raise ExecutionError(f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}")
-        if send_root is None:
-            raise ExecutionError(f"{agent_id} reads a SEND study; no SEND store is set")
-        send_dir = send_root / cut_id / SEND
-        if not send_dir.is_dir():
-            raise ExecutionError(f"no SEND cut {cut_id} under {send_root}")
-        stage = stage_send(send_dir, trigger, dest)
-        assert_clean_stage(stage, (SEND,))
+        # The preclinical zone: a SEND study, never a clinical cut (phase 5 step 1), and
+        # since step 2 a study's NOAEL decisions or an asset's study inventory.
+        sources = preclinical_sources(
+            agent_id, trigger, cut_id, send_root, noael_root, inventory_root
+        )
+        if not set(sources) <= set(policy.reads):
+            raise ExecutionError(f"{policy_name} may not read {sorted(sources)}")
+        stage = stage_areas(sources, trigger, dest)
         recomputed = build_manifest(stage)
         written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
         if written != recomputed.dumps():
             raise ExecutionError("staged files changed after the inputs manifest was written")
         sha = recomputed.sha256()
-        return StagedRun(stage=stage, areas=(SEND, META), inputs_manifest_sha256=sha)
+        return StagedRun(stage=stage, areas=(*sources, META), inputs_manifest_sha256=sha)
+    if isinstance(trigger.payload, NoaelDecision | InventoryLoaded):
+        raise ExecutionError(f"{agent_id} may not read preclinical inputs ({policy_name})")
     if isinstance(trigger.payload, SendStudyLoaded):
         raise ExecutionError(f"{agent_id} may not read a SEND study ({policy_name} does not)")
     audit = AUDIT in policy.reads
@@ -208,7 +262,11 @@ class InProcessExecutor:
         tmf_reader_factory: Callable[[str], StudyReader] | None = None,
         audit_root: Path | None = None,
         send_reader_factory: Callable[[str], StudyReader] | None = None,
+        noael_root: Path | None = None,
+        inventory_root: Path | None = None,
     ) -> None:
+        self._noael_root = noael_root  # <noael_root>/<trigger seq>/noael (phase 5 step 2)
+        self._inventory_root = inventory_root  # <inventory_root>/<asset>/<cut>/inventory
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._send_reader_factory = send_reader_factory  # cut id to a SEND study reader
         self._registry = registry
@@ -229,6 +287,26 @@ class InProcessExecutor:
         if zone_of(agent_id) in TMF_ZONES and self._tmf_reader_factory is not None:
             return LayeredStudyReader(reader, self._tmf_reader_factory(cut_id))
         return reader
+
+    def _preclinical_reader(self, agent_id: str, trigger: Event, cut_id: str) -> StudyReader:
+        """The same areas a sandbox would get (preclinical_sources), read in place."""
+        if zone_of(agent_id) not in SEND_ZONES:
+            raise ExecutionError(f"{agent_id} may not read preclinical inputs")
+        p = trigger.payload
+        if isinstance(p, InventoryLoaded):
+            if self._inventory_root is None:
+                raise ExecutionError(f"{agent_id} reads an inventory; no inventory store is set")
+            return InventoryStageReader.at_cut_dir(
+                self._inventory_root / p.asset_id / cut_id, cut_id=cut_id, study_id=p.asset_id
+            )
+        assert isinstance(p, NoaelDecision)
+        if self._noael_root is None:
+            raise ExecutionError(f"{agent_id} reads NOAEL decisions; no NOAEL extract is set")
+        send = self._reader(agent_id, cut_id)
+        noael = NoaelStageReader.at_cut_dir(
+            noael_dir(self._noael_root, trigger.seq), cut_id=cut_id, study_id=send.study_id
+        )
+        return LayeredStudyReader(send, noael)
 
     def executor_name(self, agent_id: str) -> str:
         return self.name
@@ -254,6 +332,8 @@ class InProcessExecutor:
                 cut_id=cut_id,
                 study_id=trigger.payload.study_id,
             )
+        elif isinstance(trigger.payload, NoaelDecision | InventoryLoaded):
+            reader = self._preclinical_reader(agent_id, trigger, cut_id)
         else:
             reader = self._reader(agent_id, cut_id)
         drafts = run_agent(registered, trigger, reader, log)
@@ -324,7 +404,11 @@ class OpenShellExecutor:
         etmf_root: Path | None = None,
         audit_root: Path | None = None,
         send_root: Path | None = None,
+        noael_root: Path | None = None,
+        inventory_root: Path | None = None,
     ) -> None:
+        self._noael_root = noael_root
+        self._inventory_root = inventory_root
         self._send_root = send_root  # <send_root>/<study>: SEND cuts (preclinical zone)
         self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
@@ -375,6 +459,8 @@ class OpenShellExecutor:
                 etmf_root=self._etmf_root,
                 audit_root=self._audit_root,
                 send_root=self._send_root,
+                noael_root=self._noael_root,
+                inventory_root=self._inventory_root,
             )
             stage = staged.stage
             inputs_sha = staged.inputs_manifest_sha256

@@ -44,7 +44,9 @@ from meridian.domain.events import (
     EventDraft,
     EventPayload,
     FindingRaised,
+    InventoryLoaded,
     LedgerEntry,
+    NoaelDecision,
     SendStudyLoaded,
     SubstrateRun,
 )
@@ -205,6 +207,7 @@ class AgentRunner:
         operational_cuts: Collection[str],
         operational_executors: Collection[str] = ("openshell", "substrate"),
         lost_worker_retries: int = 1,
+        prepare_noael: Callable[[Event, str, Sequence[Event]], object] | None = None,
     ) -> None:
         """operational_cuts ([cuts] operational) may only be processed by one of
         operational_executors ([cuts] operational_executors), decided per run (a zoned
@@ -219,6 +222,9 @@ class AgentRunner:
         self._study_id = study_id
         self._log = log
         self._retries = lost_worker_retries
+        # Phase 5 step 2: writes a NOAEL decision run's extract of the ledger (the study's
+        # decisions up to the trigger) for its SEND cut, before the run is planned.
+        self._prepare_noael = prepare_noael
         self._recorded_runs: dict[tuple[str, str | None, int], set[Provenance]] | None = None
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
@@ -276,10 +282,47 @@ class AgentRunner:
 
     def _study_of(self, trigger: Event) -> str:
         """The study a run belongs to: a SEND study's own id (MRD-101-TOX-01) for the
-        preclinical agents, else the runner's clinical study."""
-        if isinstance(trigger.payload, SendStudyLoaded):
-            return trigger.payload.study_id
+        preclinical agents (its NOAEL decisions too), the asset (MRD-101) for an inventory,
+        else the runner's clinical study."""
+        p = trigger.payload
+        if isinstance(p, SendStudyLoaded | NoaelDecision):
+            return p.study_id
+        if isinstance(p, InventoryLoaded):
+            return p.asset_id
         return self._study_id
+
+    def _noael_triggers(self) -> list[Event]:
+        """The latest NoaelDecision of each study: a run on it sees every decision before
+        it, so an earlier, already revised decision is never run on its own."""
+        latest: dict[str, Event] = {}
+        for e in self._ledger.read(event_types=[EventType.NOAEL_DECISION]):
+            if isinstance(e, Event) and isinstance(e.payload, NoaelDecision):
+                latest[e.payload.study_id] = e
+        return sorted(latest.values(), key=lambda e: e.seq)
+
+    def _inventory_triggers(self) -> list[Event]:
+        return [
+            e
+            for e in self._ledger.read(event_types=[EventType.INVENTORY_LOADED])
+            if isinstance(e, Event) and isinstance(e.payload, InventoryLoaded)
+        ]
+
+    def _cut_of(self, trigger: Event, send: Sequence[Event]) -> str | None:
+        """The cut a run reads: the trigger's own, or for a NOAEL decision the SEND cut its
+        study was last loaded as before it (None: no SEND study yet)."""
+        p = trigger.payload
+        if isinstance(p, DataCut | SendStudyLoaded | InventoryLoaded):
+            return p.cut_id
+        if isinstance(p, NoaelDecision):
+            loads = [
+                e.payload.cut_id
+                for e in send
+                if isinstance(e.payload, SendStudyLoaded)
+                and e.payload.study_id == p.study_id
+                and e.seq < trigger.seq
+            ]
+            return loads[-1] if loads else None
+        return None
 
     def _append(
         self,
@@ -310,19 +353,19 @@ class AgentRunner:
         findings are skipped as duplicates, and the run is recorded only if it produced
         something new (the module docstring); report.unchanged lists the others."""
         report = RunReport()
-        # DataCut events of the clinical study, and SendStudyLoaded events of any SEND
-        # study; each agent is paired only with the trigger types it subscribes to.
+        # DataCut events of the clinical study, SendStudyLoaded events of any SEND study,
+        # and (phase 5 step 2) the latest NoaelDecision of each study and every
+        # InventoryLoaded; each agent is paired only with the trigger types it subscribes to.
+        send = send_study_events(self._ledger)
         by_type = {
             EventType.DATA_CUT: data_cut_events(self._ledger, self._study_id),
-            EventType.SEND_STUDY_LOADED: send_study_events(self._ledger),
+            EventType.SEND_STUDY_LOADED: send,
+            EventType.NOAEL_DECISION: self._noael_triggers(),
+            EventType.INVENTORY_LOADED: self._inventory_triggers(),
         }
+        cut_of = {t.seq: self._cut_of(t, send) for events in by_type.values() for t in events}
         triggers = {
-            kind: [
-                t
-                for t in events
-                if cuts is None
-                or (isinstance(t.payload, DataCut | SendStudyLoaded) and t.payload.cut_id in cuts)
-            ]
+            kind: [t for t in events if cuts is None or cut_of[t.seq] in cuts]
             for kind, events in by_type.items()
         }
         done = self._completed()
@@ -330,7 +373,7 @@ class AgentRunner:
             (registered, trigger)
             for registered in self._registry.enabled()
             if agents is None or registered.agent.agent_id in agents
-            for kind in (EventType.DATA_CUT, EventType.SEND_STUDY_LOADED)
+            for kind in by_type
             if kind in registered.agent.subscribes_to
             for trigger in triggers[kind]
             if rerun
@@ -341,10 +384,26 @@ class AgentRunner:
         self._recorded_runs = self._recorded() if rerun else None
         planned: list[_Planned] = []
         for registered, trigger in pending:
-            assert isinstance(trigger.payload, DataCut | SendStudyLoaded)
+            cut = cut_of[trigger.seq]
+            if cut is None:
+                why = f"no SEND study loaded before NOAEL decision seq {trigger.seq}"
+                report.failed.append((registered.agent.agent_id, trigger.seq, why))
+                continue
+            if isinstance(trigger.payload, NoaelDecision):
+                if self._prepare_noael is None:
+                    report.failed.append(
+                        (registered.agent.agent_id, trigger.seq, "no NOAEL extract writer")
+                    )
+                    continue
+                decisions = [
+                    e
+                    for e in self._ledger.read(event_types=[EventType.NOAEL_DECISION])
+                    if isinstance(e, Event)
+                ]
+                self._prepare_noael(trigger, cut, decisions)
             plan = self._plan(registered, trigger, report)
             if plan is not None:
-                planned.append(_Planned(registered, trigger, trigger.payload.cut_id, plan))
+                planned.append(_Planned(registered, trigger, cut, plan))
         self._run_concurrently(planned, report)
         self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
@@ -432,12 +491,26 @@ class AgentRunner:
     def _require_sandbox(self, pending: list[tuple[RegisteredAgent, Event]]) -> None:
         """Refuse the whole pass, before any event, if an operational cut is pending for
         a run whose executor is not one of the allowed ones."""
+        # Phase 5 step 2: a NOAEL decision is operational when its SEND cut is, and an
+        # inventory load always is (INVENTORY_CUT_PREFIX).
+        send = send_study_events(self._ledger)
+
+        def operational(t: Event) -> str | None:
+            p = t.payload
+            if isinstance(p, DataCut) and p.cut_id in self._operational:
+                return p.cut_id
+            if isinstance(p, InventoryLoaded):
+                return p.cut_id
+            if isinstance(p, NoaelDecision):
+                cut = self._cut_of(t, send)
+                return cut if cut in self._operational else None
+            return None
+
         refused = sorted(
             {
-                (t.payload.cut_id, r.agent.agent_id, executor)
+                (cut, r.agent.agent_id, executor)
                 for r, t in pending
-                if isinstance(t.payload, DataCut)
-                and t.payload.cut_id in self._operational
+                if (cut := operational(t)) is not None
                 and (executor := self._executor.executor_name(r.agent.agent_id))
                 not in self._operational_executors
             }

@@ -123,6 +123,24 @@ def stage_send(send_dir: Path, trigger: Event, dest_root: Path) -> Path:
     return stage
 
 
+def stage_areas(sources: dict[str, Path], trigger: Event, dest_root: Path) -> Path:
+    """Stage named areas (each from a host folder of that name) with meta/: the
+    preclinical zone's general form (phase 5 step 2), for example send/ and noael/ for a
+    NOAEL decision, or inventory/ alone for an inventory load."""
+    stage = dest_root / STAGE_NAME
+    stage.mkdir(parents=True, exist_ok=False)
+    for area, source in sources.items():
+        if source.name != area:
+            raise StagingError(f"only a {area}/ folder may be staged as {area}/, not {source}")
+        (stage / area).mkdir()
+        _copy_area(source, stage / area, area)
+    (stage / META).mkdir()
+    (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
+    write_manifest(stage, at=stage / META / MANIFEST_FILE)
+    assert_clean_stage(stage, tuple(sources))
+    return stage
+
+
 def assert_clean_stage(stage: Path, areas: Sequence[str] = CUT_AREAS) -> None:
     """Raise unless the stage holds only the given areas' *.parquet and meta/ with the
     trigger and the inputs manifest."""

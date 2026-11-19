@@ -17,6 +17,7 @@ from meridian.agents.registry import AgentRegistry
 from meridian.api.identity import ACTOR_HEADER, ROLE_HEADER, People, Person
 from meridian.api.repository import PortfolioEntry, Repository
 from meridian.data.study_store import (
+    InventoryStageReader,
     LayeredStudyReader,
     ParquetStudyReader,
     SendStudyReader,
@@ -54,9 +55,16 @@ class ApiContext:
     # its SEND study id ([preclinical] asset_id and study_id).
     send_root: Path = Path("data/send")
     preclinical_assets: tuple[tuple[str, str], ...] = ()
+    # Phase 5 step 2: inventory cuts under <inventory_root>/<asset>/<cut>/inventory.
+    inventory_root: Path = Path("data/inventory_cuts")
 
     def send_reader(self, study_id: str, cut_id: str) -> StudyReader:
         return SendStudyReader(self.send_root / study_id, cut_id)
+
+    def inventory_reader(self, asset_id: str, cut_id: str) -> StudyReader:
+        return InventoryStageReader.at_cut_dir(
+            self.inventory_root / asset_id / cut_id, cut_id=cut_id, study_id=asset_id
+        )
 
     def tmf_reader(self, cut_id: str) -> StudyReader:
         """Blinded DM of the cut, layered with its eTMF snapshot (index, visits, export)."""
@@ -130,6 +138,8 @@ def repository(
             send_reader=ctx.send_reader,
             tox_config=ctx.agents.tox_study_monitor,
             preclinical_assets=dict(ctx.preclinical_assets),
+            inventory_reader=ctx.inventory_reader,
+            ind_config=ctx.agents.ind_readiness,
         )
     finally:
         ledger.close()

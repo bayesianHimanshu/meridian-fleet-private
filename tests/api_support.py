@@ -272,3 +272,16 @@ def build(root: Path, *, restricted: bool = True) -> Fixture:
         actor="system.conformance",
     )
     return fx
+
+
+# Phase 5 step 2: the AssetLive fields a clinical study's portfolio entry leaves empty.
+LIVE_DEFAULTS: dict[str, object] = {
+    "ind_status": None,
+    "ind_readiness_percent": None,
+    "starting_dose": None,
+}
+
+
+def study_live(open_findings: int) -> dict[str, object]:
+    """MRD-201's live portfolio fields: its open findings, nothing preclinical."""
+    return {"open_findings": open_findings, "noael_status": None, "noael": [], **LIVE_DEFAULTS}

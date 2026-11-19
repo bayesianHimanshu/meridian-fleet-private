@@ -33,6 +33,10 @@ class FindingKind(StrEnum):
     AUDIT = "audit"
     QA_OBSERVATION = "qa_observation"
     TOX_SIGNAL = "tox_signal"  # preclinical: a dose-related or pairwise change, or data quality
+    # Phase 5 step 2: a proposed starting dose for the first human trial (or why none can
+    # be derived), and a gap between the nonclinical inventory and the FIH requirements.
+    DOSE_PROPOSAL = "dose_proposal"
+    IND_READINESS = "ind_readiness"
 
 
 class EventType(StrEnum):
@@ -50,6 +54,7 @@ class EventType(StrEnum):
     QUALITY_OBSERVATION = "quality_observation"
     SEND_STUDY_LOADED = "send_study_loaded"
     NOAEL_DECISION = "noael_decision"
+    INVENTORY_LOADED = "inventory_loaded"
 
 
 class DecisionAction(StrEnum):

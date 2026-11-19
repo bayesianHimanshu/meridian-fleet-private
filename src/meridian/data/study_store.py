@@ -154,6 +154,36 @@ class SendStudyReader(_AreaReader):
         return reader
 
 
+class NoaelStageReader(_AreaReader):
+    """The NOAEL decisions the host staged for one trigger, under <dir>/noael (phase 5
+    step 2): preclinical.dose_translation's view of the ledger, nothing else of it."""
+
+    _areas = ("noael",)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> NoaelStageReader:
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
+
+
+class InventoryStageReader(_AreaReader):
+    """An asset's nonclinical study inventory under <cut dir>/inventory (phase 5 step 2):
+    preclinical.ind_readiness's only input. Its study id is the asset's."""
+
+    _areas = ("inventory",)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> InventoryStageReader:
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
+
+
 # Zones whose agents read a SEND study (staged as /stage/send) and nothing of a clinical cut.
 SEND_ZONES = frozenset({"preclinical"})
 # Zones whose agents also read the cut's safety database snapshot (its blinded area).

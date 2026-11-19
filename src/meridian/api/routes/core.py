@@ -10,11 +10,13 @@ from meridian.api.models import (
     CutSummary,
     DecisionRequest,
     DecisionResponse,
+    DoseTranslationView,
     Enrollment,
     FindingDetail,
     FindingPage,
     Fleet,
     Health,
+    IndReadinessView,
     LedgerPage,
     NoaelDecisionView,
     NoaelHistory,
@@ -264,3 +266,17 @@ def record_noael(study: str, body: NoaelRequest, repo: Repo) -> NoaelDecisionVie
     must be the study's; the findings must exist and be the study's; a revision names the
     current decision in supersedes (409 otherwise). The agent never proposes a NOAEL."""
     return repo.record_noael(study, body)
+
+
+@router.get("/preclinical/{study}/dose-translation", tags=["preclinical"])
+def preclinical_dose_translation(study: str, repo: Repo) -> DoseTranslationView:
+    """The current dose proposal (preclinical.dose_translation) with its working step by
+    step and its sources, or why there is none. A proposal, never a decision."""
+    return repo.dose_translation(study)
+
+
+@router.get("/preclinical/assets/{asset}/ind-readiness", tags=["preclinical"])
+def preclinical_ind_readiness(asset: str, repo: Repo) -> IndReadinessView:
+    """The first-in-human requirements checklist for an asset's nonclinical inventory, with
+    each requirement's status and links to the gap findings (preclinical.ind_readiness)."""
+    return repo.ind_readiness(asset)

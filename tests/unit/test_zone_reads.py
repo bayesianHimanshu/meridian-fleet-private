@@ -50,7 +50,17 @@ def test_only_the_quality_zone_may_read_the_etmf_area() -> None:
 
 
 def test_the_preclinical_zone_reads_the_send_study_and_nothing_of_a_clinical_cut() -> None:
-    assert policies.ALL_POLICIES["preclinical"].reads == ("meta", "send")
+    # Phase 5 step 2: also the NOAEL decisions the host stages, and the study inventory.
+    assert policies.ALL_POLICIES["preclinical"].reads == ("meta", "send", "noael", "inventory")
+
+
+def test_only_the_preclinical_zone_may_read_the_noael_and_inventory_areas() -> None:
+    for area in ("noael", "inventory"):
+        readers = sorted(n for n, p in policies.ALL_POLICIES.items() if area in p.reads)
+        assert readers == ["preclinical"], area
+        assert sorted(n for n, b in policies.BOUNDARIES.items() if area in b.reads) == [
+            "preclinical"
+        ]
 
 
 def test_only_the_preclinical_zone_may_read_the_send_area() -> None:

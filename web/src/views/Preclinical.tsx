@@ -83,6 +83,8 @@ export function PreclinicalView() {
               <Endpoints study={s} />
               <Findings study={s} />
               <NoaelPanel study={s} />
+              <DosePanel study={s} />
+              {s.asset_id ? <IndChecklist assetId={s.asset_id} /> : null}
             </div>
           ))
         : null}
@@ -434,20 +436,105 @@ function NoaelPanel({ study }: { study: Study }) {
   );
 }
 
+type Candidate = Schemas["NoaelCandidate"];
+type DecisionSex = "M" | "F" | "combined";
+const DECISION_SEX: Record<DecisionSex, string> = { M: "Males", F: "Females", combined: "Both sexes" };
+
+/** The first lines of a rationale, as the summary shows them. */
+export function firstLines(text: string, lines = 3, chars = 300): string {
+  const kept = text.trim().split(/\r?\n/).filter((l) => l.trim() !== "").slice(0, lines).join(" ");
+  return kept.length > chars ? `${kept.slice(0, chars).trimEnd()}...` : kept;
+}
+
+/** The form's rules, the same as the API's (the API checks them again). */
+export function noaelProblem(args: {
+  sex: DecisionSex;
+  established: boolean;
+  noael: number | null;
+  loael: number | null;
+  treated: number[];
+  chosen: Candidate[];
+  rationale: string;
+  minChars: number;
+}): string | null {
+  const { sex, established, noael, loael, treated, chosen, rationale, minChars } = args;
+  const lowest = Math.min(...treated);
+  if (!established && loael === null) {
+    return "A NOAEL that is not established needs the LOAEL: the lowest dose with an adverse finding.";
+  }
+  if (!established && loael !== lowest) {
+    return `Not established means an adverse finding at the lowest dose, so the LOAEL is ${String(lowest)}.`;
+  }
+  if (established && noael !== null && loael !== null && loael <= noael) {
+    return "The LOAEL must be above the NOAEL.";
+  }
+  if (loael !== null && chosen.length === 0) {
+    return "A LOAEL rests on at least one finding: choose the findings.";
+  }
+  const other = chosen.find((c) => sex !== "combined" && c.sex !== sex);
+  if (other) {
+    return `${other.finding_id} is not a finding about ${DECISION_SEX[sex].toLowerCase()}: a ${sex} decision rests only on that sex's findings.`;
+  }
+  if (rationale.trim().length < minChars) {
+    return `Give a rationale of at least ${String(minChars)} characters (now ${String(rationale.trim().length)}): what is adverse at the LOAEL and why the changes at the NOAEL are not.`;
+  }
+  return null;
+}
+
+interface CandidateGroup {
+  key: string;
+  label: string;
+  items: Candidate[];
+}
+
+/** Findings grouped by sex, then by the lowest main-study dose where they flag a group. */
+export function groupCandidates(items: Candidate[], sex: DecisionSex, unit: string): CandidateGroup[] {
+  const order: (Candidate["sex"])[] = sex === "combined" ? ["M", "F", null] : [sex];
+  const groups: CandidateGroup[] = [];
+  for (const s of order) {
+    const mine = items.filter((c) => c.sex === s);
+    const byDose = new Map<string, Candidate[]>();
+    for (const c of mine) {
+      const at =
+        c.main_doses.length > 0
+          ? `from ${String(Math.min(...c.main_doses))} ${unit}`
+          : c.recovery_doses.length > 0
+            ? "at recovery only"
+            : "no dose group flagged";
+      byDose.set(at, [...(byDose.get(at) ?? []), c]);
+    }
+    const keys = [...byDose.keys()].sort((a, b) => {
+      const da = Number(/from ([\d.]+)/.exec(a)?.[1] ?? Infinity);
+      const db = Number(/from ([\d.]+)/.exec(b)?.[1] ?? Infinity);
+      return da - db || a.localeCompare(b);
+    });
+    for (const k of keys) {
+      const who = s === null ? "No sex (data quality)" : DECISION_SEX[s];
+      groups.push({ key: `${String(s)}-${k}`, label: `${who}, ${k}`, items: byDose.get(k) ?? [] });
+    }
+  }
+  return groups;
+}
+
 function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHistory"] }) {
   const ids = useId();
   const queryClient = useQueryClient();
   const { person } = useIdentity();
-  const findings = usePreclinicalFindings(study);
   const treated = history.doses.filter((d) => d > 0);
-  const [sex, setSex] = useState<"M" | "F" | "combined">("combined");
+  const candidates = history.candidates ?? [];
+  const minChars = history.rationale_min_chars;
+  const [sex, setSex] = useState<DecisionSex>("combined");
   const [established, setEstablished] = useState(true);
   const [noaelDose, setNoaelDose] = useState<string>(treated[0] === undefined ? "" : String(treated[0]));
   const [loaelDose, setLoaelDose] = useState<string>("");
   const [chosen, setChosen] = useState<string[]>([]);
   const [rationale, setRationale] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const current = history.current.find((d) => d.sex === sex);
+  const picked = candidates.filter((c) => chosen.includes(c.finding_id));
+  const loael = loaelDose === "" ? null : Number(loaelDose);
+  const noael = established ? Number(noaelDose) : null;
   const record = useMutation({
     mutationFn: () =>
       unwrap(
@@ -456,8 +543,8 @@ function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHi
           body: {
             sex,
             established,
-            noael_dose: established ? Number(noaelDose) : null,
-            loael_dose: loaelDose === "" ? null : Number(loaelDose),
+            noael_dose: noael,
+            loael_dose: loael,
             finding_ids: chosen,
             rationale: rationale.trim(),
             supersedes: current?.decision_id ?? null,
@@ -465,39 +552,44 @@ function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHi
         }),
       ),
     onSuccess: () => {
+      setReviewing(false);
       void queryClient.invalidateQueries({ queryKey: [person.actor] });
     },
   });
-  const submit = (e: SyntheticEvent) => {
+  const review = (e: SyntheticEvent) => {
     e.preventDefault();
-    setLocalError(null);
-    if (rationale.trim().length < 20) {
-      setLocalError("Give a rationale of at least 20 characters.");
-      return;
-    }
-    if (loaelDose !== "" && chosen.length === 0) {
-      setLocalError("A LOAEL rests on at least one finding: choose the findings.");
-      return;
-    }
-    record.mutate();
+    const problem = noaelProblem({ sex, established, noael, loael, treated, chosen: picked, rationale, minChars });
+    setLocalError(problem);
+    if (problem === null) setReviewing(true);
   };
-  const items = findings.data?.items.filter((f) => f.study_id === study.study_id) ?? [];
+  const changeSex = (next: DecisionSex) => {
+    setSex(next);
+    if (next !== "combined") {
+      setChosen(chosen.filter((id) => candidates.find((c) => c.finding_id === id)?.sex === next));
+    }
+  };
+  const groups = groupCandidates(candidates, sex, history.dose_unit);
+  const doseText = (d: number | null) => (d === null ? "none" : `${String(d)} ${history.dose_unit}`);
   return (
-    <form className="decision" onSubmit={submit} aria-label="Record a NOAEL decision">
-      <fieldset>
+    <form className="decision" onSubmit={review} aria-label="Record a NOAEL decision">
+      <fieldset disabled={reviewing}>
         <legend>{current ? "Revise the NOAEL" : "Record the NOAEL"}</legend>
         {current ? (
           <p className="muted">
             This revises <span className="mono">{current.decision_id}</span>; both stay in the ledger.
           </p>
         ) : null}
+        <p className="muted">
+          One decision per sex (or both sexes), resting on every finding it cites. A finding you judge incidental
+          is dismissed on its own page, with its reason; this form records only the NOAEL.
+        </p>
         <label className="field" htmlFor={`${ids}-sex`}>
           Sex
           <select
             id={`${ids}-sex`}
             value={sex}
             onChange={(e) => {
-              setSex(e.target.value as "M" | "F" | "combined");
+              changeSex(e.target.value as DecisionSex);
             }}
           >
             <option value="combined">Both sexes</option>
@@ -550,31 +642,46 @@ function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHi
             ))}
           </select>
         </label>
-        <fieldset>
-          <legend>The findings it rests on</legend>
-          <div className="stack" style={{ maxHeight: "16rem", overflowY: "auto" }}>
-            {items.map((f) => (
-              <label key={f.finding_id} className="check">
-                <input
-                  type="checkbox"
-                  checked={chosen.includes(f.finding_id)}
-                  onChange={(e) => {
-                    setChosen(
-                      e.target.checked ? [...chosen, f.finding_id] : chosen.filter((x) => x !== f.finding_id),
-                    );
-                  }}
-                />{" "}
-                <span className="mono">{f.finding_id}</span> {f.title}
-              </label>
+        <fieldset aria-label="The findings it rests on">
+          <legend>
+            The findings it rests on ({String(chosen.length)} chosen
+            {sex === "combined" ? "" : `; ${DECISION_SEX[sex].toLowerCase()} only`})
+          </legend>
+          <div className="stack" style={{ maxHeight: "20rem", overflowY: "auto" }}>
+            {groups.map((g) => (
+              <fieldset key={g.key} aria-label={g.label}>
+                <legend>
+                  {g.label} ({String(g.items.length)})
+                </legend>
+                {g.items.map((f) => (
+                  <div key={f.finding_id}>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={chosen.includes(f.finding_id)}
+                        onChange={(e) => {
+                          setChosen(
+                            e.target.checked ? [...chosen, f.finding_id] : chosen.filter((x) => x !== f.finding_id),
+                          );
+                        }}
+                      />{" "}
+                      <span className="mono">{f.finding_id}</span> {f.title}
+                    </label>{" "}
+                    <FindingLink id={f.finding_id} className="muted">
+                      open <span className="visually-hidden">{f.finding_id}</span>
+                    </FindingLink>
+                  </div>
+                ))}
+              </fieldset>
             ))}
           </div>
         </fieldset>
         <label className="field" htmlFor={`${ids}-rationale`}>
-          Rationale (required)
+          Rationale (required, at least {String(minChars)} characters)
           <textarea
             id={`${ids}-rationale`}
             className="reason"
-            rows={4}
+            rows={6}
             value={rationale}
             onChange={(e) => {
               setRationale(e.target.value);
@@ -587,18 +694,266 @@ function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHi
               {localError}
             </p>
           ) : null}
+        </div>
+        {!reviewing ? (
+          <button type="submit" className="btn">
+            Review the decision
+          </button>
+        ) : null}
+      </fieldset>
+      {reviewing ? (
+        <section className="panel" aria-label="Summary before recording" data-testid="noael-summary">
+          <h3>Before you record</h3>
+          <dl className="kv">
+            <div>
+              <dt>Sex</dt>
+              <dd>{DECISION_SEX[sex]}</dd>
+            </div>
+            <div>
+              <dt>NOAEL</dt>
+              <dd>{established ? doseText(noael) : "not established"}</dd>
+            </div>
+            <div>
+              <dt>LOAEL</dt>
+              <dd>{doseText(loael)}</dd>
+            </div>
+            <div>
+              <dt>Findings ({String(picked.length)})</dt>
+              <dd>
+                <ul>
+                  {picked.map((f) => (
+                    <li key={f.finding_id}>
+                      <span className="mono">{f.finding_id}</span> {f.title}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+            <div>
+              <dt>Rationale</dt>
+              <dd>{firstLines(rationale)}</dd>
+            </div>
+          </dl>
+          {current ? (
+            <p className="message" data-testid="noael-replaces">
+              This replaces decision <span className="mono">{current.decision_id}</span> recorded at{" "}
+              <Time iso={current.recorded_at} />.
+            </p>
+          ) : (
+            <p className="muted">This is the first {DECISION_SEX[sex].toLowerCase()} decision for the study.</p>
+          )}
+          <div className="toolbar">
+            <button
+              type="button"
+              className="btn"
+              disabled={record.isPending}
+              onClick={() => {
+                record.mutate();
+              }}
+            >
+              Confirm and record
+            </button>
+            <button
+              type="button"
+              className="btn outline"
+              disabled={record.isPending}
+              onClick={() => {
+                setReviewing(false);
+              }}
+            >
+              Back to edit
+            </button>
+          </div>
           {record.isError ? <ErrorNote error={record.error} /> : null}
-          {record.isSuccess ? (
-            <p className="message ok" role="status" data-testid="noael-recorded">
-              Recorded as <span className="mono">{record.data.decision_id}</span> (ledger seq{" "}
-              <span className="mono">{record.data.seq}</span>).
+        </section>
+      ) : null}
+      {record.isSuccess ? (
+        <p className="message ok" role="status" data-testid="noael-recorded">
+          Recorded as <span className="mono">{record.data.decision_id}</span> (ledger seq{" "}
+          <span className="mono">{record.data.seq}</span>).
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+const STEP_LABEL: Record<string, string> = {
+  "mrsd:noael_mg_per_kg": "NOAEL",
+  "mrsd:noael_not_established": "NOAEL",
+  "mrsd:hed_mg_per_kg": "Human equivalent dose",
+  "mrsd:hed_cross_check_mg_per_kg": "Cross-check",
+  "mrsd:most_appropriate_species": "Most appropriate species",
+  "mrsd:mrsd_mg_per_kg": "Maximum recommended starting dose",
+  "mrsd:starting_dose_mg": "Starting dose, 60 kg adult",
+  "mrsd:decision_considered": "Decision considered",
+  "mrsd:study_design": "Study design",
+  "mrsd:exposure_information_only": "Exposure (information only)",
+  "mrsd:limitation": "Limitation",
+  "mrsd:safety_factor_used": "Safety factor used",
+};
+
+function DosePanel({ study }: { study: Study }) {
+  const dose = useApi(["preclinical", study.study_id, "dose-translation"], () =>
+    unwrap(
+      api.GET("/api/v1/preclinical/{study}/dose-translation", { params: { path: { study: study.study_id } } }),
+    ),
+  );
+  const steps = dose.data?.current?.steps ?? [];
+  const working = steps.filter((x) => x.role === "primary" || x.statistic === "mrsd:hed_cross_check_mg_per_kg" || x.statistic === "mrsd:most_appropriate_species");
+  const context = steps.filter((x) => !working.includes(x));
+  return (
+    <section className="panel" aria-labelledby="dose-title">
+      <div className="panel-head">
+        <h2 id="dose-title">Dose translation</h2>
+        <span className="src">preclinical.dose_translation, FDA 2005; a proposal, not a decision</span>
+      </div>
+      {dose.isPending ? <Loading what="the dose translation" /> : null}
+      {dose.isError ? <ErrorNote error={dose.error} /> : null}
+      {dose.isSuccess ? (
+        <>
+          <p className={dose.data.current ? "muted" : "message"} data-testid="dose-why">
+            {dose.data.why}
+          </p>
+          {dose.data.current ? (
+            <div className="stack" data-testid="dose-current">
+              <div className="finding-meta">
+                <FindingLink id={dose.data.current.finding_id} className="mono" />
+                <StatusChip status={dose.data.current.status} />
+                {dose.data.current.decided_by ? (
+                  <span className="muted">
+                    by {dose.data.current.decided_by}, ledger seq{" "}
+                    <span className="mono">{dose.data.current.decided_seq}</span>
+                  </span>
+                ) : null}
+              </div>
+              <p className="headline">{dose.data.current.title}</p>
+              <ol className="stack" aria-label="The working, step by step">
+                {working.map((x) => (
+                  <li key={`${x.statistic}-${x.selector}`}>
+                    <strong>{STEP_LABEL[x.statistic] ?? x.statistic}:</strong> {x.display}{" "}
+                    <span className="src mono">source {x.source}</span>
+                  </li>
+                ))}
+              </ol>
+              <ul className="stack" aria-label="Context and limitations">
+                {context.map((x) => (
+                  <li key={`${x.statistic}-${x.selector}`} className="muted">
+                    <strong>{STEP_LABEL[x.statistic] ?? x.statistic}:</strong> {x.display}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {dose.data.superseded.length ? (
+            <p className="muted">
+              Superseded proposals (an earlier NOAEL):{" "}
+              {dose.data.superseded.map((id, i) => (
+                <span key={id}>
+                  {i ? ", " : ""}
+                  <FindingLink id={id} className="mono" />
+                </span>
+              ))}
             </p>
           ) : null}
-        </div>
-        <button type="submit" className="btn" disabled={record.isPending}>
-          Record the decision
-        </button>
-      </fieldset>
-    </form>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+const REQ_STATUS: Record<Schemas["RequirementView"]["status"], string> = {
+  met: "met",
+  not_met: "not met",
+  not_applicable: "not applicable",
+};
+
+const PROBLEM_TEXT: Record<string, string> = {
+  required_study_missing: "no study",
+  duration_short: "shorter than required",
+  report_not_ready: "report not QA audited by submission",
+  glp_status_missing: "GLP status not recorded",
+};
+
+function IndChecklist({ assetId }: { assetId: string }) {
+  const ind = useApi(["preclinical", assetId, "ind-readiness"], () =>
+    unwrap(api.GET("/api/v1/preclinical/assets/{asset}/ind-readiness", { params: { path: { asset: assetId } } })),
+  );
+  return (
+    <section className="panel" aria-labelledby="ind-title">
+      <div className="panel-head">
+        <h2 id="ind-title">IND readiness</h2>
+        <span className="src">preclinical.ind_readiness, ICH M3(R2)</span>
+      </div>
+      {ind.isPending ? <Loading what="the IND readiness checklist" /> : null}
+      {ind.isError ? <ErrorNote error={ind.error} /> : null}
+      {ind.isSuccess && ind.data.status === "not_loaded" ? (
+        <p className="message">No nonclinical inventory has been loaded for {assetId}.</p>
+      ) : null}
+      {ind.isSuccess && ind.data.status === "assessed" ? (
+        <>
+          <p data-testid="ind-summary">
+            <span className="fig">{String(ind.data.percent_met ?? 0)}%</span> of applicable requirements met (
+            {String(ind.data.met)} of {String(ind.data.applicable)}), for a trial of{" "}
+            {String(ind.data.planned_clinical_duration_days)} days of dosing
+            {ind.data.multiple_dose ? " (multiple doses)" : " (one dose)"} and an IND planned for{" "}
+            {ind.data.planned_submission_date}. A summary, not a finding; it does not say the IND can be submitted.
+          </p>
+          <div className="table-wrap" tabIndex={0} aria-label="IND readiness table">
+            <table>
+              <caption className="visually-hidden">Each first-in-human requirement, its status and its study</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Requirement</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Study</th>
+                  <th scope="col">Gap</th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ind.data.requirements.map((r) => (
+                  <tr key={r.id} data-testid={`req-${r.id}`}>
+                    <th scope="row">{r.title}</th>
+                    <td>
+                      <span className={`chip ${r.status === "met" ? "good" : r.status === "not_met" ? "warning" : "outline"}`}>
+                        {REQ_STATUS[r.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {r.study_id ? (
+                        <>
+                          <span className="mono">{r.study_id}</span>
+                          <div className="muted">
+                            {r.duration_weeks !== null ? `${String(r.duration_weeks)} weeks` : ""}
+                            {r.required_weeks !== null ? ` (at least ${r.required_weeks.toPrecision(2)})` : ""}
+                            {r.glp ? `, GLP ${r.glp}` : ""}
+                            {r.report_status ? `, report ${r.report_status.replace("_", " ")}` : ""}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="muted">none</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.problems.map((p) => PROBLEM_TEXT[p] ?? p).join("; ")}
+                      {r.finding_ids.map((id) => (
+                        <div key={id}>
+                          <FindingLink id={id} className="mono" />
+                        </div>
+                      ))}
+                    </td>
+                    <td>
+                      <span title={r.quote}>
+                        {r.source} {r.section}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : null}
+    </section>
   );
 }
