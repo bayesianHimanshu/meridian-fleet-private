@@ -105,6 +105,10 @@ def test_the_worker_reads_the_safety_terms_next_to_its_config(
     shutil.copy(CONFIG.parent / SAFETY_TERMS_FILE, config_dir / SAFETY_TERMS_FILE)
     shutil.copy(CONFIG.parent / "tmf_expected.toml", config_dir / "tmf_expected.toml")
     shutil.copy(CONFIG.parent / "ind_requirements.toml", config_dir / "ind_requirements.toml")
+    shutil.copy(
+        CONFIG.parent / "translational_monitoring.toml",
+        config_dir / "translational_monitoring.toml",
+    )
     elsewhere = tmp_path / "work"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -113,3 +117,5 @@ def test_the_worker_reads_the_safety_terms_next_to_its_config(
     assert agents.sae_reconciler.terms.outcome_of("Recovered") == "RECOVERED/RESOLVED"
     assert agents.tmf_completeness.reference.by_key()["pi_cv"].level == "site"
     assert len(agents.ind_readiness.requirements.requirements) == 11
+    assert agents.translational_bridge.dose == agents.dose_translation  # one conversion
+    assert agents.translational_bridge.mapping.organs[0].id == "liver"

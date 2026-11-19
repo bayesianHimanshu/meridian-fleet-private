@@ -567,6 +567,20 @@ class StartingDose(BaseModel):
     chain: list[ChainLink] = Field(default_factory=list)
 
 
+class MonitoringBrief(BaseModel):
+    """The current monitoring recommendation for a preclinical asset's first-in-human study
+    (phase 5 step 3a): its status, its organs, who decided it."""
+
+    model_config = _FROZEN
+
+    status: Literal["none", "open", "accepted", "escalated", "dismissed", "not_shown"]
+    finding_id: str | None = None
+    organs: list[str] = Field(default_factory=list)
+    unmapped: int = 0
+    decided_by: str | None = None
+    decided_seq: int | None = None
+
+
 class AssetLive(BaseModel):
     """Computed from the ledger at request time, as the caller may see it."""
 
@@ -583,6 +597,8 @@ class AssetLive(BaseModel):
     ind_status: Literal["assessed", "not_loaded", "not_shown"] | None = None
     ind_readiness_percent: float | None = None
     starting_dose: StartingDose | None = None
+    # Phase 5 step 3a: the first-in-human study's monitoring recommendation.
+    monitoring: MonitoringBrief | None = None
 
 
 class PortfolioAsset(BaseModel):
@@ -1070,3 +1086,64 @@ class IndReadinessView(BaseModel):
     met: int
     applicable: int
     requirements: list[RequirementView]
+
+
+class MonitoringSourceView(BaseModel):
+    model_config = _FROZEN
+
+    source: str
+    section: str
+    quote: str
+
+
+class MonitoringItemView(BaseModel):
+    model_config = _FROZEN
+
+    organ: str
+    label: str
+    measure: str
+    frequency: str
+    review: str
+    stopping: str
+    sources: list[MonitoringSourceView]
+    findings: list[str]
+    finding_titles: list[str]
+
+
+class MarginView(BaseModel):
+    model_config = _FROZEN
+
+    label: Literal["NOAEL", "LOAEL"]
+    hed_mg: float
+    human_weight_kg: float | None
+    display: str
+    ratio: float | None
+
+
+class RecommendationView(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    seq: int
+    title: str
+    status: str
+    decided_by: str | None
+    decided_seq: int | None
+    items: list[MonitoringItemView]
+    unmapped: list[str]
+    margins: list[MarginView]
+    starting_dose: str
+    basis: str
+
+
+class TranslationalView(BaseModel):
+    """The Translational panel (phase 5 step 3a): the current monitoring recommendation for
+    the first-in-human study, its sources and the safety margins, or why there is none."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    status: Literal["recommended", "no_decision", "not_run"]
+    why: str
+    current: RecommendationView | None
+    superseded: list[str]

@@ -375,3 +375,60 @@ class IndReadinessConfig(AgentConfig):
     planned_submission_date: date = date(2027, 4, 1)
     requirements: IndRequirements = Field(default_factory=load_ind_requirements)
     visible_to: tuple[Role, ...] = (Role.TOXICOLOGIST, Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)
+
+
+class MonitoringSource(AgentConfig):
+    source: str = Field(min_length=1)
+    section: str = Field(min_length=1)
+    quote: str = Field(min_length=10)
+
+
+class OrganMonitoring(AgentConfig):
+    """One entry of config/translational_monitoring.toml."""
+
+    id: str = Field(pattern=r"^[a-z_]+$")
+    label: str = Field(min_length=1)
+    matches: tuple[str, ...] = Field(min_length=1)
+    measure: str = Field(min_length=1)
+    frequency: str = Field(min_length=1)
+    review: str = Field(min_length=1)
+    stopping: str = Field(min_length=1)
+    sources: tuple[MonitoringSource, ...] = Field(min_length=1)
+
+
+class TranslationalMapping(AgentConfig):
+    basis: MonitoringSource
+    organs: tuple[OrganMonitoring, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique(self) -> TranslationalMapping:
+        if len({o.id for o in self.organs}) != len(self.organs):
+            raise ValueError("an organ id is used twice")
+        return self
+
+
+TRANSLATIONAL_FILE = "translational_monitoring.toml"
+
+
+def load_translational_mapping(path: Path | None = None) -> TranslationalMapping:
+    """config/translational_monitoring.toml next to the config file in use."""
+    config = os.environ.get(CONFIG_FILE_ENV)
+    default = (Path(config).parent if config else Path("config")) / TRANSLATIONAL_FILE
+    with (path or default).open("rb") as handle:
+        return TranslationalMapping.model_validate(tomllib.load(handle))
+
+
+class TranslationalBridgeConfig(AgentConfig):
+    """preclinical.translational_bridge 1.0.0 (docs/translational-notes.md, pre-registered).
+    dose is [agents.dose_translation] itself (AgentsSettings copies it in), so the margins
+    use the same conversion factor and citation as the dose proposal."""
+
+    asset_id: str = "MRD-101"
+    mapping: TranslationalMapping = Field(default_factory=load_translational_mapping)
+    dose: DoseTranslationConfig = Field(default_factory=DoseTranslationConfig)
+    visible_to: tuple[Role, ...] = (
+        Role.TOXICOLOGIST,
+        Role.MEDICAL_MONITOR,
+        Role.PORTFOLIO_LEAD,
+        Role.QA_AUDITOR,
+    )

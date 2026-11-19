@@ -40,7 +40,7 @@ RUN mkdir -m 0755 /stage \
     done
 COPY --from=build /opt/meridian/venv /opt/meridian/venv
 COPY config/default.toml config/sites.toml config/safety_terms.toml config/tmf_expected.toml \
-     config/ind_requirements.toml /opt/meridian/config/
+     config/ind_requirements.toml config/translational_monitoring.toml /opt/meridian/config/
 ENV PATH=/opt/meridian/venv/bin:$PATH \
     MERIDIAN_CONFIG_FILE=/opt/meridian/config/default.toml \
     PYTHONDONTWRITEBYTECODE=1

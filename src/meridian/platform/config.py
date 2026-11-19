@@ -33,6 +33,7 @@ from meridian.platform.agent_settings import (
     SaeReconcilerConfig,
     TmfCompletenessConfig,
     ToxStudyMonitorConfig,
+    TranslationalBridgeConfig,
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -120,6 +121,22 @@ class AgentsSettings(BaseModel):
     tox_study_monitor: ToxStudyMonitorConfig = Field(default_factory=ToxStudyMonitorConfig)
     dose_translation: DoseTranslationConfig = Field(default_factory=DoseTranslationConfig)
     ind_readiness: IndReadinessConfig = Field(default_factory=IndReadinessConfig)
+    translational_bridge: TranslationalBridgeConfig = Field(
+        default_factory=TranslationalBridgeConfig
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bridge_uses_the_dose_config(cls, data: object) -> object:
+        """translational_bridge's margins use [agents.dose_translation] itself: the same
+        factor and citation as the proposal, never a copy that could drift."""
+        if isinstance(data, dict) and "dose_translation" in data:
+            bridge = dict(data.get("translational_bridge") or {})
+            if "dose" in bridge:
+                raise ValueError("set the conversion in [agents.dose_translation] only")
+            bridge["dose"] = data["dose_translation"]
+            data = {**data, "translational_bridge": bridge}
+        return data
 
 
 class RuntimeSettings(BaseModel):

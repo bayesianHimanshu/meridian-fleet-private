@@ -37,6 +37,8 @@ class FindingKind(StrEnum):
     # be derived), and a gap between the nonclinical inventory and the FIH requirements.
     DOSE_PROPOSAL = "dose_proposal"
     IND_READINESS = "ind_readiness"
+    # Phase 5 step 3a: how a first-in-human study should monitor the NOAEL's target organs.
+    MONITORING_RECOMMENDATION = "monitoring_recommendation"
 
 
 class EventType(StrEnum):

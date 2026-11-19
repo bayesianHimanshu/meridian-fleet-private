@@ -33,6 +33,7 @@ from meridian.api.models import (
     ReviewQueue,
     StudySummary,
     TmfCompletenessView,
+    TranslationalView,
     UnblindedCases,
     VerifyReport,
     WhoAmI,
@@ -280,3 +281,11 @@ def preclinical_ind_readiness(asset: str, repo: Repo) -> IndReadinessView:
     """The first-in-human requirements checklist for an asset's nonclinical inventory, with
     each requirement's status and links to the gap findings (preclinical.ind_readiness)."""
     return repo.ind_readiness(asset)
+
+
+@router.get("/preclinical/{study}/translational", tags=["preclinical"])
+def preclinical_translational(study: str, repo: Repo) -> TranslationalView:
+    """The current monitoring recommendation for the first-in-human study
+    (preclinical.translational_bridge): per target organ what to measure and when, with
+    its sources, and the safety margins. A proposal, never a decision."""
+    return repo.translational(study)

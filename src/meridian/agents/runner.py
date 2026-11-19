@@ -34,7 +34,7 @@ from meridian.agents.registry import AgentRegistry, RegisteredAgent
 from meridian.data.datacut import Ledger, data_cut_events, send_study_events
 from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import dedup_prefix
-from meridian.domain.enums import EventType, Role, Visibility
+from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
@@ -44,6 +44,7 @@ from meridian.domain.events import (
     EventDraft,
     EventPayload,
     FindingRaised,
+    HumanDecision,
     InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
@@ -225,6 +226,7 @@ class AgentRunner:
         # Phase 5 step 2: writes a NOAEL decision run's extract of the ledger (the study's
         # decisions up to the trigger) for its SEND cut, before the run is planned.
         self._prepare_noael = prepare_noael
+        self._decision_study: dict[int, str] = {}  # acceptance seq -> its proposal's study
         self._recorded_runs: dict[tuple[str, str | None, int], set[Provenance]] | None = None
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
@@ -289,7 +291,39 @@ class AgentRunner:
             return p.study_id
         if isinstance(p, InventoryLoaded):
             return p.asset_id
+        if isinstance(p, HumanDecision) and trigger.seq in self._decision_study:
+            return self._decision_study[trigger.seq]
         return self._study_id
+
+    def _bridge_triggers(self) -> list[Event]:
+        """Phase 5 step 3a (preclinical.translational_bridge): for each SEND study, the
+        latest of its latest NoaelDecision and the HumanDecisions that accept one of its dose
+        proposals. Listed under HUMAN_DECISION, so only an agent subscribed to that type is
+        paired with them; the study of each acceptance is kept for _study_of and _cut_of."""
+        proposals: dict[str, str] = {}
+        accepts: list[Event] = []
+        for e in self._ledger.read(
+            event_types=[EventType.FINDING_RAISED, EventType.HUMAN_DECISION]
+        ):
+            if not isinstance(e, Event):
+                continue
+            p = e.payload
+            if isinstance(p, FindingRaised) and p.finding.kind is FindingKind.DOSE_PROPOSAL:
+                if p.finding.finding_id is not None:
+                    proposals[p.finding.finding_id] = p.finding.study_id
+            elif (
+                isinstance(p, HumanDecision)
+                and p.decision.action is DecisionAction.ACCEPTED
+                and p.decision.finding_id in proposals
+            ):
+                self._decision_study[e.seq] = proposals[p.decision.finding_id]
+                accepts.append(e)
+        latest: dict[str, Event] = {}
+        for e in [*self._noael_triggers(), *accepts]:
+            study = self._study_of(e)
+            if study not in latest or e.seq > latest[study].seq:
+                latest[study] = e
+        return sorted(latest.values(), key=lambda e: e.seq)
 
     def _noael_triggers(self) -> list[Event]:
         """The latest NoaelDecision of each study: a run on it sees every decision before
@@ -313,12 +347,13 @@ class AgentRunner:
         p = trigger.payload
         if isinstance(p, DataCut | SendStudyLoaded | InventoryLoaded):
             return p.cut_id
-        if isinstance(p, NoaelDecision):
+        if isinstance(p, NoaelDecision | HumanDecision):
+            study = self._study_of(trigger)
             loads = [
                 e.payload.cut_id
                 for e in send
                 if isinstance(e.payload, SendStudyLoaded)
-                and e.payload.study_id == p.study_id
+                and e.payload.study_id == study
                 and e.seq < trigger.seq
             ]
             return loads[-1] if loads else None
@@ -362,6 +397,8 @@ class AgentRunner:
             EventType.SEND_STUDY_LOADED: send,
             EventType.NOAEL_DECISION: self._noael_triggers(),
             EventType.INVENTORY_LOADED: self._inventory_triggers(),
+            # Phase 5 step 3a: the bridge's triggers (NoaelDecisions and acceptances).
+            EventType.HUMAN_DECISION: self._bridge_triggers(),
         }
         cut_of = {t.seq: self._cut_of(t, send) for events in by_type.values() for t in events}
         triggers = {
@@ -389,18 +426,26 @@ class AgentRunner:
                 why = f"no SEND study loaded before NOAEL decision seq {trigger.seq}"
                 report.failed.append((registered.agent.agent_id, trigger.seq, why))
                 continue
-            if isinstance(trigger.payload, NoaelDecision):
+            if isinstance(trigger.payload, NoaelDecision | HumanDecision):
                 if self._prepare_noael is None:
                     report.failed.append(
                         (registered.agent.agent_id, trigger.seq, "no NOAEL extract writer")
                     )
                     continue
-                decisions = [
+                # The decisions, and (step 3a) the findings and decisions the bridge's
+                # tables are built from; the host writes the extract, agents never read it.
+                events = [
                     e
-                    for e in self._ledger.read(event_types=[EventType.NOAEL_DECISION])
+                    for e in self._ledger.read(
+                        event_types=[
+                            EventType.NOAEL_DECISION,
+                            EventType.FINDING_RAISED,
+                            EventType.HUMAN_DECISION,
+                        ]
+                    )
                     if isinstance(e, Event)
                 ]
-                self._prepare_noael(trigger, cut, decisions)
+                self._prepare_noael(trigger, cut, events)
             plan = self._plan(registered, trigger, report)
             if plan is not None:
                 planned.append(_Planned(registered, trigger, cut, plan))
@@ -501,7 +546,7 @@ class AgentRunner:
                 return p.cut_id
             if isinstance(p, InventoryLoaded):
                 return p.cut_id
-            if isinstance(p, NoaelDecision):
+            if isinstance(p, NoaelDecision | HumanDecision):
                 cut = self._cut_of(t, send)
                 return cut if cut in self._operational else None
             return None

@@ -133,8 +133,35 @@ const IND: Schemas["IndReadinessView"] = {
   ],
 };
 
-function preclinical(noael: Schemas["NoaelHistory"], dose = doseView(), ind = IND) {
+const TRANSLATIONAL: Schemas["TranslationalView"] = {
+  study_id: STUDY, status: "recommended", why: "How the first-in-human study should monitor the organs the NOAEL rests on.",
+  current: {
+    finding_id: "PRE-0237", seq: 19980, title: "Monitoring recommendation for MRD-101's first-in-human study: liver, heart",
+    status: "open", decided_by: null, decided_seq: null,
+    items: [
+      { organ: "liver", label: "Liver", measure: "ALT, AST, ALP and total bilirubin", frequency: "Before dosing and after the last dose",
+        review: "ALT or AST above 3 x ULN: repeat within 48 to 72 hours", stopping: "Consider stopping if ALT or AST > 8 x ULN",
+        sources: [{ source: "FDA 2009 DILI", section: "IV.A.5", quote: "Discontinuation of treatment should be considered if: ALT or AST >8xULN" }],
+        findings: ["PRE-0165", "PRE-0198"], finding_titles: ["AST", "Liver necrosis"] },
+      { organ: "heart", label: "Heart (myocardium)", measure: "12-lead ECG with QTc; cardiac troponin (I or T)",
+        frequency: "ECG at baseline and periodically on treatment", review: "QTc above 450 ms", stopping: "QTc > 500 ms",
+        sources: [{ source: "ICH E14", section: "II.A.2 (2.1.2)", quote: "increases in QT/QTc to >500 ms" }],
+        findings: ["PRE-0155"], finding_titles: ["Heart"] },
+    ],
+    unmapped: ["PRE-0153, unmapped (no mapping entry for dose_related_incidence:mi:ADRENAL GLAND:VACUOLIZATION:M:main): Adrenal"],
+    margins: [
+      { label: "NOAEL", hed_mg: 19.35, human_weight_kg: 60, display: "NOAEL 2 mg/kg as a human equivalent dose: 0.323 mg/kg, 19.4 mg", ratio: 10 },
+      { label: "LOAEL", hed_mg: 193.5, human_weight_kg: 60, display: "LOAEL 20 mg/kg as a human equivalent dose: 3.23 mg/kg, 194 mg", ratio: 100 },
+    ],
+    starting_dose: "Planned starting dose 1.94 mg (PRE-0232, accepted by karan.mehta)",
+    basis: "Why nonclinical findings shape Phase 1 monitoring: FDA 2007 grading scale, III",
+  },
+  superseded: [],
+};
+
+function preclinical(noael: Schemas["NoaelHistory"], dose = doseView(), ind = IND, translational = TRANSLATIONAL) {
   server.use(
+    http.get(`${BASE}/preclinical/${STUDY}/translational`, () => HttpResponse.json(translational)),
     http.get(`${BASE}/preclinical/${STUDY}/dose-translation`, () => HttpResponse.json(dose)),
     http.get(`${BASE}/preclinical/assets/MRD-101/ind-readiness`, () => HttpResponse.json(ind)),
     http.get(`${BASE}/preclinical/studies`, () => HttpResponse.json([study])),
@@ -384,6 +411,19 @@ describe("Portfolio NOAEL field", () => {
     expect(screen.queryByText(/open findings to review/)).toBeNull();
   });
 
+  it("shows MRD-101's first-in-human monitoring status", async () => {
+    server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json(portfolio({
+      open_findings: 4, noael_status: "decided", noael: [], ind_status: "assessed", ind_readiness_percent: 63.6,
+      starting_dose: { status: "planned", dose_mg: 1.9355, mrsd_mg_per_kg: 0.032258, human_weight_kg: 60, why: "Accepted.", chain: [] },
+      monitoring: { status: "accepted", finding_id: "PRE-0237", organs: ["Liver", "Heart (myocardium)"], unmapped: 0,
+        decided_by: "karan.mehta", decided_seq: 19990 },
+    }))));
+    renderApp("/portfolio", "rahul.iyer");
+    const field = await screen.findByTestId("monitoring-field");
+    expect(field.textContent).toContain("First-in-human monitoring: accepted (Liver, Heart (myocardium)) by karan.mehta, ledger seq 19990");
+    expect(screen.getByTestId("dose-field").textContent).toContain("Planned first-in-human starting dose: 1.94 mg");
+  });
+
   it("shows MRD-101's IND readiness and why there is no starting dose yet", async () => {
     server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json(portfolio({
       open_findings: 4, noael_status: "not_yet_decided", noael: [], ind_status: "assessed", ind_readiness_percent: 63.6,
@@ -441,6 +481,34 @@ describe("Dose translation and IND readiness", () => {
     expect(gap.textContent).toContain("no study");
     expect(within(gap).getByRole("link", { name: "PRE-0244" })).toBeTruthy();
     expect(gap.textContent).toContain("ICH M3(R2) III (3)");
+  });
+});
+
+describe("Translational panel", () => {
+  it("shows monitoring per organ with its sources, the unmapped findings and the margins", async () => {
+    preclinical(history([], false));
+    renderApp("/preclinical", "rahul.iyer");
+    const current = await screen.findByTestId("translational-current");
+    const liver = within(current).getByRole("article", { name: "Monitoring: Liver" });
+    expect(liver.textContent).toContain("MeasureALT, AST, ALP and total bilirubin");
+    expect(liver.textContent).toContain("StoppingConsider stopping if ALT or AST > 8 x ULN");
+    expect(within(liver).getByRole("link", { name: "PRE-0198" })).toBeTruthy();
+    expect(within(liver).getByText(/FDA 2009 DILI, IV.A.5:/)).toBeTruthy();
+    expect(within(current).getByRole("article", { name: "Monitoring: Heart (myocardium)" }).textContent).toContain("QTc");
+    expect(within(current).getByLabelText("Unmapped findings").textContent).toContain("PRE-0153, unmapped");
+    expect(within(current).getByTestId("margin-NOAEL").textContent).toContain("10.0 x");
+    expect(within(current).getByTestId("margin-LOAEL").textContent).toContain("100 x");
+    expect(current.textContent).toContain("accepted by karan.mehta");
+  });
+
+  it("says why there is no recommendation", async () => {
+    preclinical(history([], false), doseView(), IND, {
+      study_id: STUDY, status: "no_decision", why: "No NOAEL decision is recorded, so preclinical.translational_bridge has nothing to map.",
+      current: null, superseded: [],
+    });
+    renderApp("/preclinical", "rahul.iyer");
+    expect((await screen.findByTestId("translational-why")).textContent).toContain("nothing to map");
+    expect(screen.queryByTestId("translational-current")).toBeNull();
   });
 });
 

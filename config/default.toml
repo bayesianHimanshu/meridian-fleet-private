@@ -202,6 +202,7 @@ enabled = [
     "preclinical.tox_study_monitor",
     "preclinical.dose_translation",
     "preclinical.ind_readiness",
+    "preclinical.translational_bridge",
 ]
 
 [agents.kri_monitor]
@@ -350,3 +351,11 @@ planned_clinical_duration_days = 14
 multiple_dose = true
 planned_submission_date = 2027-04-01
 visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]
+
+[agents.translational_bridge]
+# preclinical.translational_bridge 1.0.0 (phase 5 step 3a), pre-registered in
+# docs/translational-notes.md before its code. The mapping is
+# config/translational_monitoring.toml; the margins use [agents.dose_translation] itself
+# (copied in by AgentsSettings: never set a conversion here). Decided by the medical monitor.
+asset_id = "MRD-101"
+visible_to = ["toxicologist", "medical_monitor", "portfolio_lead", "qa_auditor"]

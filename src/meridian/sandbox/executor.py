@@ -38,6 +38,7 @@ from meridian.domain.events import (
     AuditReviewRequested,
     DataCut,
     Event,
+    HumanDecision,
     InventoryLoaded,
     NoaelDecision,
     SendStudyLoaded,
@@ -137,7 +138,7 @@ def preclinical_sources(
     for a SendStudyLoaded; the SEND cut and the NOAEL extract for a NoaelDecision; the
     inventory cut for an InventoryLoaded."""
     p = trigger.payload
-    if not isinstance(p, SendStudyLoaded | NoaelDecision | InventoryLoaded):
+    if not isinstance(p, SendStudyLoaded | NoaelDecision | HumanDecision | InventoryLoaded):
         raise ExecutionError(
             f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}, a NOAEL decision "
             "or an inventory load"
@@ -160,7 +161,7 @@ def preclinical_sources(
         if p.cut_id != cut_id:
             raise ExecutionError(f"trigger {trigger.seq} is not the SendStudyLoaded of {cut_id}")
         return {SEND: send_dir}
-    if isinstance(p, NoaelDecision):
+    if isinstance(p, NoaelDecision | HumanDecision):
         if noael_root is None:
             raise ExecutionError(f"{agent_id} reads NOAEL decisions; no NOAEL extract is set")
         area = noael_dir(noael_root, trigger.seq) / NOAEL
@@ -204,7 +205,7 @@ def stage_run(
             raise ExecutionError("staged files changed after the inputs manifest was written")
         sha = recomputed.sha256()
         return StagedRun(stage=stage, areas=(*sources, META), inputs_manifest_sha256=sha)
-    if isinstance(trigger.payload, NoaelDecision | InventoryLoaded):
+    if isinstance(trigger.payload, NoaelDecision | InventoryLoaded | HumanDecision):
         raise ExecutionError(f"{agent_id} may not read preclinical inputs ({policy_name})")
     if isinstance(trigger.payload, SendStudyLoaded):
         raise ExecutionError(f"{agent_id} may not read a SEND study ({policy_name} does not)")
@@ -299,7 +300,7 @@ class InProcessExecutor:
             return InventoryStageReader.at_cut_dir(
                 self._inventory_root / p.asset_id / cut_id, cut_id=cut_id, study_id=p.asset_id
             )
-        assert isinstance(p, NoaelDecision)
+        assert isinstance(p, NoaelDecision | HumanDecision)
         if self._noael_root is None:
             raise ExecutionError(f"{agent_id} reads NOAEL decisions; no NOAEL extract is set")
         send = self._reader(agent_id, cut_id)
@@ -332,7 +333,7 @@ class InProcessExecutor:
                 cut_id=cut_id,
                 study_id=trigger.payload.study_id,
             )
-        elif isinstance(trigger.payload, NoaelDecision | InventoryLoaded):
+        elif isinstance(trigger.payload, NoaelDecision | InventoryLoaded | HumanDecision):
             reader = self._preclinical_reader(agent_id, trigger, cut_id)
         else:
             reader = self._reader(agent_id, cut_id)

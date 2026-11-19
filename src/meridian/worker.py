@@ -50,6 +50,7 @@ from meridian.domain.events import (
     AuditReviewRequested,
     DataCut,
     Event,
+    HumanDecision,
     InventoryLoaded,
     NoaelDecision,
     SendStudyLoaded,
@@ -57,8 +58,10 @@ from meridian.domain.events import (
 from meridian.platform.agent_settings import (
     IND_REQUIREMENTS_FILE,
     SAFETY_TERMS_FILE,
+    TRANSLATIONAL_FILE,
     load_ind_requirements,
     load_safety_terms,
+    load_translational_mapping,
 )
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
@@ -135,6 +138,11 @@ def load_agents_settings(path: Path) -> AgentsSettings:
     if "requirements" not in ind:
         requirements = load_ind_requirements(path.parent / IND_REQUIREMENTS_FILE)
         agents = {**agents, "ind_readiness": {**ind, "requirements": requirements.model_dump()}}
+    # And the translational monitoring mapping (config/translational_monitoring.toml, 3a).
+    bridge = dict(agents.get("translational_bridge", {}))
+    if "mapping" not in bridge:
+        mapping = load_translational_mapping(path.parent / TRANSLATIONAL_FILE)
+        agents = {**agents, "translational_bridge": {**bridge, "mapping": mapping.model_dump()}}
     return AgentsSettings.model_validate(agents)
 
 
@@ -183,7 +191,7 @@ def execute(
             study = SendStudyReader.at_cut_dir(
                 cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.study_id
             )
-        elif isinstance(trigger.payload, NoaelDecision):
+        elif isinstance(trigger.payload, NoaelDecision | HumanDecision):
             # A NOAEL decision (phase 5 step 2): send/ and noael/ are staged; the SEND cut
             # comes from the host's context table, the decisions from noael/.
             study_id, send_cut = read_noael_context(cut_dir)

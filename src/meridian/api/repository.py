@@ -60,6 +60,10 @@ from meridian.api.models import (
     IndReadinessView,
     LatestNarrative,
     LedgerPage,
+    MarginView,
+    MonitoringBrief,
+    MonitoringItemView,
+    MonitoringSourceView,
     NarrativeView,
     NoaelBrief,
     NoaelCandidate,
@@ -76,6 +80,7 @@ from meridian.api.models import (
     PreviousDecision,
     ProposalView,
     RbqmSites,
+    RecommendationView,
     Reconciliation,
     RequirementView,
     ReviewQueue,
@@ -86,6 +91,7 @@ from meridian.api.models import (
     StudySummary,
     TmfCompletenessView,
     TmfFindingItem,
+    TranslationalView,
     UnblindedCases,
     VerifyReport,
 )
@@ -499,7 +505,7 @@ def _latest_wins(snap: Snapshot) -> None:
     readiness: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
     for r in snap.raised.values():
         f = r.finding
-        if f.kind is FindingKind.DOSE_PROPOSAL:
+        if f.kind in (FindingKind.DOSE_PROPOSAL, FindingKind.MONITORING_RECOMMENDATION):
             proposals[(f.agent_id, f.study_id)].append(r)
         elif f.kind is FindingKind.IND_READINESS:
             readiness[(f.agent_id, f.study_id)].append(r)
@@ -1623,6 +1629,7 @@ class Repository:
                     noael_status="not_shown",
                     ind_status="not_shown",
                     starting_dose=self.starting_dose(study),
+                    monitoring=self.monitoring_brief(study),
                 )
             current = [v for v in self._noael_views(study) if v.current]
             briefs = [
@@ -1645,6 +1652,7 @@ class Repository:
                 ind_status=None if ind is None else ind.status,
                 ind_readiness_percent=None if ind is None else ind.percent_met,
                 starting_dose=self.starting_dose(study),
+                monitoring=self.monitoring_brief(study),
             )
 
         return Portfolio(
@@ -1961,6 +1969,161 @@ class Repository:
             decided_by=None if decision is None else decision.actor,
             decided_seq=None if last is None else last.seq,
             decision_reason=None if decision is None else decision.reason,
+        )
+
+    def _recommendations(self, study_id: str) -> tuple[_Raised | None, list[_Raised]]:
+        snap = self.snapshot()
+        mine = sorted(
+            (
+                r
+                for r in snap.raised.values()
+                if r.finding.kind is FindingKind.MONITORING_RECOMMENDATION
+                and r.finding.study_id == study_id
+            ),
+            key=lambda r: r.event.seq,
+        )
+        current = [r for r in mine if r.finding_id not in snap.superseded_by]
+        return (current[-1] if current else None), [r for r in mine if r not in current]
+
+    def _recommendation_view(self, r: _Raised) -> RecommendationView:
+        snap = self.snapshot()
+        history = snap.decisions.get(r.finding_id, [])
+        last = history[-1] if history else None
+        decision = (
+            last.payload.decision
+            if last is not None and isinstance(last.payload, HumanDecision)
+            else None
+        )
+        ev = r.finding.evidence
+
+        def fields(e: Evidence) -> dict[str, str]:
+            return dict(p.split("=", 1) for p in e.selector.split("; ") if "=" in p)
+
+        items: list[MonitoringItemView] = []
+        for e in ev:
+            if not e.statistic.startswith("monitoring:organ:"):
+                continue
+            organ = e.statistic.removeprefix("monitoring:organ:")
+            text = {
+                x.statistic.split(":")[1]: (x.display or "").split(": ", 1)[-1]
+                for x in ev
+                if x.statistic.endswith(f":{organ}")
+                and x.statistic.split(":")[1] in ("measure", "frequency", "review", "stopping")
+            }
+            sources = [
+                MonitoringSourceView(
+                    source=fields(x)["SOURCE"],
+                    section=fields(x)["SECTION"],
+                    quote=(x.display or "").split(': "', 1)[-1].removesuffix('"'),
+                )
+                for x in ev
+                if x.statistic == f"monitoring:source:{organ}"
+            ]
+            mine = [
+                x for x in ev if x.statistic == "monitoring:finding" and fields(x)["ORGAN"] == organ
+            ]
+            items.append(
+                MonitoringItemView(
+                    organ=organ,
+                    label=(e.display or organ).split(":", 1)[0],
+                    measure=text.get("measure", ""),
+                    frequency=text.get("frequency", ""),
+                    review=text.get("review", ""),
+                    stopping=text.get("stopping", ""),
+                    sources=sources,
+                    findings=[fields(x)["FINDING"] for x in mine],
+                    finding_titles=[x.display or "" for x in mine],
+                )
+            )
+        ratios = {
+            e.statistic.split(":")[1].removesuffix("_margin"): e.value
+            for e in ev
+            if e.statistic.endswith("_margin")
+        }
+        margins = [
+            MarginView(
+                label="NOAEL" if e.statistic == "monitoring:noael_hed_mg" else "LOAEL",
+                hed_mg=e.value,
+                human_weight_kg=e.threshold,
+                display=e.display or "",
+                ratio=ratios.get(e.statistic.split(":")[1].removesuffix("_hed_mg")),
+            )
+            for e in ev
+            if e.statistic in ("monitoring:noael_hed_mg", "monitoring:loael_hed_mg")
+        ]
+        start = next(
+            (e.display or "" for e in ev if e.statistic == "monitoring:starting_dose_mg"), ""
+        )
+        basis = next((e.display or "" for e in ev if e.statistic == "monitoring:basis"), "")
+        return RecommendationView(
+            finding_id=r.finding_id,
+            seq=r.event.seq,
+            title=r.finding.title,
+            status=snap.status(r.finding_id),
+            decided_by=None if decision is None else decision.actor,
+            decided_seq=None if last is None else last.seq,
+            items=items,
+            unmapped=[e.display or "" for e in ev if e.statistic == "monitoring:unmapped"],
+            margins=margins,
+            starting_dose=start,
+            basis=basis,
+        )
+
+    def translational(self, study_id: str) -> TranslationalView:
+        """The Translational panel: preclinical roles, as the rest of the study's page."""
+        self._send_study(study_id)
+        current, earlier = self._recommendations(study_id)
+        superseded = [r.finding_id for r in earlier]
+        if current is not None:
+            return TranslationalView(
+                study_id=study_id,
+                status="recommended",
+                why=(
+                    "How the first-in-human study should monitor the organs the NOAEL rests "
+                    "on: a proposal the medical monitor accepts, escalates or dismisses."
+                ),
+                current=self._recommendation_view(current),
+                superseded=superseded,
+            )
+        if not any(v.current for v in self._noael_views(study_id)):
+            return TranslationalView(
+                study_id=study_id,
+                status="no_decision",
+                why=(
+                    "No NOAEL decision is recorded, so preclinical.translational_bridge has "
+                    "nothing to map: it starts from the findings the NOAEL rests on."
+                ),
+                current=None,
+                superseded=superseded,
+            )
+        return TranslationalView(
+            study_id=study_id,
+            status="not_run",
+            why="A NOAEL decision is recorded; preclinical.translational_bridge has not run yet.",
+            current=None,
+            superseded=superseded,
+        )
+
+    def monitoring_brief(self, study_id: str) -> MonitoringBrief:
+        if not visibility.can_see_dose_proposal(self.role):
+            return MonitoringBrief(status="not_shown")
+        current, _ = self._recommendations(study_id)
+        if current is None:
+            return MonitoringBrief(status="none")
+        view = self._recommendation_view(current)
+        states: dict[str, Literal["open", "accepted", "escalated", "dismissed"]] = {
+            "accepted": "accepted",
+            "escalated": "escalated",
+            "dismissed": "dismissed",
+        }
+        status = states.get(view.status, "open")
+        return MonitoringBrief(
+            status=status,
+            finding_id=view.finding_id,
+            organs=[i.label for i in view.items],
+            unmapped=len(view.unmapped),
+            decided_by=view.decided_by,
+            decided_seq=view.decided_seq,
         )
 
     def dose_translation(self, study_id: str) -> DoseTranslationView:

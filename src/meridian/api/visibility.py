@@ -174,6 +174,8 @@ def can_see_study_data(role: Role) -> bool:
 DECIDERS: dict[FindingKind, frozenset[Role]] = {
     FindingKind.AUDIT: frozenset({Role.CLINICAL_OPS_LEAD}),
     FindingKind.DOSE_PROPOSAL: frozenset({Role.MEDICAL_MONITOR, Role.TOXICOLOGIST}),
+    # Phase 5 step 3a: a monitoring recommendation is the medical monitor's alone.
+    FindingKind.MONITORING_RECOMMENDATION: frozenset({Role.MEDICAL_MONITOR}),
     FindingKind.QA_OBSERVATION: frozenset(
         {Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD}
     ),

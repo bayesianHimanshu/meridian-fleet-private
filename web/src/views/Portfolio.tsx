@@ -74,6 +74,7 @@ export function PortfolioView() {
                     {a.live?.noael_status ? <NoaelField live={a.live} /> : null}
                     {a.live?.ind_status ? <IndField live={a.live} /> : null}
                     {a.live?.starting_dose ? <StartingDoseField dose={a.live.starting_dose} /> : null}
+                    {a.live?.monitoring ? <MonitoringField brief={a.live.monitoring} /> : null}
                   </article>
                 ))}
             </section>
@@ -188,5 +189,29 @@ export function StartingDoseField({ dose }: { dose: Schemas["StartingDose"] }) {
         </ol>
       ) : null}
     </div>
+  );
+}
+
+const MONITORING_TEXT: Record<Schemas["MonitoringBrief"]["status"], string> = {
+  none: "no recommendation yet",
+  open: "recommended, awaiting the medical monitor",
+  accepted: "accepted",
+  escalated: "escalated",
+  dismissed: "dismissed",
+  not_shown: "not shown to your role",
+};
+
+export function MonitoringField({ brief }: { brief: Schemas["MonitoringBrief"] }) {
+  return (
+    <p data-testid="monitoring-field">
+      <span className="chip outline">live</span> First-in-human monitoring: {MONITORING_TEXT[brief.status]}
+      {brief.organs?.length ? <> ({brief.organs.join(", ")})</> : null}
+      {brief.decided_by ? (
+        <>
+          {" "}
+          by {brief.decided_by}, ledger seq <span className="mono">{brief.decided_seq}</span>
+        </>
+      ) : null}
+    </p>
   );
 }

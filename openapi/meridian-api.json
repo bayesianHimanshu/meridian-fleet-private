@@ -549,6 +549,16 @@
             ],
             "title": "Ind Status"
           },
+          "monitoring": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "noael": {
             "items": {
               "$ref": "#/components/schemas/NoaelBrief"
@@ -2837,7 +2847,8 @@
           "qa_observation",
           "tox_signal",
           "dose_proposal",
-          "ind_readiness"
+          "ind_readiness",
+          "monitoring_recommendation"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -3807,6 +3818,58 @@
         "title": "LedgerPage",
         "type": "object"
       },
+      "MarginView": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "hed_mg": {
+            "title": "Hed Mg",
+            "type": "number"
+          },
+          "human_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Weight Kg"
+          },
+          "label": {
+            "enum": [
+              "NOAEL",
+              "LOAEL"
+            ],
+            "title": "Label",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "required": [
+          "label",
+          "hed_mg",
+          "human_weight_kg",
+          "display",
+          "ratio"
+        ],
+        "title": "MarginView",
+        "type": "object"
+      },
       "ModelAnswer": {
         "additionalProperties": false,
         "description": "One model's answer inside a FindingAssessment of the agreement rule (1.1.0).\n\ntext is the raw response content as received (never a reasoning trace), recorded\nwhether or not it passed validation; verdict and reason only when it did. An error\nanswer has no text (the call failed, or the served digest was not the pinned one).",
@@ -3955,6 +4018,161 @@
           "request_sha256"
         ],
         "title": "ModelAnswer",
+        "type": "object"
+      },
+      "MonitoringBrief": {
+        "additionalProperties": false,
+        "description": "The current monitoring recommendation for a preclinical asset's first-in-human study\n(phase 5 step 3a): its status, its organs, who decided it.",
+        "properties": {
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided Seq"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "organs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Organs",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "none",
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "not_shown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unmapped": {
+            "default": 0,
+            "title": "Unmapped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "MonitoringBrief",
+        "type": "object"
+      },
+      "MonitoringItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "finding_titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Titles",
+            "type": "array"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "frequency": {
+            "title": "Frequency",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "organ": {
+            "title": "Organ",
+            "type": "string"
+          },
+          "review": {
+            "title": "Review",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSourceView"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "stopping": {
+            "title": "Stopping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organ",
+          "label",
+          "measure",
+          "frequency",
+          "review",
+          "stopping",
+          "sources",
+          "findings",
+          "finding_titles"
+        ],
+        "title": "MonitoringItemView",
+        "type": "object"
+      },
+      "MonitoringSourceView": {
+        "additionalProperties": false,
+        "properties": {
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "section",
+          "quote"
+        ],
+        "title": "MonitoringSourceView",
         "type": "object"
       },
       "NarrativeView": {
@@ -5353,6 +5571,93 @@
           "columns"
         ],
         "title": "RbqmSites",
+        "type": "object"
+      },
+      "RecommendationView": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided Seq"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "margins": {
+            "items": {
+              "$ref": "#/components/schemas/MarginView"
+            },
+            "title": "Margins",
+            "type": "array"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "starting_dose": {
+            "title": "Starting Dose",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unmapped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmapped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "finding_id",
+          "seq",
+          "title",
+          "status",
+          "decided_by",
+          "decided_seq",
+          "items",
+          "unmapped",
+          "margins",
+          "starting_dose",
+          "basis"
+        ],
+        "title": "RecommendationView",
         "type": "object"
       },
       "Reconciliation": {
@@ -6754,6 +7059,55 @@
           "cells"
         ],
         "title": "TmfSiteRow",
+        "type": "object"
+      },
+      "TranslationalView": {
+        "additionalProperties": false,
+        "description": "The Translational panel (phase 5 step 3a): the current monitoring recommendation for\nthe first-in-human study, its sources and the safety margins, or why there is none.",
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "recommended",
+              "no_decision",
+              "not_run"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "superseded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Superseded",
+            "type": "array"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "status",
+          "why",
+          "current",
+          "superseded"
+        ],
+        "title": "TranslationalView",
         "type": "object"
       },
       "UnblindedCases": {
@@ -8205,6 +8559,85 @@
           }
         },
         "summary": "Record Noael",
+        "tags": [
+          "preclinical"
+        ]
+      }
+    },
+    "/api/v1/preclinical/{study}/translational": {
+      "get": {
+        "description": "The current monitoring recommendation for the first-in-human study\n(preclinical.translational_bridge): per target organ what to measure and when, with\nits sources, and the safety margins. A proposal, never a decision.",
+        "operationId": "preclinical_translational_api_v1_preclinical__study__translational_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preclinical Translational",
         "tags": [
           "preclinical"
         ]

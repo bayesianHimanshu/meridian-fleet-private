@@ -290,6 +290,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/preclinical/{study}/translational": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Translational
+         * @description The current monitoring recommendation for the first-in-human study
+         *     (preclinical.translational_bridge): per target organ what to measure and when, with
+         *     its sources, and the safety margins. A proposal, never a decision.
+         */
+        get: operations["preclinical_translational_api_v1_preclinical__study__translational_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quality/audit": {
         parameters: {
             query?: never;
@@ -668,6 +690,7 @@ export interface components {
             ind_readiness_percent?: number | null;
             /** Ind Status */
             ind_status?: ("assessed" | "not_loaded" | "not_shown") | null;
+            monitoring?: components["schemas"]["MonitoringBrief"] | null;
             /** Noael */
             noael?: components["schemas"]["NoaelBrief"][];
             /** Noael Status */
@@ -1446,7 +1469,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness" | "monitoring_recommendation";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1772,6 +1795,22 @@ export interface components {
             /** Next Since */
             next_since: number | null;
         };
+        /** MarginView */
+        MarginView: {
+            /** Display */
+            display: string;
+            /** Hed Mg */
+            hed_mg: number;
+            /** Human Weight Kg */
+            human_weight_kg: number | null;
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "NOAEL" | "LOAEL";
+            /** Ratio */
+            ratio: number | null;
+        };
         /**
          * ModelAnswer
          * @description One model's answer inside a FindingAssessment of the agreement rule (1.1.0).
@@ -1813,6 +1852,61 @@ export interface components {
             text?: string | null;
             /** Verdict */
             verdict?: ("yes" | "no" | "unsure") | null;
+        };
+        /**
+         * MonitoringBrief
+         * @description The current monitoring recommendation for a preclinical asset's first-in-human study
+         *     (phase 5 step 3a): its status, its organs, who decided it.
+         */
+        MonitoringBrief: {
+            /** Decided By */
+            decided_by?: string | null;
+            /** Decided Seq */
+            decided_seq?: number | null;
+            /** Finding Id */
+            finding_id?: string | null;
+            /** Organs */
+            organs?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "open" | "accepted" | "escalated" | "dismissed" | "not_shown";
+            /**
+             * Unmapped
+             * @default 0
+             */
+            unmapped: number;
+        };
+        /** MonitoringItemView */
+        MonitoringItemView: {
+            /** Finding Titles */
+            finding_titles: string[];
+            /** Findings */
+            findings: string[];
+            /** Frequency */
+            frequency: string;
+            /** Label */
+            label: string;
+            /** Measure */
+            measure: string;
+            /** Organ */
+            organ: string;
+            /** Review */
+            review: string;
+            /** Sources */
+            sources: components["schemas"]["MonitoringSourceView"][];
+            /** Stopping */
+            stopping: string;
+        };
+        /** MonitoringSourceView */
+        MonitoringSourceView: {
+            /** Quote */
+            quote: string;
+            /** Section */
+            section: string;
+            /** Source */
+            source: string;
         };
         /** NarrativeView */
         NarrativeView: {
@@ -2271,6 +2365,31 @@ export interface components {
             /** Study Id */
             study_id: string;
         };
+        /** RecommendationView */
+        RecommendationView: {
+            /** Basis */
+            basis: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided Seq */
+            decided_seq: number | null;
+            /** Finding Id */
+            finding_id: string;
+            /** Items */
+            items: components["schemas"]["MonitoringItemView"][];
+            /** Margins */
+            margins: components["schemas"]["MarginView"][];
+            /** Seq */
+            seq: number;
+            /** Starting Dose */
+            starting_dose: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Unmapped */
+            unmapped: string[];
+        };
         /** Reconciliation */
         Reconciliation: {
             /** Agent Id */
@@ -2726,6 +2845,25 @@ export interface components {
             site_id: string;
             /** Timely Percent */
             timely_percent: number | null;
+        };
+        /**
+         * TranslationalView
+         * @description The Translational panel (phase 5 step 3a): the current monitoring recommendation for
+         *     the first-in-human study, its sources and the safety margins, or why there is none.
+         */
+        TranslationalView: {
+            current: components["schemas"]["RecommendationView"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "recommended" | "no_decision" | "not_run";
+            /** Study Id */
+            study_id: string;
+            /** Superseded */
+            superseded: string[];
+            /** Why */
+            why: string;
         };
         /**
          * UnblindedCases
@@ -3303,6 +3441,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoaelDecisionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preclinical_translational_api_v1_preclinical__study__translational_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationalView"];
                 };
             };
             /** @description Validation Error */
