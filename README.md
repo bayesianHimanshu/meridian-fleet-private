@@ -158,14 +158,23 @@ down. Summary, measurements against kind, costs and gaps:
 Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
 toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
 [docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
-API; preclinical.dose_translation proposes MRD-110's maximum recommended starting dose by
+API; preclinical.dose_translation proposes MRD-101's first-in-human maximum recommended starting dose by
 FDA's 2005 method and the medical monitor decides it; preclinical.ind_readiness checks the
 nonclinical inventory against ICH M3(R2)
 ([docs/fih-dose-notes.md](docs/fih-dose-notes.md),
 [docs/ind-readiness-eval.md](docs/ind-readiness-eval.md)).
 
+Step 3a: MRD-101's accepted dose is its own first-in-human starting dose (not MRD-110's);
+preclinical.translational_bridge maps the NOAEL's target organs to cited Phase 1
+monitoring with safety margins ([docs/translational-notes.md](docs/translational-notes.md));
+portfolio.safety_signal_scout reports signals of disproportionate reporting for MRD-201's
+drug from openFDA in the portfolio_signal zone, and compares them with the US label
+([docs/signal-scout.md](docs/signal-scout.md)).
+
 ```sh
 uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
+uv run meridian signals scan                 # one openFDA scan, in its OpenShell sandbox
+uv run meridian signals replay --trigger SEQ # the same scan on its kept responses
 uv run python scripts/ind_stress.py          # the IND readiness stress set (run once)
 ```
 
@@ -180,22 +189,36 @@ uv sync
 
 ```sh
 scripts/check.sh            # every check CI runs locally; non-zero on the first failure
+scripts/check.sh --fast     # the pre-commit subset (about 1 minute)
 scripts/check.sh --no-web   # the same without web/
 ```
 
-It runs ruff format --check, ruff check, mypy --strict (src, tests, scripts), pytest
-without the slow and openshell marks, the policy render check, and in `web/` typecheck,
-lint, tests and the generated API types check. A pre-commit hook in `.githooks/` runs it
-before every commit. Enable it once per clone (this repository only, never `--global`):
+The full script runs ruff format --check, ruff check, mypy --strict (src, tests, scripts),
+pytest without the slow, openshell and substrate marks, the policy render check, and in
+`web/` typecheck, lint, tests and the generated API types check. `--fast` runs ruff,
+mypy, the unit tests (`tests/unit`, the same marks), the policy render check and the web
+typecheck and lint; it leaves out the API, property and contract tests, the web tests
+and the API types check.
+
+Two hooks in `.githooks/` run it (phase 5 step 3a; before, one pre-commit hook ran the
+full suite in about 20 minutes):
+
+| Hook | Runs | Time on the laptop |
+|---|---|---|
+| pre-commit | `scripts/check.sh --fast` | about 1 minute (66 s measured) |
+| pre-push | `scripts/check.sh` (everything) | about 20 minutes |
+
+CI runs everything on every pull request, plus the policy prover and the production web
+build. Enable the hooks once per clone (this repository only, never `--global`):
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
 Two commits (ae3a1fd, 52429fb) went in with a failing check before the hook existed. The
-hook checks the working tree, not only what is staged, so stage everything you changed
-or stash the rest. `git commit --no-verify` skips it; don't, unless the commit is known
-to fail and says so.
+hooks check the working tree, not only what is staged or pushed, so stage everything you
+changed (or stash the rest) and push from a clean tree. Never skip them
+(`--no-verify`): a commit or push that fails a check is fixed, not forced.
 
 ## CLI
 

@@ -17,6 +17,7 @@ AUDIT = "audit"  # the audit extract of the ledger (quality.audit_trail only)
 SEND = "send"  # a nonclinical SEND study (preclinical zone only)
 NOAEL = "noael"  # a study's NOAEL decisions, staged by the host (preclinical zone only)
 INVENTORY = "inventory"  # an asset's nonclinical study inventory (preclinical zone only)
+SIGNAL = "signal"  # recorded openFDA responses, for a replay (portfolio_signal only)
 STAGE_AREAS: tuple[str, ...] = (
     META,
     BLINDED,
@@ -29,6 +30,7 @@ STAGE_AREAS: tuple[str, ...] = (
     SEND,
     NOAEL,
     INVENTORY,
+    SIGNAL,
 )
 
 

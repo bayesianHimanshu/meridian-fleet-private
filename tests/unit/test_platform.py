@@ -36,6 +36,7 @@ def test_settings_load_from_toml(monkeypatch: pytest.MonkeyPatch) -> None:
         "safety": "SAF",
         "quality": "QA",
         "preclinical": "PRE",
+        "portfolio": "SIG",
         "tmf": "TMF",
         "unblinded": "DSMB",
         "human": "OBS",

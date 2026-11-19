@@ -39,6 +39,7 @@ from meridian.data.stage_layout import (
     NOAEL,
     OPS,
     SEND,
+    SIGNAL,
     STAGE_AREAS,
     STAGE_ROOT,
     TMF,
@@ -56,6 +57,7 @@ __all__ = [
     "NOAEL",
     "OPS",
     "SEND",
+    "SIGNAL",
     "STAGE_AREAS",
     "STAGE_ROOT",
     "TMF",
@@ -230,6 +232,22 @@ OLLAMA_RULE = NetworkRule(
     binaries=(PYTHON,),
     allowed_ips=(f"{OLLAMA_HOST}/32",),
 )
+# portfolio_signal (phase 5 step 3a): portfolio.safety_signal_scout's zone. Count queries on
+# openFDA's drug adverse event endpoint and one label query, nothing else: egress only to
+# api.fda.gov:443, only GET on the two endpoints, only for python. It reads the trigger and,
+# for a replay, the run's recorded responses (signal); no clinical data at all.
+SIGNAL_POLICY = "portfolio_signal"
+SIGNAL_ZONE = "portfolio_signal"
+OPENFDA_HOST = "api.fda.gov"
+OPENFDA_EVENT = HttpRule("GET", "/drug/event.json")
+OPENFDA_LABEL = HttpRule("GET", "/drug/label.json")
+OPENFDA_RULE = NetworkRule(
+    name="openfda",
+    host=OPENFDA_HOST,
+    port=443,
+    rules=(OPENFDA_EVENT, OPENFDA_LABEL),
+    binaries=(PYTHON,),
+)
 AGENT_POLICIES: dict[str, ZonePolicy] = {
     NARRATOR_POLICY: ZonePolicy(
         "rbqm",
@@ -250,6 +268,9 @@ AGENT_POLICIES: dict[str, ZonePolicy] = {
     LOCAL_MODEL_POLICY: ZonePolicy(
         LOCAL_ZONE, reads=(LM,), name=LOCAL_MODEL_POLICY, network=(OLLAMA_RULE,)
     ),
+    SIGNAL_POLICY: ZonePolicy(
+        SIGNAL_ZONE, reads=(META, SIGNAL), name=SIGNAL_POLICY, network=(OPENFDA_RULE,)
+    ),
 }
 # quality.audit_trail: quality.audit_trail_reviewer reads the audit extract of the ledger
 # (/stage/audit) and its trigger, nothing of any cut, and has no network. It is the only
@@ -261,6 +282,7 @@ AGENT_POLICY_OF: dict[str, str] = {
     "quality.audit_trail_reviewer": AUDIT_POLICY,
     "safety.term_adjudicator": LOCAL_MODEL_POLICY,
     "safety.local_narrator": LOCAL_MODEL_POLICY,
+    "portfolio.safety_signal_scout": SIGNAL_POLICY,
 }
 # Every committed policy file: one per zone, one per agent with its own policy.
 ALL_POLICIES: dict[str, ZonePolicy] = {**POLICIES, **AGENT_POLICIES}
@@ -437,6 +459,8 @@ BOUNDARIES: dict[str, ZonePolicy] = {
     "audit": ZonePolicy("audit", reads=(META, AUDIT)),
     # The preclinical boundary: the trigger and the SEND study, no network.
     "preclinical": ZonePolicy("preclinical", ZONE_READS["preclinical"]),
+    # The signal boundary: the trigger and recorded responses, and openFDA's two GETs.
+    "signal": ZonePolicy("signal", reads=(META, SIGNAL), network=(OPENFDA_RULE,)),
 }
 # The boundary each zone is proved against.
 ZONE_BOUNDARY: dict[str, str] = {
@@ -452,6 +476,7 @@ POLICY_BOUNDARY: dict[str, str] = {
     RECONCILER_POLICY: "blinded",
     LOCAL_MODEL_POLICY: "local_model",
     AUDIT_POLICY: "audit",
+    SIGNAL_POLICY: "signal",
 }
 
 

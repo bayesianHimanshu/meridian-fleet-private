@@ -98,9 +98,11 @@ def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
     fleet = _get(fx.client(), "/api/v1/fleet")
     by_id = {a["agent_id"]: a for a in fleet["agents"]}
     assert sorted(by_id) == [
+        "portfolio.safety_signal_scout",
         "preclinical.dose_translation",
         "preclinical.ind_readiness",
         "preclinical.tox_study_monitor",
+        "preclinical.translational_bridge",
         "quality.audit_trail_reviewer",
         "quality.tmf_completeness",
         "rbqm.csm",

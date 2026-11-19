@@ -84,6 +84,7 @@ export function PreclinicalView() {
               <Findings study={s} />
               <NoaelPanel study={s} />
               <DosePanel study={s} />
+              <TranslationalPanel study={s} />
               {s.asset_id ? <IndChecklist assetId={s.asset_id} /> : null}
             </div>
           ))
@@ -953,6 +954,128 @@ function IndChecklist({ assetId }: { assetId: string }) {
             </table>
           </div>
         </>
+      ) : null}
+    </section>
+  );
+}
+
+function TranslationalPanel({ study }: { study: Study }) {
+  const t = useApi(["preclinical", study.study_id, "translational"], () =>
+    unwrap(
+      api.GET("/api/v1/preclinical/{study}/translational", { params: { path: { study: study.study_id } } }),
+    ),
+  );
+  const rec = t.data?.current;
+  return (
+    <section className="panel" aria-labelledby="translational-title">
+      <div className="panel-head">
+        <h2 id="translational-title">Translational</h2>
+        <span className="src">preclinical.translational_bridge; a proposal, not a decision</span>
+      </div>
+      {t.isPending ? <Loading what="the monitoring recommendation" /> : null}
+      {t.isError ? <ErrorNote error={t.error} /> : null}
+      {t.isSuccess ? (
+        <p className={rec ? "muted" : "message"} data-testid="translational-why">
+          {t.data.why}
+        </p>
+      ) : null}
+      {rec ? (
+        <div className="stack" data-testid="translational-current">
+          <div className="finding-meta">
+            <FindingLink id={rec.finding_id} className="mono" />
+            <StatusChip status={rec.status} />
+            {rec.decided_by ? (
+              <span className="muted">
+                by {rec.decided_by}, ledger seq <span className="mono">{rec.decided_seq}</span>
+              </span>
+            ) : null}
+          </div>
+          <p className="headline">{rec.title}</p>
+          {rec.items.length === 0 ? <p className="muted">No target organ in the findings the NOAEL rests on.</p> : null}
+          {rec.items.map((i) => (
+            <article key={i.organ} className="finding" aria-label={`Monitoring: ${i.label}`}>
+              <h3>{i.label}</h3>
+              <dl className="kv">
+                <div>
+                  <dt>Measure</dt>
+                  <dd>{i.measure}</dd>
+                </div>
+                <div>
+                  <dt>Frequency</dt>
+                  <dd>{i.frequency}</dd>
+                </div>
+                <div>
+                  <dt>Review</dt>
+                  <dd>{i.review}</dd>
+                </div>
+                <div>
+                  <dt>Stopping</dt>
+                  <dd>{i.stopping}</dd>
+                </div>
+                <div>
+                  <dt>Rests on</dt>
+                  <dd>
+                    {i.findings.map((id, n) => (
+                      <span key={id}>
+                        {n ? ", " : ""}
+                        <FindingLink id={id} className="mono" />
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+              </dl>
+              <details>
+                <summary>Sources ({String(i.sources.length)})</summary>
+                <ul className="stack">
+                  {i.sources.map((src) => (
+                    <li key={`${src.source}-${src.section}`}>
+                      <strong>
+                        {src.source}, {src.section}:
+                      </strong>{" "}
+                      <q>{src.quote}</q>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </article>
+          ))}
+          {rec.unmapped.length ? (
+            <div aria-label="Unmapped findings">
+              <h3>Unmapped (no mapping entry, no rule given)</h3>
+              <ul>
+                {rec.unmapped.map((u) => (
+                  <li key={u}>{u}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div aria-label="Safety margins">
+            <h3>Safety margins</h3>
+            <p className="muted">{rec.starting_dose}</p>
+            <table>
+              <caption className="visually-hidden">NOAEL and LOAEL as human equivalent doses against the starting dose</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Dose</th>
+                  <th scope="col">Human equivalent</th>
+                  <th scope="col" className="num">
+                    Margin
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rec.margins.map((m) => (
+                  <tr key={m.label} data-testid={`margin-${m.label}`}>
+                    <th scope="row">{m.label}</th>
+                    <td>{m.display}</td>
+                    <td className="num">{m.ratio === null ? "no starting dose" : `${m.ratio.toPrecision(3)} x`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">{rec.basis}</p>
+        </div>
       ) : null}
     </section>
   );

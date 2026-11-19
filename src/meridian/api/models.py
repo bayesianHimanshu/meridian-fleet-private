@@ -543,7 +543,8 @@ class ChainLink(BaseModel):
 
 
 class StartingDose(BaseModel):
-    """MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+    """A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there
+    is none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:
     the medical monitor accepted the current proposal. not_shown: a role outside the
     proposal's roles (then nothing else is filled)."""
 
@@ -566,6 +567,20 @@ class StartingDose(BaseModel):
     chain: list[ChainLink] = Field(default_factory=list)
 
 
+class MonitoringBrief(BaseModel):
+    """The current monitoring recommendation for a preclinical asset's first-in-human study
+    (phase 5 step 3a): its status, its organs, who decided it."""
+
+    model_config = _FROZEN
+
+    status: Literal["none", "open", "accepted", "escalated", "dismissed", "not_shown"]
+    finding_id: str | None = None
+    organs: list[str] = Field(default_factory=list)
+    unmapped: int = 0
+    decided_by: str | None = None
+    decided_seq: int | None = None
+
+
 class AssetLive(BaseModel):
     """Computed from the ledger at request time, as the caller may see it."""
 
@@ -582,6 +597,8 @@ class AssetLive(BaseModel):
     ind_status: Literal["assessed", "not_loaded", "not_shown"] | None = None
     ind_readiness_percent: float | None = None
     starting_dose: StartingDose | None = None
+    # Phase 5 step 3a: the first-in-human study's monitoring recommendation.
+    monitoring: MonitoringBrief | None = None
 
 
 class PortfolioAsset(BaseModel):
@@ -1002,7 +1019,9 @@ class ProposalView(BaseModel):
 
     finding_id: str
     seq: int
+    # Derived at read time (phase 5 step 3a); recorded_title is the text in the ledger.
     title: str
+    recorded_title: str
     summary: str
     check: str
     status: str
@@ -1067,3 +1086,125 @@ class IndReadinessView(BaseModel):
     met: int
     applicable: int
     requirements: list[RequirementView]
+
+
+class MonitoringSourceView(BaseModel):
+    model_config = _FROZEN
+
+    source: str
+    section: str
+    quote: str
+
+
+class MonitoringItemView(BaseModel):
+    model_config = _FROZEN
+
+    organ: str
+    label: str
+    measure: str
+    frequency: str
+    review: str
+    stopping: str
+    sources: list[MonitoringSourceView]
+    findings: list[str]
+    finding_titles: list[str]
+
+
+class MarginView(BaseModel):
+    model_config = _FROZEN
+
+    label: Literal["NOAEL", "LOAEL"]
+    hed_mg: float
+    human_weight_kg: float | None
+    display: str
+    ratio: float | None
+
+
+class RecommendationView(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    seq: int
+    title: str
+    status: str
+    decided_by: str | None
+    decided_seq: int | None
+    items: list[MonitoringItemView]
+    unmapped: list[str]
+    margins: list[MarginView]
+    starting_dose: str
+    basis: str
+
+
+class TranslationalView(BaseModel):
+    """The Translational panel (phase 5 step 3a): the current monitoring recommendation for
+    the first-in-human study, its sources and the safety margins, or why there is none."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    status: Literal["recommended", "no_decision", "not_run"]
+    why: str
+    current: RecommendationView | None
+    superseded: list[str]
+
+
+class SignalRow(BaseModel):
+    model_config = _FROZEN
+
+    term: str
+    reports: int  # a: reports with the drug and the term
+    drug_reports: int
+    term_reports: int  # a + c
+    prr: float | None
+    prr_low: float | None
+    prr_high: float | None
+    ror: float | None
+    ror_low: float | None
+    ror_high: float | None
+    chi2: float
+    signal: bool
+    label_listed: bool | None
+    finding_id: str | None
+    status: str | None
+
+
+class LabelReaction(BaseModel):
+    model_config = _FROZEN
+
+    reaction: str
+    signal_terms: list[str]  # signal terms whose words name it (exact phrase)
+
+
+class SafetySignalsView(BaseModel):
+    """The Safety signals view (phase 5 step 3a): the latest scan of openFDA for MRD-201's
+    drug, every tested term with its disproportionality, the signals, and the comparison
+    with the US label. Reporting signals, not incidences or causes."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    drug: str
+    status: Literal["scanned", "not_scanned", "responses_missing"]
+    scan_id: str | None
+    scan_seq: int | None
+    data_date: str | None
+    product_query: str
+    drug_reports: int | None
+    all_reports: int | None
+    terms_with_drug: int | None
+    tested: int
+    # Terms with at least min_reports reports whose total query openFDA did not answer
+    # (for example "Too Many Requests"): not tested, never silently dropped.
+    not_answered: list[str] = Field(default_factory=list)
+    signals: list[SignalRow]
+    not_signals: list[SignalRow]
+    label_set_id: str | None
+    label_version: str | None
+    label_effective: str | None
+    signals_listed: int
+    label_most_common: list[LabelReaction]
+    rule: str
+    caveats: list[str]
+    caveats_source: str
+    requests: int

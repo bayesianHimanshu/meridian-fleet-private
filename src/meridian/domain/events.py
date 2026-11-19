@@ -81,6 +81,21 @@ class SubstrateRun(BaseModel):
     worker_node: str | None = None
 
 
+class FetchedInput(BaseModel):
+    """One request a run made to a public source and what came back (phase 5 step 3a:
+    portfolio.safety_signal_scout and openFDA). The body itself is kept on the host as the
+    run's input (var/signals/<trigger seq>); this records which one it was."""
+
+    model_config = _FROZEN
+
+    path: Annotated[str, Field(min_length=1)]
+    query: str
+    status: int
+    sha256: Sha256Hex
+    last_updated: str
+    bytes: Annotated[int, Field(ge=0)]
+
+
 class ActorWoke(BaseModel):
     model_config = _FROZEN
 
@@ -108,6 +123,9 @@ class ActorWoke(BaseModel):
     # its retry is the next ActorWoke of the same agent and trigger.
     attempt: Annotated[int, Field(ge=2, le=2)] | None = None
     worker_lost: str | None = None
+    # Phase 5 step 3a: what a run fetched from a public source (live data changes), so the
+    # run can be replayed on exactly those responses. None for every other run.
+    fetched: tuple[FetchedInput, ...] | None = None
 
     @model_validator(mode="after")
     def _range(self) -> Self:
@@ -512,6 +530,23 @@ class InventoryLoaded(BaseModel):
     source_sha256: Sha256Hex
 
 
+class SignalScanRequested(BaseModel):
+    """A scan of public spontaneous reports for a study's drug (phase 5 step 3a): the
+    trigger of portfolio.safety_signal_scout. scan_id names the scan's cut."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.SIGNAL_SCAN_REQUESTED] = EventType.SIGNAL_SCAN_REQUESTED
+    study_id: StudyId
+    scan_id: Annotated[str, Field(pattern=r"^SCAN-[0-9]{8}T[0-9]{6}Z$")]
+    requested_by: ActorId
+
+
+# A scan's cut id is its scan_id: the live public data at that time, never an evaluation
+# copy, so operational wherever cuts are scoped.
+SCAN_CUT_PREFIX = "SCAN-"
+
+
 NOAEL_SEXES = ("M", "F", "combined")
 
 
@@ -577,7 +612,8 @@ EventPayload = Annotated[
     | QualityObservation
     | SendStudyLoaded
     | NoaelDecision
-    | InventoryLoaded,
+    | InventoryLoaded
+    | SignalScanRequested,
     Field(discriminator="type"),
 ]
 

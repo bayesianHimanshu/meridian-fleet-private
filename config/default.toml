@@ -21,6 +21,7 @@ rbqm = "RBQM"
 safety = "SAF"
 quality = "QA"
 preclinical = "PRE"
+portfolio = "SIG"  # phase 5 step 3a: portfolio.safety_signal_scout's reporting signals
 tmf = "TMF"
 unblinded = "DSMB"
 human = "OBS"  # QA observations: raised by a person (agent id "human.observation")
@@ -99,6 +100,8 @@ delete_workers = 4  # background deletion threads; 0 deletes synchronously
 delete_confirm_seconds = 60.0  # until a deleted sandbox must be gone from sandbox list
 sandboxes_log = "var/sandboxes.jsonl"
 conformance_log_timeout_seconds = 30.0  # wait for the NET:OPEN DENIED line
+# Phase 5 step 3a: the signal scout makes about 250 paced openFDA requests in one run.
+agent_timeouts = { "portfolio.safety_signal_scout" = 900 }
 
 # The policies that run in Agent Substrate. The narrator (rbqm.narrator) and the local
 # model (safety.local_model) have network rules and stay on OpenShell.
@@ -202,6 +205,8 @@ enabled = [
     "preclinical.tox_study_monitor",
     "preclinical.dose_translation",
     "preclinical.ind_readiness",
+    "preclinical.translational_bridge",
+    "portfolio.safety_signal_scout",
 ]
 
 [agents.kri_monitor]
@@ -341,11 +346,39 @@ citation = "section V.A, Table 1: Dog, km 20, divide animal dose by 1.8 (or mult
 [agents.ind_readiness]
 # preclinical.ind_readiness 1.0.0 (phase 5 step 2), pre-registered in
 # docs/ind-readiness-eval.md before its code. The requirements are
-# config/ind_requirements.toml. MRD-110 is single and multiple ascending doses in healthy
-# volunteers: at most 14 days of dosing. The IND is planned for Q2 2027 (the portfolio):
-# its first day.
+# config/ind_requirements.toml. The planned trial is MRD-101's own first-in-human study,
+# assumed single and multiple ascending doses in healthy volunteers of at most 14 days of
+# dosing (step 2 took this from MRD-110 by mistake; MRD-110 is a separate asset, and no
+# MRD-101 design is recorded). The IND is planned for Q2 2027 (the portfolio): its first day.
 asset_id = "MRD-101"
 planned_clinical_duration_days = 14
 multiple_dose = true
 planned_submission_date = 2027-04-01
 visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]
+
+[agents.translational_bridge]
+# preclinical.translational_bridge 1.0.0 (phase 5 step 3a), pre-registered in
+# docs/translational-notes.md before its code. The mapping is
+# config/translational_monitoring.toml; the margins use [agents.dose_translation] itself
+# (copied in by AgentsSettings: never set a conversion here). Decided by the medical monitor.
+asset_id = "MRD-101"
+visible_to = ["toxicologist", "medical_monitor", "portfolio_lead", "qa_auditor"]
+
+[agents.safety_signal_scout]
+# portfolio.safety_signal_scout 1.0.0 (phase 5 step 3a), pre-registered in
+# docs/signal-scout.md before its code: signals of disproportionate reporting for MRD-201's
+# drug in public FAERS data (openFDA count queries, no API key), in the portfolio_signal
+# sandbox (egress to api.fda.gov only). Evans et al. 2001: a >= 3, PRR >= 2, chi-squared
+# (Yates) >= 4. Visible to the medical monitor and the portfolio lead; the monitor decides.
+study_id = "MRD-201"
+drug = "xanomeline (with trospium chloride, COBENFY)"
+product_field = "patient.drug.openfda.generic_name.exact"
+product_term = "XANOMELINE AND TROSPIUM CHLORIDE"
+total_field = "fulfillexpeditecriteria"
+limit = 999
+min_reports = 3
+prr_min = 2.0
+chi2_min = 4.0
+request_interval_seconds = 0.3
+max_requests = 900
+visible_to = ["medical_monitor", "portfolio_lead"]

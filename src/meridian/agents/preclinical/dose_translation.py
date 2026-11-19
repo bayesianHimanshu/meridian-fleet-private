@@ -1,6 +1,6 @@
 """preclinical.dose_translation 1.0.0: from the toxicologist's NOAEL to a proposed maximum
-recommended starting dose (MRSD) for MRD-110, by FDA's 2005 guidance (meridian.preclinical.
-dose; docs/fih-dose-notes.md).
+recommended starting dose (MRSD) for MRD-101's first-in-human study, by FDA's 2005
+guidance (meridian.preclinical.dose; docs/fih-dose-notes.md).
 
 It wakes on a NoaelDecision. Its inputs are the study's NOAEL decisions up to that one
 (staged as /stage/noael by the host, which alone reads the ledger), the study's design
@@ -516,6 +516,9 @@ class DoseTranslation:
             exposure_at(study, basis.noael_dose), basis.noael_dose, basis.dose_unit
         )
         title = (
+            # 1.0.0's recorded wording names MRD-110 by mistake (MRD-110 is a separate asset);
+            # kept so that 1.0.0's drafts stay what they were. The API shows a title derived
+            # at read time (phase 5 step 3a); a new version will correct the wording.
             f"Proposed MRD-110 starting dose: {sig(w.starting_dose_mg)} mg for a "
             f"{w.human_weight_kg:g} kg adult (MRSD {sig(w.mrsd_mg_per_kg)} mg/kg)"
         )

@@ -176,6 +176,20 @@
             ],
             "title": "Executor"
           },
+          "fetched": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FetchedInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched"
+          },
           "review_from_seq": {
             "anyOf": [
               {
@@ -548,6 +562,16 @@
               }
             ],
             "title": "Ind Status"
+          },
+          "monitoring": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "noael": {
             "items": {
@@ -2126,7 +2150,8 @@
                 "noael_decision": "#/components/schemas/NoaelDecision",
                 "policy_denied": "#/components/schemas/PolicyDenied",
                 "quality_observation": "#/components/schemas/QualityObservation",
-                "send_study_loaded": "#/components/schemas/SendStudyLoaded"
+                "send_study_loaded": "#/components/schemas/SendStudyLoaded",
+                "signal_scan_requested": "#/components/schemas/SignalScanRequested"
               },
               "propertyName": "type"
             },
@@ -2175,6 +2200,9 @@
               },
               {
                 "$ref": "#/components/schemas/InventoryLoaded"
+              },
+              {
+                "$ref": "#/components/schemas/SignalScanRequested"
               }
             ],
             "title": "Payload"
@@ -2241,7 +2269,8 @@
           "quality_observation",
           "send_study_loaded",
           "noael_decision",
-          "inventory_loaded"
+          "inventory_loaded",
+          "signal_scan_requested"
         ],
         "title": "EventType",
         "type": "string"
@@ -2393,6 +2422,49 @@
           "primary_evidence_sha256"
         ],
         "title": "EvidenceChangedSince",
+        "type": "object"
+      },
+      "FetchedInput": {
+        "additionalProperties": false,
+        "description": "One request a run made to a public source and what came back (phase 5 step 3a:\nportfolio.safety_signal_scout and openFDA). The body itself is kept on the host as the\nrun's input (var/signals/<trigger seq>); this records which one it was.",
+        "properties": {
+          "bytes": {
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "last_updated": {
+            "title": "Last Updated",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "query",
+          "status",
+          "sha256",
+          "last_updated",
+          "bytes"
+        ],
+        "title": "FetchedInput",
         "type": "object"
       },
       "Finding": {
@@ -2837,7 +2909,9 @@
           "qa_observation",
           "tox_signal",
           "dose_proposal",
-          "ind_readiness"
+          "ind_readiness",
+          "monitoring_recommendation",
+          "reporting_signal"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -3721,6 +3795,28 @@
         "title": "InventoryLoaded",
         "type": "object"
       },
+      "LabelReaction": {
+        "additionalProperties": false,
+        "properties": {
+          "reaction": {
+            "title": "Reaction",
+            "type": "string"
+          },
+          "signal_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signal Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reaction",
+          "signal_terms"
+        ],
+        "title": "LabelReaction",
+        "type": "object"
+      },
       "LatestNarrative": {
         "additionalProperties": false,
         "properties": {
@@ -3805,6 +3901,58 @@
           "next_since"
         ],
         "title": "LedgerPage",
+        "type": "object"
+      },
+      "MarginView": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "hed_mg": {
+            "title": "Hed Mg",
+            "type": "number"
+          },
+          "human_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Weight Kg"
+          },
+          "label": {
+            "enum": [
+              "NOAEL",
+              "LOAEL"
+            ],
+            "title": "Label",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "required": [
+          "label",
+          "hed_mg",
+          "human_weight_kg",
+          "display",
+          "ratio"
+        ],
+        "title": "MarginView",
         "type": "object"
       },
       "ModelAnswer": {
@@ -3955,6 +4103,161 @@
           "request_sha256"
         ],
         "title": "ModelAnswer",
+        "type": "object"
+      },
+      "MonitoringBrief": {
+        "additionalProperties": false,
+        "description": "The current monitoring recommendation for a preclinical asset's first-in-human study\n(phase 5 step 3a): its status, its organs, who decided it.",
+        "properties": {
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided Seq"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "organs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Organs",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "none",
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "not_shown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unmapped": {
+            "default": 0,
+            "title": "Unmapped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "MonitoringBrief",
+        "type": "object"
+      },
+      "MonitoringItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "finding_titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Titles",
+            "type": "array"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "frequency": {
+            "title": "Frequency",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "organ": {
+            "title": "Organ",
+            "type": "string"
+          },
+          "review": {
+            "title": "Review",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringSourceView"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "stopping": {
+            "title": "Stopping",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organ",
+          "label",
+          "measure",
+          "frequency",
+          "review",
+          "stopping",
+          "sources",
+          "findings",
+          "finding_titles"
+        ],
+        "title": "MonitoringItemView",
+        "type": "object"
+      },
+      "MonitoringSourceView": {
+        "additionalProperties": false,
+        "properties": {
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "section",
+          "quote"
+        ],
+        "title": "MonitoringSourceView",
         "type": "object"
       },
       "NarrativeView": {
@@ -5121,6 +5424,10 @@
             "title": "Finding Id",
             "type": "string"
           },
+          "recorded_title": {
+            "title": "Recorded Title",
+            "type": "string"
+          },
           "seq": {
             "title": "Seq",
             "type": "integer"
@@ -5149,6 +5456,7 @@
           "finding_id",
           "seq",
           "title",
+          "recorded_title",
           "summary",
           "check",
           "status",
@@ -5348,6 +5656,93 @@
           "columns"
         ],
         "title": "RbqmSites",
+        "type": "object"
+      },
+      "RecommendationView": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided Seq"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "margins": {
+            "items": {
+              "$ref": "#/components/schemas/MarginView"
+            },
+            "title": "Margins",
+            "type": "array"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "starting_dose": {
+            "title": "Starting Dose",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unmapped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmapped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "finding_id",
+          "seq",
+          "title",
+          "status",
+          "decided_by",
+          "decided_seq",
+          "items",
+          "unmapped",
+          "margins",
+          "starting_dose",
+          "basis"
+        ],
+        "title": "RecommendationView",
         "type": "object"
       },
       "Reconciliation": {
@@ -5902,6 +6297,213 @@
         "title": "RunTrace",
         "type": "object"
       },
+      "SafetySignalsView": {
+        "additionalProperties": false,
+        "description": "The Safety signals view (phase 5 step 3a): the latest scan of openFDA for MRD-201's\ndrug, every tested term with its disproportionality, the signals, and the comparison\nwith the US label. Reporting signals, not incidences or causes.",
+        "properties": {
+          "all_reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Reports"
+          },
+          "caveats": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "caveats_source": {
+            "title": "Caveats Source",
+            "type": "string"
+          },
+          "data_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Date"
+          },
+          "drug": {
+            "title": "Drug",
+            "type": "string"
+          },
+          "drug_reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Reports"
+          },
+          "label_effective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Effective"
+          },
+          "label_most_common": {
+            "items": {
+              "$ref": "#/components/schemas/LabelReaction"
+            },
+            "title": "Label Most Common",
+            "type": "array"
+          },
+          "label_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Set Id"
+          },
+          "label_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Version"
+          },
+          "not_answered": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Answered",
+            "type": "array"
+          },
+          "not_signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalRow"
+            },
+            "title": "Not Signals",
+            "type": "array"
+          },
+          "product_query": {
+            "title": "Product Query",
+            "type": "string"
+          },
+          "requests": {
+            "title": "Requests",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Id"
+          },
+          "scan_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Seq"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalRow"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "signals_listed": {
+            "title": "Signals Listed",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "scanned",
+              "not_scanned",
+              "responses_missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "terms_with_drug": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms With Drug"
+          },
+          "tested": {
+            "title": "Tested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "study_id",
+          "drug",
+          "status",
+          "scan_id",
+          "scan_seq",
+          "data_date",
+          "product_query",
+          "drug_reports",
+          "all_reports",
+          "terms_with_drug",
+          "tested",
+          "signals",
+          "not_signals",
+          "label_set_id",
+          "label_version",
+          "label_effective",
+          "signals_listed",
+          "label_most_common",
+          "rule",
+          "caveats",
+          "caveats_source",
+          "requests"
+        ],
+        "title": "SafetySignalsView",
+        "type": "object"
+      },
       "SendStudyLoaded": {
         "additionalProperties": false,
         "description": "A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical\nagents, as DataCut is of the clinical ones. Its study is the toxicology study's own id\n(MRD-101-TOX-01), never a clinical study's, so no clinical agent or page picks it up.",
@@ -5947,6 +6549,189 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "SignalRow": {
+        "additionalProperties": false,
+        "properties": {
+          "chi2": {
+            "title": "Chi2",
+            "type": "number"
+          },
+          "drug_reports": {
+            "title": "Drug Reports",
+            "type": "integer"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "label_listed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Listed"
+          },
+          "prr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr"
+          },
+          "prr_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr High"
+          },
+          "prr_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prr Low"
+          },
+          "reports": {
+            "title": "Reports",
+            "type": "integer"
+          },
+          "ror": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror"
+          },
+          "ror_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror High"
+          },
+          "ror_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ror Low"
+          },
+          "signal": {
+            "title": "Signal",
+            "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "term_reports": {
+            "title": "Term Reports",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "term",
+          "reports",
+          "drug_reports",
+          "term_reports",
+          "prr",
+          "prr_low",
+          "prr_high",
+          "ror",
+          "ror_low",
+          "ror_high",
+          "chi2",
+          "signal",
+          "label_listed",
+          "finding_id",
+          "status"
+        ],
+        "title": "SignalRow",
+        "type": "object"
+      },
+      "SignalScanRequested": {
+        "additionalProperties": false,
+        "description": "A scan of public spontaneous reports for a study's drug (phase 5 step 3a): the\ntrigger of portfolio.safety_signal_scout. scan_id names the scan's cut.",
+        "properties": {
+          "requested_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Requested By",
+            "type": "string"
+          },
+          "scan_id": {
+            "pattern": "^SCAN-[0-9]{8}T[0-9]{6}Z$",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "signal_scan_requested",
+            "default": "signal_scan_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "scan_id",
+          "requested_by"
+        ],
+        "title": "SignalScanRequested",
+        "type": "object"
       },
       "SiteCount": {
         "additionalProperties": false,
@@ -6180,7 +6965,7 @@
       },
       "StartingDose": {
         "additionalProperties": false,
-        "description": "MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:\nthe medical monitor accepted the current proposal. not_shown: a role outside the\nproposal's roles (then nothing else is filled).",
+        "description": "A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there\nis none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:\nthe medical monitor accepted the current proposal. not_shown: a role outside the\nproposal's roles (then nothing else is filled).",
         "properties": {
           "chain": {
             "items": {
@@ -6749,6 +7534,55 @@
           "cells"
         ],
         "title": "TmfSiteRow",
+        "type": "object"
+      },
+      "TranslationalView": {
+        "additionalProperties": false,
+        "description": "The Translational panel (phase 5 step 3a): the current monitoring recommendation for\nthe first-in-human study, its sources and the safety margins, or why there is none.",
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "recommended",
+              "no_decision",
+              "not_run"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "superseded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Superseded",
+            "type": "array"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "status",
+          "why",
+          "current",
+          "superseded"
+        ],
+        "title": "TranslationalView",
         "type": "object"
       },
       "UnblindedCases": {
@@ -8205,6 +9039,85 @@
         ]
       }
     },
+    "/api/v1/preclinical/{study}/translational": {
+      "get": {
+        "description": "The current monitoring recommendation for the first-in-human study\n(preclinical.translational_bridge): per target organ what to measure and when, with\nits sources, and the safety margins. A proposal, never a decision.",
+        "operationId": "preclinical_translational_api_v1_preclinical__study__translational_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preclinical Translational",
+        "tags": [
+          "preclinical"
+        ]
+      }
+    },
     "/api/v1/quality/audit": {
       "get": {
         "description": "The last audit trail review and the current audit findings (qa_auditor and\nclinical_ops_lead only).",
@@ -8697,6 +9610,76 @@
         "summary": "Review Queue",
         "tags": [
           "findings"
+        ]
+      }
+    },
+    "/api/v1/safety/signals": {
+      "get": {
+        "description": "The latest scan of public FAERS data (openFDA) for MRD-201's drug: signals of\ndisproportionate reporting with PRR, ROR and counts, the label comparison, the data\ndate and FAERS's caveats (portfolio.safety_signal_scout). Never incidences or causes.",
+        "operationId": "safety_signals_api_v1_safety_signals_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafetySignalsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Signals",
+        "tags": [
+          "safety"
         ]
       }
     },

@@ -8,4 +8,5 @@
 !config/safety_terms.toml
 !config/tmf_expected.toml
 !config/ind_requirements.toml
+!config/translational_monitoring.toml
 src/**/__pycache__

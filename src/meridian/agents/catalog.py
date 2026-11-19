@@ -7,9 +7,11 @@ without importing the ledger store, ingestion, faults or evals.
 from typing import Any
 
 from meridian.agents.base import Agent, AgentConfig
+from meridian.agents.portfolio.safety_signal_scout import SafetySignalScout
 from meridian.agents.preclinical.dose_translation import DoseTranslation
 from meridian.agents.preclinical.ind_readiness import IndReadiness
 from meridian.agents.preclinical.tox_study_monitor import ToxStudyMonitor
+from meridian.agents.preclinical.translational_bridge import TranslationalBridge
 from meridian.agents.quality.audit_trail_reviewer import AuditTrailReviewer
 from meridian.agents.quality.tmf_completeness import TmfCompleteness
 from meridian.agents.rbqm.csm import Csm
@@ -32,6 +34,8 @@ def build_registry(cfg: AgentsSettings) -> AgentRegistry:
         (ToxStudyMonitor(), cfg.tox_study_monitor),
         (DoseTranslation(), cfg.dose_translation),
         (IndReadiness(), cfg.ind_readiness),
+        (TranslationalBridge(), cfg.translational_bridge),
+        (SafetySignalScout(), cfg.safety_signal_scout),
     ]
     unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
     if unknown:

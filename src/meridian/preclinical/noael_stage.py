@@ -10,6 +10,10 @@ from meridian.data.stage_layout import NOAEL
 
 NOAEL_TABLE = "noael_decisions"
 CONTEXT_TABLE = "noael_context"
+# Phase 5 step 3a, for preclinical.translational_bridge: the findings the current decisions
+# cite, and the study's current dose proposal.
+BRIDGE_FINDINGS = "bridge_findings"
+BRIDGE_PROPOSAL = "bridge_proposal"
 
 
 def noael_dir(noael_root: Path, trigger_seq: int) -> Path:

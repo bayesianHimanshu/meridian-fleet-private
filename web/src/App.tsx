@@ -15,6 +15,7 @@ import { LedgerView } from "./views/Ledger";
 import { PreclinicalView } from "./views/Preclinical";
 import { PortfolioView } from "./views/Portfolio";
 import { SafetyView } from "./views/Safety";
+import { SafetySignalsView } from "./views/SafetySignals";
 import { RbqmView } from "./views/Rbqm";
 import { ReviewQueue } from "./views/ReviewQueue";
 import { StudyView } from "./views/Study";
@@ -121,6 +122,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       [
         { to: "/rbqm", label: "RBQM" },
         { to: "/safety", label: "Safety" },
+        { to: "/safety/signals", label: "Safety signals" },
         { to: "/quality", label: "Quality and audit" },
       ],
     ],
@@ -251,6 +253,7 @@ export function App() {
             <Route path="/findings/:findingId" element={<FindingDetail />} />
             <Route path="/rbqm" element={<RbqmView />} />
             <Route path="/safety" element={<SafetyView />} />
+            <Route path="/safety/signals" element={<SafetySignalsView />} />
             <Route path="/quality" element={<QualityView />} />
             <Route path="/study" element={<StudyView />} />
             <Route path="/ledger" element={<LedgerView />} />

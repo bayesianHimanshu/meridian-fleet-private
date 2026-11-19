@@ -279,6 +279,7 @@ LIVE_DEFAULTS: dict[str, object] = {
     "ind_status": None,
     "ind_readiness_percent": None,
     "starting_dose": None,
+    "monitoring": None,
 }
 
 

@@ -26,7 +26,7 @@ export function PortfolioView() {
           <p>
             Meridian's four assets. Fields marked static are written in configuration and never computed.
             Live fields come from the ledger: MRD-201's open findings; MRD-101's current NOAEL decision, its IND
-            readiness and its proposed starting dose; and MRD-110's planned starting dose with the chain behind it.
+            readiness, and its planned first-in-human starting dose with the chain behind it.
           </p>
         </div>
       </div>
@@ -74,6 +74,7 @@ export function PortfolioView() {
                     {a.live?.noael_status ? <NoaelField live={a.live} /> : null}
                     {a.live?.ind_status ? <IndField live={a.live} /> : null}
                     {a.live?.starting_dose ? <StartingDoseField dose={a.live.starting_dose} /> : null}
+                    {a.live?.monitoring ? <MonitoringField brief={a.live.monitoring} /> : null}
                   </article>
                 ))}
             </section>
@@ -134,14 +135,14 @@ function IndField({ live }: { live: Schemas["AssetLive"] }) {
 }
 
 const DOSE_STATUS: Record<Schemas["StartingDose"]["status"], string> = {
-  planned: "Planned starting dose",
-  proposed: "Proposed starting dose, not yet decided",
-  escalated: "Proposed starting dose, escalated",
-  dismissed: "Proposed starting dose, dismissed",
-  no_starting_dose: "No starting dose",
-  no_proposal: "No starting dose yet",
-  no_decision: "No starting dose yet",
-  not_shown: "Starting dose",
+  planned: "Planned first-in-human starting dose",
+  proposed: "Proposed first-in-human starting dose, not yet decided",
+  escalated: "Proposed first-in-human starting dose, escalated",
+  dismissed: "Proposed first-in-human starting dose, dismissed",
+  no_starting_dose: "No first-in-human starting dose",
+  no_proposal: "No first-in-human starting dose yet",
+  no_decision: "No first-in-human starting dose yet",
+  not_shown: "First-in-human starting dose",
 };
 
 const STEP_TEXT: Record<Schemas["ChainLink"]["step"], string> = {
@@ -159,7 +160,7 @@ export function StartingDoseField({ dose }: { dose: Schemas["StartingDose"] }) {
   if (dose.status === "not_shown") {
     return (
       <p data-testid="dose-field">
-        <span className="chip outline">live</span> <span className="muted">Starting dose: not shown to your role</span>
+        <span className="chip outline">live</span> <span className="muted">First-in-human starting dose: not shown to your role</span>
       </p>
     );
   }
@@ -188,5 +189,29 @@ export function StartingDoseField({ dose }: { dose: Schemas["StartingDose"] }) {
         </ol>
       ) : null}
     </div>
+  );
+}
+
+const MONITORING_TEXT: Record<Schemas["MonitoringBrief"]["status"], string> = {
+  none: "no recommendation yet",
+  open: "recommended, awaiting the medical monitor",
+  accepted: "accepted",
+  escalated: "escalated",
+  dismissed: "dismissed",
+  not_shown: "not shown to your role",
+};
+
+export function MonitoringField({ brief }: { brief: Schemas["MonitoringBrief"] }) {
+  return (
+    <p data-testid="monitoring-field">
+      <span className="chip outline">live</span> First-in-human monitoring: {MONITORING_TEXT[brief.status]}
+      {brief.organs?.length ? <> ({brief.organs.join(", ")})</> : null}
+      {brief.decided_by ? (
+        <>
+          {" "}
+          by {brief.decided_by}, ledger seq <span className="mono">{brief.decided_seq}</span>
+        </>
+      ) : null}
+    </p>
   );
 }

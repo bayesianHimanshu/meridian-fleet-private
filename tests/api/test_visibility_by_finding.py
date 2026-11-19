@@ -52,6 +52,7 @@ KINDS = (
     "restricted",
     "dose_proposal",
     "ind_readiness",
+    "monitoring_recommendation",
 )
 # safety.sae_reconciler 1.1 checks, with 1.1 evidence (case id, version and subject).
 V11_CHECKS = (
@@ -85,6 +86,7 @@ PATHS = [
     # Phase 5 step 2: the dose proposal's panel and the IND readiness checklist.
     "/api/v1/preclinical/MRD-101-TOX-01/dose-translation",
     "/api/v1/preclinical/assets/MRD-101/ind-readiness",
+    "/api/v1/preclinical/MRD-101-TOX-01/translational",  # phase 5 step 3a
 ]
 
 spec = st.fixed_dictionaries(
@@ -160,6 +162,12 @@ def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
             FindingKind.IND_READINESS,
             f"glp_status_missing:req{i}:MRD-101-S{i}",
         ),
+        "monitoring_recommendation": (
+            "preclinical.translational_bridge",
+            "1.0.0",
+            FindingKind.MONITORING_RECOMMENDATION,
+            f"monitoring:NOAEL-{i:012x}:none",
+        ),
     }[kind]
     if kind == "dose_proposal":
         ev = ev.model_copy(
@@ -170,8 +178,14 @@ def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
         kind=fkind,
         agent_id=agent,
         agent_version=version,
-        study_id={"dose_proposal": "MRD-101-TOX-01", "ind_readiness": "MRD-101"}.get(kind, STUDY),
-        site_id=None if kind in ("dose_proposal", "ind_readiness") else f"10{i:02d}",
+        study_id={
+            "dose_proposal": "MRD-101-TOX-01",
+            "ind_readiness": "MRD-101",
+            "monitoring_recommendation": "MRD-101-TOX-01",
+        }.get(kind, STUDY),
+        site_id=None
+        if kind in ("dose_proposal", "ind_readiness", "monitoring_recommendation")
+        else f"10{i:02d}",
         severity=Severity.MEDIUM,
         title=f"Finding {i}" + (f" about {subject}" if subject else ""),
         summary=f"Summary {i}" + (f" of {subject}" if subject else ""),

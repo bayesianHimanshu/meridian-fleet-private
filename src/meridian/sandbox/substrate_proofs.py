@@ -140,6 +140,33 @@ def make_copies(
     )
 
 
+def plant_noael_extract(
+    *, canary: str, dest: Path, written: Path, trigger_seq: int
+) -> tuple[Path, str]:
+    """Phase 5 step 3a: the canary in a NOAEL extract the host wrote under
+    <dest>/noael/<trigger seq>/noael (written is that <seq> folder), in recorded_at, a
+    column preclinical.dose_translation reads but never puts in a finding. Returns the
+    noael root and the planted file's path relative to dest."""
+    extract = written / "noael" / "noael_decisions.parquet"
+    plant(extract, "recorded_at", canary)
+    if written != dest / "noael" / str(trigger_seq):
+        raise ValueError(f"{written} is not under {dest}/noael")
+    return dest / "noael", extract.relative_to(dest).as_posix()
+
+
+def copy_inventory(
+    *, canary: str, dest: Path, inventory_root: Path, asset_id: str, cut_id: str
+) -> tuple[Path, str]:
+    """Phase 5 step 3a: a copy of an inventory cut with the canary in route, a column
+    preclinical.ind_readiness reads but never puts in a finding. Returns the copy's
+    inventory root and the planted file's path relative to dest."""
+    target = dest / "inventory" / asset_id / cut_id
+    shutil.copytree(inventory_root / asset_id / cut_id, target)
+    studies = target / "inventory" / "studies.parquet"
+    plant(studies, "route", canary)
+    return dest / "inventory", studies.relative_to(dest).as_posix()
+
+
 # ---------------------------------------------------------------- searching byte stores
 
 

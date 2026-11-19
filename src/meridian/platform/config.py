@@ -31,8 +31,10 @@ from meridian.platform.agent_settings import (
     KriMonitorConfig,
     QtlDetectorConfig,
     SaeReconcilerConfig,
+    SignalScoutConfig,
     TmfCompletenessConfig,
     ToxStudyMonitorConfig,
+    TranslationalBridgeConfig,
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -45,6 +47,7 @@ DEFAULT_FINDING_ID_PREFIXES: dict[str, str] = {
     "safety": "SAF",
     "quality": "QA",
     "preclinical": "PRE",
+    "portfolio": "SIG",  # phase 5 step 3a: portfolio.safety_signal_scout
     "tmf": "TMF",
     "unblinded": "DSMB",
     "human": "OBS",  # findings raised by a person (QA observations), not an agent
@@ -120,6 +123,23 @@ class AgentsSettings(BaseModel):
     tox_study_monitor: ToxStudyMonitorConfig = Field(default_factory=ToxStudyMonitorConfig)
     dose_translation: DoseTranslationConfig = Field(default_factory=DoseTranslationConfig)
     ind_readiness: IndReadinessConfig = Field(default_factory=IndReadinessConfig)
+    translational_bridge: TranslationalBridgeConfig = Field(
+        default_factory=TranslationalBridgeConfig
+    )
+    safety_signal_scout: SignalScoutConfig = Field(default_factory=SignalScoutConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bridge_uses_the_dose_config(cls, data: object) -> object:
+        """translational_bridge's margins use [agents.dose_translation] itself: the same
+        factor and citation as the proposal, never a copy that could drift."""
+        if isinstance(data, dict) and "dose_translation" in data:
+            bridge = dict(data.get("translational_bridge") or {})
+            if "dose" in bridge:
+                raise ValueError("set the conversion in [agents.dose_translation] only")
+            bridge["dose"] = data["dose_translation"]
+            data = {**data, "translational_bridge": bridge}
+        return data
 
 
 class RuntimeSettings(BaseModel):
@@ -140,6 +160,9 @@ class RuntimeSettings(BaseModel):
     # Keep a failed sandbox (and log its name) instead of deleting it.
     keep_failed: bool = False
     policies_dir: Path = Path("policies")
+    # Phase 5 step 3a: a longer sandbox exec timeout for an agent that needs it (the signal
+    # scout makes about 250 paced requests to openFDA). Agent id to seconds.
+    agent_timeouts: dict[str, int] = Field(default_factory=dict)
     # Background sandbox deletion: thread pool size; 0 deletes synchronously (step 1).
     delete_workers: int = Field(4, ge=0, le=32)
     # A deleted sandbox must leave `openshell sandbox list` within this many seconds.
@@ -381,6 +404,9 @@ class Settings(BaseSettings):
     etmf_root: Path = Path("data/etmf")
     # Audit extracts of the ledger, one folder per review (<audit_root>/<trigger seq>/audit).
     audit_root: Path = Path("var/audit")
+    # Phase 5 step 3a: each signal scan's openFDA responses, kept as the run's inputs
+    # (<signal_root>/<trigger seq>/signal/openfda_responses.parquet).
+    signal_root: Path = Path("var/signals")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     preclinical: PreclinicalSettings = Field(default_factory=PreclinicalSettings)

@@ -22,6 +22,7 @@ def _copied_config() -> set[str]:
 def test_the_image_config_files_are_in_the_context_and_its_sources() -> None:
     copied = _copied_config()
     assert "config/ind_requirements.toml" in copied
+    assert "config/translational_monitoring.toml" in copied
     ignore = (ROOT / ".dockerignore").read_text().splitlines()
     for f in copied:
         assert f"!{f}" in ignore, f

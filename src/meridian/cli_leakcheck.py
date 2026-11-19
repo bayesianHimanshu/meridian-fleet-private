@@ -26,7 +26,13 @@ ZONE_AGENTS = {
     "safety.sae_reconciler": ("safety.sae_reconciler",),
     "quality": ("quality.tmf_completeness",),
     "quality.audit_trail": ("quality.audit_trail_reviewer",),
-    "preclinical": ("preclinical.tox_study_monitor",),  # phase 5 step 1b
+    # phase 5 step 1b; step 3a adds the agents whose inputs (the NOAEL extract, the
+    # inventory) also pass through the dispatcher's input store.
+    "preclinical": (
+        "preclinical.tox_study_monitor",
+        "preclinical.dose_translation",
+        "preclinical.ind_readiness",
+    ),
 }
 
 
@@ -122,10 +128,45 @@ def leakcheck(
             "etmf_root": roots.etmf_root,
             "audit_root": roots.audit_root,
         }
+        planted = list(roots.planted)
+        noael_trigger = inventory_trigger = None
         if roots.send_root is not None:
-            update["preclinical"] = base.preclinical.model_copy(
-                update={"send_root": roots.send_root}
-            )
+            pre: dict[str, object] = {"send_root": roots.send_root}
+            from meridian.domain.events import InventoryLoaded, NoaelDecision
+            from meridian.preclinical.inputs import write_noael_extract
+
+            with Container.build(base) as c2:
+                decisions = [
+                    e
+                    for e in c2.ledger.read(event_types=[EventType.NOAEL_DECISION])
+                    if isinstance(e, Event) and isinstance(e.payload, NoaelDecision)
+                ]
+                loads = [
+                    e
+                    for e in c2.ledger.read(event_types=[EventType.INVENTORY_LOADED])
+                    if isinstance(e, Event) and isinstance(e.payload, InventoryLoaded)
+                ]
+            if decisions:
+                noael_trigger = decisions[-1]
+                written = write_noael_extract(
+                    decisions, noael_trigger, base.preclinical.cut_id, Path(tmp) / "noael"
+                )
+                pre["noael_root"], rel = sp.plant_noael_extract(
+                    canary=canary, dest=Path(tmp), written=written, trigger_seq=noael_trigger.seq
+                )
+                planted.append(rel)
+            if loads:
+                inventory_trigger = loads[-1]
+                assert isinstance(inventory_trigger.payload, InventoryLoaded)
+                pre["inventory_root"], rel = sp.copy_inventory(
+                    canary=canary,
+                    dest=Path(tmp),
+                    inventory_root=base.preclinical.inventory_root,
+                    asset_id=inventory_trigger.payload.asset_id,
+                    cut_id=inventory_trigger.payload.cut_id,
+                )
+                planted.append(rel)
+            update["preclinical"] = base.preclinical.model_copy(update=pre)
         settings = base.model_copy(update=update)
         with Container.build(settings) as c:
             from meridian.cli import _configure_logging
@@ -153,6 +194,15 @@ def leakcheck(
                 if agent == "preclinical.tox_study_monitor":
                     assert send_trigger is not None
                     t, cut = send_trigger, settings.preclinical.cut_id
+                if agent == "preclinical.dose_translation":
+                    if noael_trigger is None:
+                        continue
+                    t, cut = noael_trigger, settings.preclinical.cut_id
+                if agent == "preclinical.ind_readiness":
+                    if inventory_trigger is None:
+                        continue
+                    assert isinstance(inventory_trigger.payload, InventoryLoaded)
+                    t, cut = inventory_trigger, inventory_trigger.payload.cut_id
                 try:
                     r = executor.run(agent, t, cut)
                 except ExecutionError as exc:
@@ -167,11 +217,10 @@ def leakcheck(
             # held during the pass (the control), empty after the pass's drop.
             held = client.stats()
             executor.drain()  # tears the actors down, then drops the store
-            planted = {
-                hashlib.sha256((Path(tmp) / rel).read_bytes()).hexdigest(): rel
-                for rel in roots.planted
+            digests = {
+                hashlib.sha256((Path(tmp) / rel).read_bytes()).hexdigest(): rel for rel in planted
             }
-            result.sources.append(lc.input_store_source(held, client.stats(), planted))
+            result.sources.append(lc.input_store_source(held, client.stats(), digests))
             # The marker into the dispatcher's log (a request path) and its /tmp.
             client.lookup(marker)
             kubectl, context, ns = s.kubectl, s.context, s.dispatcher_namespace

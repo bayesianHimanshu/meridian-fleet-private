@@ -76,13 +76,24 @@ def test_nobody_decides_a_finding_that_names_them_on_every_kind(
 ) -> None:
     # The person named must be one whose role decides the kind: clinical ops for most; for
     # a dose proposal (phase 5 step 2) the toxicologist whose NOAEL it rests on.
-    named = Role.TOXICOLOGIST if kind is FindingKind.DOSE_PROPOSAL else Role.CLINICAL_OPS_LEAD
+    named = {
+        FindingKind.DOSE_PROPOSAL: Role.TOXICOLOGIST,
+        FindingKind.MONITORING_RECOMMENDATION: Role.MEDICAL_MONITOR,  # its only decider
+        FindingKind.REPORTING_SIGNAL: Role.MEDICAL_MONITOR,  # its only decider
+    }.get(kind, Role.CLINICAL_OPS_LEAD)
     person = PEOPLE[named]
     fid = _raise(fx, finding(kind, under_review=person), f"x:{kind.value}")
     client = fx.client()
     r = _decide(client, named, fid)
     assert r.status_code == 403
     assert "names them as the actor under review" in r.json()["detail"]
+    if kind in (FindingKind.MONITORING_RECOMMENDATION, FindingKind.REPORTING_SIGNAL):
+        # Only the medical monitor decides it: one naming them waits for another medical
+        # monitor; no other role may decide it.
+        assert _decide(client, Role.TOXICOLOGIST, fid).status_code == 403
+        free = _raise(fx, finding(kind, under_review="someone.else"), f"y:{kind.value}")
+        assert _decide(fx.client(), named, free).status_code == 201
+        return
     other = Role.CLINICAL_OPS_LEAD if kind is FindingKind.AUDIT else Role.MEDICAL_MONITOR
     if other is Role.CLINICAL_OPS_LEAD:
         # An audit finding about asha.rao: only clinical_ops_lead decides audit findings, so

@@ -200,3 +200,31 @@ in the same template: PRE-0232 (seq 19958), a proposed starting dose of 1.94 mg 
 60 kg adult from the combined NOAEL of 2 mg/kg (docs/fih-dose-notes.md), drafts identical
 to an in-process run (`c1728dfe...`). It is open: no decision was recorded on it. After the
 pass `meridian ledger verify` is ok at 19,965 events.
+
+### Correction (phase 5 step 3a)
+
+The pre-registration above says the planned trial is "MRD-110, single and multiple
+ascending doses". That was wrong: MRD-110 is a separate asset already in phase 1; the
+trial these requirements serve is MRD-101's own first-in-human study. No design for it is
+recorded anywhere, so the same assumption is kept (single and multiple ascending doses, at
+most 14 days of dosing, multiple doses). Nothing in the rules, the inventory or the
+results changes; the text above is left as it was committed.
+
+### Leak check with the step 2 inputs (phase 5 step 3a)
+
+`meridian leakcheck --env kind --zone preclinical` now also runs dose_translation and
+ind_readiness, with the canary planted in their staged inputs: the NOAEL extract
+(`recorded_at`) and a copy of the inventory cut (`route`), columns the agents read but
+never put in a finding, besides MI's MIORRES in the SEND copy. Run on 19 Nov 2026 (UTC),
+20 runs (7 tox_study_monitor, 7 dose_translation, 6 ind_readiness), the step 2 image:
+**pass**, the canary in none of the six sources, every positive control found
+(`var/leakcheck/kind-20261119T202520Z.json`):
+
+| Source | Items | Canary | Positive control |
+|---|---:|---|---|
+| dispatcher input store | 17 | none after the drop | the NOAEL extract, the inventory and MI held during the pass |
+| dispatcher pod | 11,269 | none | marker in its /tmp |
+| dispatcher logs | 1 | none | marker logged as a request path |
+| snapshot bucket | 48 | none | each of 6 golden snapshots decodes to the worker's path |
+| node kind-control-plane | 103,050 (15.4 GB) | none | marker in the scan pod's layer |
+| host var/ | 118 | none | marker file |

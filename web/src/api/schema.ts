@@ -290,6 +290,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/preclinical/{study}/translational": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Translational
+         * @description The current monitoring recommendation for the first-in-human study
+         *     (preclinical.translational_bridge): per target organ what to measure and when, with
+         *     its sources, and the safety margins. A proposal, never a decision.
+         */
+        get: operations["preclinical_translational_api_v1_preclinical__study__translational_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quality/audit": {
         parameters: {
             query?: never;
@@ -395,6 +417,28 @@ export interface paths {
          *     its primary evidence is unchanged).
          */
         get: operations["review_queue_api_v1_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/safety/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Safety Signals
+         * @description The latest scan of public FAERS data (openFDA) for MRD-201's drug: signals of
+         *     disproportionate reporting with PRR, ROR and counts, the label comparison, the data
+         *     date and FAERS's caveats (portfolio.safety_signal_scout). Never incidences or causes.
+         */
+        get: operations["safety_signals_api_v1_safety_signals_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -560,6 +604,8 @@ export interface components {
             attempt?: number | null;
             /** Executor */
             executor?: string | null;
+            /** Fetched */
+            fetched?: components["schemas"]["FetchedInput"][] | null;
             /** Review From Seq */
             review_from_seq?: number | null;
             /** Review To Seq */
@@ -668,6 +714,7 @@ export interface components {
             ind_readiness_percent?: number | null;
             /** Ind Status */
             ind_status?: ("assessed" | "not_loaded" | "not_shown") | null;
+            monitoring?: components["schemas"]["MonitoringBrief"] | null;
             /** Noael */
             noael?: components["schemas"]["NoaelBrief"][];
             /** Noael Status */
@@ -1236,7 +1283,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"] | components["schemas"]["SignalScanRequested"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -1254,7 +1301,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded" | "signal_scan_requested";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -1303,6 +1350,26 @@ export interface components {
             primary_evidence_sha256: string;
             /** Removed */
             removed: string[];
+        };
+        /**
+         * FetchedInput
+         * @description One request a run made to a public source and what came back (phase 5 step 3a:
+         *     portfolio.safety_signal_scout and openFDA). The body itself is kept on the host as the
+         *     run's input (var/signals/<trigger seq>); this records which one it was.
+         */
+        FetchedInput: {
+            /** Bytes */
+            bytes: number;
+            /** Last Updated */
+            last_updated: string;
+            /** Path */
+            path: string;
+            /** Query */
+            query: string;
+            /** Sha256 */
+            sha256: string;
+            /** Status */
+            status: number;
         };
         /**
          * Finding
@@ -1446,7 +1513,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness" | "monitoring_recommendation" | "reporting_signal";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1742,6 +1809,13 @@ export interface components {
              */
             type: "inventory_loaded";
         };
+        /** LabelReaction */
+        LabelReaction: {
+            /** Reaction */
+            reaction: string;
+            /** Signal Terms */
+            signal_terms: string[];
+        };
         /** LatestNarrative */
         LatestNarrative: {
             /** Explanation */
@@ -1771,6 +1845,22 @@ export interface components {
             next_before?: number | null;
             /** Next Since */
             next_since: number | null;
+        };
+        /** MarginView */
+        MarginView: {
+            /** Display */
+            display: string;
+            /** Hed Mg */
+            hed_mg: number;
+            /** Human Weight Kg */
+            human_weight_kg: number | null;
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "NOAEL" | "LOAEL";
+            /** Ratio */
+            ratio: number | null;
         };
         /**
          * ModelAnswer
@@ -1813,6 +1903,61 @@ export interface components {
             text?: string | null;
             /** Verdict */
             verdict?: ("yes" | "no" | "unsure") | null;
+        };
+        /**
+         * MonitoringBrief
+         * @description The current monitoring recommendation for a preclinical asset's first-in-human study
+         *     (phase 5 step 3a): its status, its organs, who decided it.
+         */
+        MonitoringBrief: {
+            /** Decided By */
+            decided_by?: string | null;
+            /** Decided Seq */
+            decided_seq?: number | null;
+            /** Finding Id */
+            finding_id?: string | null;
+            /** Organs */
+            organs?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "open" | "accepted" | "escalated" | "dismissed" | "not_shown";
+            /**
+             * Unmapped
+             * @default 0
+             */
+            unmapped: number;
+        };
+        /** MonitoringItemView */
+        MonitoringItemView: {
+            /** Finding Titles */
+            finding_titles: string[];
+            /** Findings */
+            findings: string[];
+            /** Frequency */
+            frequency: string;
+            /** Label */
+            label: string;
+            /** Measure */
+            measure: string;
+            /** Organ */
+            organ: string;
+            /** Review */
+            review: string;
+            /** Sources */
+            sources: components["schemas"]["MonitoringSourceView"][];
+            /** Stopping */
+            stopping: string;
+        };
+        /** MonitoringSourceView */
+        MonitoringSourceView: {
+            /** Quote */
+            quote: string;
+            /** Section */
+            section: string;
+            /** Source */
+            source: string;
         };
         /** NarrativeView */
         NarrativeView: {
@@ -2197,6 +2342,8 @@ export interface components {
             decision_reason: string | null;
             /** Finding Id */
             finding_id: string;
+            /** Recorded Title */
+            recorded_title: string;
             /** Seq */
             seq: number;
             /** Status */
@@ -2268,6 +2415,31 @@ export interface components {
             sites: components["schemas"]["SiteMetrics"][];
             /** Study Id */
             study_id: string;
+        };
+        /** RecommendationView */
+        RecommendationView: {
+            /** Basis */
+            basis: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided Seq */
+            decided_seq: number | null;
+            /** Finding Id */
+            finding_id: string;
+            /** Items */
+            items: components["schemas"]["MonitoringItemView"][];
+            /** Margins */
+            margins: components["schemas"]["MarginView"][];
+            /** Seq */
+            seq: number;
+            /** Starting Dose */
+            starting_dose: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Unmapped */
+            unmapped: string[];
         };
         /** Reconciliation */
         Reconciliation: {
@@ -2443,6 +2615,63 @@ export interface components {
             woke: components["schemas"]["RunEvent"] | null;
         };
         /**
+         * SafetySignalsView
+         * @description The Safety signals view (phase 5 step 3a): the latest scan of openFDA for MRD-201's
+         *     drug, every tested term with its disproportionality, the signals, and the comparison
+         *     with the US label. Reporting signals, not incidences or causes.
+         */
+        SafetySignalsView: {
+            /** All Reports */
+            all_reports: number | null;
+            /** Caveats */
+            caveats: string[];
+            /** Caveats Source */
+            caveats_source: string;
+            /** Data Date */
+            data_date: string | null;
+            /** Drug */
+            drug: string;
+            /** Drug Reports */
+            drug_reports: number | null;
+            /** Label Effective */
+            label_effective: string | null;
+            /** Label Most Common */
+            label_most_common: components["schemas"]["LabelReaction"][];
+            /** Label Set Id */
+            label_set_id: string | null;
+            /** Label Version */
+            label_version: string | null;
+            /** Not Answered */
+            not_answered?: string[];
+            /** Not Signals */
+            not_signals: components["schemas"]["SignalRow"][];
+            /** Product Query */
+            product_query: string;
+            /** Requests */
+            requests: number;
+            /** Rule */
+            rule: string;
+            /** Scan Id */
+            scan_id: string | null;
+            /** Scan Seq */
+            scan_seq: number | null;
+            /** Signals */
+            signals: components["schemas"]["SignalRow"][];
+            /** Signals Listed */
+            signals_listed: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scanned" | "not_scanned" | "responses_missing";
+            /** Study Id */
+            study_id: string;
+            /** Terms With Drug */
+            terms_with_drug: number | null;
+            /** Tested */
+            tested: number;
+        };
+        /**
          * SendStudyLoaded
          * @description A nonclinical (SEND) study ingested (phase 5 step 1): the trigger of the preclinical
          *     agents, as DataCut is of the clinical ones. Its study is the toxicology study's own id
@@ -2466,6 +2695,57 @@ export interface components {
          * @enum {string}
          */
         Severity: "low" | "medium" | "high";
+        /** SignalRow */
+        SignalRow: {
+            /** Chi2 */
+            chi2: number;
+            /** Drug Reports */
+            drug_reports: number;
+            /** Finding Id */
+            finding_id: string | null;
+            /** Label Listed */
+            label_listed: boolean | null;
+            /** Prr */
+            prr: number | null;
+            /** Prr High */
+            prr_high: number | null;
+            /** Prr Low */
+            prr_low: number | null;
+            /** Reports */
+            reports: number;
+            /** Ror */
+            ror: number | null;
+            /** Ror High */
+            ror_high: number | null;
+            /** Ror Low */
+            ror_low: number | null;
+            /** Signal */
+            signal: boolean;
+            /** Status */
+            status: string | null;
+            /** Term */
+            term: string;
+            /** Term Reports */
+            term_reports: number;
+        };
+        /**
+         * SignalScanRequested
+         * @description A scan of public spontaneous reports for a study's drug (phase 5 step 3a): the
+         *     trigger of portfolio.safety_signal_scout. scan_id names the scan's cut.
+         */
+        SignalScanRequested: {
+            /** Requested By */
+            requested_by: string;
+            /** Scan Id */
+            scan_id: string;
+            /** Study Id */
+            study_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "signal_scan_requested";
+        };
         /** SiteCount */
         SiteCount: {
             /** Count */
@@ -2535,7 +2815,8 @@ export interface components {
         };
         /**
          * StartingDose
-         * @description MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+         * @description A preclinical asset's planned first-in-human starting dose (MRD-101's), or why there
+         *     is none (phase 5 step 2; step 3a: it is the asset's own, not MRD-110's). planned:
          *     the medical monitor accepted the current proposal. not_shown: a role outside the
          *     proposal's roles (then nothing else is filled).
          */
@@ -2723,6 +3004,25 @@ export interface components {
             site_id: string;
             /** Timely Percent */
             timely_percent: number | null;
+        };
+        /**
+         * TranslationalView
+         * @description The Translational panel (phase 5 step 3a): the current monitoring recommendation for
+         *     the first-in-human study, its sources and the safety margins, or why there is none.
+         */
+        TranslationalView: {
+            current: components["schemas"]["RecommendationView"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "recommended" | "no_decision" | "not_run";
+            /** Study Id */
+            study_id: string;
+            /** Superseded */
+            superseded: string[];
+            /** Why */
+            why: string;
         };
         /**
          * UnblindedCases
@@ -3313,6 +3613,42 @@ export interface operations {
             };
         };
     };
+    preclinical_translational_api_v1_preclinical__study__translational_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationalView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     quality_audit_api_v1_quality_audit_get: {
         parameters: {
             query?: never;
@@ -3517,6 +3853,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    safety_signals_api_v1_safety_signals_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafetySignalsView"];
                 };
             };
             /** @description Validation Error */

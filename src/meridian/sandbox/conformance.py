@@ -25,6 +25,16 @@ rbqm.narrator (the meridian-anthropic provider attached):
 * Whether ANTHROPIC_API_KEY inside the sandbox starts with "sk-ant-" (it must not): the
   sandbox prints only True or False, and only that is recorded.
 
+portfolio_signal (phase 5 step 3a; no provider; openFDA's two GET endpoints only):
+
+* openfda_count            python GET https://api.fda.gov/drug/event.json?count=...,
+                           status 200 (one count query, no key)
+* openfda_other_path       python GET https://api.fda.gov/drug/ndc.json: the proxy answers
+                           403 policy_denied (only /drug/event.json and /drug/label.json)
+* egress_ollama            python GET http://172.17.0.1:11434/api/tags (refused: the host
+                           Ollama address, which only safety.local_model may reach)
+* egress_anthropic, egress_example_com, the two writes, egress_test_net and control_tmp.
+
 safety.local_model (no provider; Ollama on the host address only):
 
 * ollama_tags              python GET http://172.17.0.1:11434/api/tags, status 200 (the
@@ -74,6 +84,7 @@ from meridian.sandbox.policies import (
     NARRATOR_POLICY,
     OLLAMA_HOST,
     OLLAMA_PORT,
+    SIGNAL_POLICY,
     STAGE_AREAS,
     expected_effective,
     policy_path,
@@ -219,6 +230,34 @@ OLLAMA_OTHER_ENDPOINT = CheckSpec(
     f"{OLLAMA_URL}/api/version",
     "HTTP 403 policy_denied",
 )
+OPENFDA_COUNT = CheckSpec(
+    "openfda_count",
+    "allowed",
+    _python_get("https://api.fda.gov/drug/event.json?count=fulfillexpeditecriteria"),
+    "status 200",
+    "",
+)
+OPENFDA_OTHER_PATH = CheckSpec(
+    "openfda_other_path",
+    "refused",
+    (
+        f'{PYTHON} -c "import httpx, sys\n'
+        f"r = httpx.get('https://api.fda.gov/drug/ndc.json?limit=1', timeout=20)\n"
+        f"if r.status_code == 403 and 'policy_denied' in r.text:\n"
+        f"    sys.exit('HTTP 403 policy_denied: GET /drug/ndc.json')\n"
+        f"print('status', r.status_code)\n"
+        f'sys.exit(r.status_code != 200)"'
+    ),
+    "https://api.fda.gov/drug/ndc.json",
+    "HTTP 403 policy_denied",
+)
+EGRESS_OLLAMA = CheckSpec(
+    "egress_ollama",
+    "refused",
+    _python_get(f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/tags"),
+    f"{OLLAMA_HOST}:{OLLAMA_PORT}",
+    "ConnectError: [Errno 13] Permission denied",
+)
 # Prints True or False only: never the value.
 KEY_PREFIX_COMMAND = (
     f"{PYTHON} -c \"import os; print(os.environ.get('ANTHROPIC_API_KEY', '')"
@@ -250,10 +289,23 @@ LOCAL_MODEL_CHECKS: tuple[CheckSpec, ...] = (
     EGRESS_TEST_NET,
     CONTROL_TMP,
 )
+SIGNAL_CHECKS: tuple[CheckSpec, ...] = (
+    OPENFDA_COUNT,
+    OPENFDA_OTHER_PATH,
+    EGRESS_ANTHROPIC,
+    EGRESS_OLLAMA,
+    EGRESS_EXAMPLE,
+    WRITE_VAR_TMP,
+    WRITE_OPT,
+    EGRESS_TEST_NET,
+    CONTROL_TMP,
+)
 CHECKS = ZONE_CHECKS  # the zone checks (step 2b name)
 NETWORK_CHECK = EGRESS_TEST_NET.name
 # Network refusals are recorded from the supervisor's log line, not the harness.
-NETWORK_CHECKS = frozenset({EGRESS_TEST_NET.name, EGRESS_EXAMPLE.name, EGRESS_ANTHROPIC.name})
+NETWORK_CHECKS = frozenset(
+    {EGRESS_TEST_NET.name, EGRESS_EXAMPLE.name, EGRESS_ANTHROPIC.name, EGRESS_OLLAMA.name}
+)
 
 
 def stage_check(area: str, readable: bool) -> CheckSpec:
@@ -269,9 +321,11 @@ def stage_check(area: str, readable: bool) -> CheckSpec:
 
 
 def checks_for(policy_name: str) -> tuple[CheckSpec, ...]:
-    base = {NARRATOR_POLICY: NARRATOR_CHECKS, LOCAL_MODEL_POLICY: LOCAL_MODEL_CHECKS}.get(
-        policy_name, ZONE_CHECKS
-    )
+    base = {
+        NARRATOR_POLICY: NARRATOR_CHECKS,
+        LOCAL_MODEL_POLICY: LOCAL_MODEL_CHECKS,
+        SIGNAL_POLICY: SIGNAL_CHECKS,
+    }.get(policy_name, ZONE_CHECKS)
     reads = ALL_POLICIES[policy_name].reads
     return (*base, *(stage_check(a, a in reads) for a in STAGE_AREAS))
 
@@ -481,6 +535,8 @@ def _log_check(record: NetLogRecord) -> str | None:
         return EGRESS_EXAMPLE.name
     if record.host == "api.anthropic.com":
         return EGRESS_ANTHROPIC.name
+    if record.host == OLLAMA_HOST:
+        return EGRESS_OLLAMA.name
     return None
 
 
