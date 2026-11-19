@@ -147,3 +147,29 @@ takes the study's newest proposal whose basis is a current decision, as the ledg
 when it writes the extract, with its latest status. Found by a unit test
 (`test_an_open_proposal_is_said_to_be_not_accepted`), fixed before any stress case ran;
 `test_a_proposal_on_a_revised_noael_is_not_used` covers the stale case.
+
+### The real run, in a Substrate sandbox on kind
+
+Image built from `3097be2` (clean), templates `*-0215f7c5ea01-m384` deployed with
+`meridian substrate deploy --prune`. `meridian agents run --cut TOX-FINAL`: one run, on the
+medical monitor's acceptance of PRE-0232 (seq 19966; the NOAEL decisions 19941 to 19943
+come before it, so the acceptance is the latest trigger), in an actor of
+`preclinical-0215f7c5ea01-m384`, 0 failed, drafts identical to an in-process run (sha256
+`95d11cab...`). **PRE-0237** (seq 20065), open: **exactly the pre-registered result.**
+
+| Organ | Rests on | Measure | Frequency | Review | Stopping | Sources |
+|---|---|---|---|---|---|---|
+| Liver | PRE-0165 (AST, F), PRE-0198 (necrosis, F), PRE-0210 and PRE-0214 (vacuolization at recovery) | ALT, AST, ALP, total bilirubin (INR, direct bilirubin when abnormal) | before dosing and after the last dose for short courses; every 2 to 4 weeks in longer early trials | ALT or AST > 3 x ULN: repeat all four within 48 to 72 h, then two or three times weekly | consider stopping: > 8 x ULN; > 5 x ULN for over 2 weeks; > 3 x ULN with TBL > 2 x ULN or INR > 1.5; > 3 x ULN with symptoms or eosinophilia | FDA 2009 DILI IV.A.2 to IV.A.5 |
+| Heart (myocardium) | PRE-0155 (inflammation, M), PRE-0196 (F) | 12-lead ECG with QTc; troponin I or T | ECG at baseline and periodically on treatment; no cited frequency for troponin | QTc > 450 ms; troponin > ULN (CTCAE grade 1) | consider discontinuation for QTc > 500 ms or > 60 ms over baseline; no cited stopping rule for troponin | ICH E14 II.A.2, II.C; CTCAE v5.0 |
+
+Nothing unmapped. Margins (FDA 2005, divisor 6.2, as the dose proposal), against the
+accepted 1.94 mg:
+
+| | Dose | HED | For a 60 kg adult | Margin |
+|---|---|---|---|---:|
+| NOAEL | 2 mg/kg/day | 0.323 mg/kg | 19.4 mg | 10 x |
+| LOAEL | 20 mg/kg/day | 3.23 mg/kg | 194 mg | 100 x |
+
+The NOAEL margin is the safety factor itself, by construction; the LOAEL margin is that
+times the ten-fold dose spacing. Neither says anything a toxicologist would not see at
+once; they are shown so the clinic reads them next to the monitoring.

@@ -62,6 +62,7 @@ def test_the_bridge_wakes_on_the_acceptance_and_maps_alt_to_the_liver(fx: Fixtur
     assert item["measure"].startswith("ALT, AST, ALP and total bilirubin")
     assert {s["source"] for s in item["sources"]} == {"FDA 2009 DILI"}
     assert any("ALT or AST >8xULN" in s["quote"] for s in item["sources"])
+    assert {s["section"] for s in item["sources"]} == {"IV.A.2", "IV.A.3", "IV.A.4", "IV.A.5"}
     assert sorted(item["findings"]) == sorted(_alt_ids(c))
     margins = {m["label"]: m for m in panel["current"]["margins"]}
     assert round(margins["NOAEL"]["ratio"], 6) == 10.0

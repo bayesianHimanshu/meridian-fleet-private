@@ -100,3 +100,84 @@ inputs (`var/signals/<trigger seq>/signal/openfda_responses.parquet`), and a rer
 (`meridian signals replay`) must give identical drafts.
 
 ## Results
+
+Run on 19 Nov 2026 (UTC), portfolio.safety_signal_scout 1.0.0 at commit `eae0dee`, the
+pre-registration (`11c2e8e`) unchanged; in an OpenShell sandbox under
+policies/portfolio_signal.yaml, image built from `eae0dee` (clean).
+
+### Conformance of portfolio_signal (OpenShell, ledger seq 19967 to 19984): pass
+
+| Check | Expected | Result |
+|---|---|---|
+| openfda_count: GET api.fda.gov/drug/event.json?count=fulfillexpeditecriteria | allowed | status 200 |
+| openfda_other_path: GET api.fda.gov/drug/ndc.json | refused | HTTP 403 policy_denied |
+| egress_anthropic: GET api.anthropic.com/v1/models | refused | ConnectError, Errno 13; log: DENIED, transparent_tcp_policy_denied |
+| egress_ollama: GET 172.17.0.1:11434/api/tags (the host Ollama) | refused | ConnectError, Errno 13; log: DENIED |
+| egress_example_com | refused | ConnectError, Errno 13; log: DENIED |
+| writes to /var/tmp and /opt/meridian; TCP to 192.0.2.1:443 | refused | Permission denied; log line found |
+| /stage/meta and /stage/signal | readable | readable |
+| every other /stage area (10) | refused | Permission denied |
+
+`meridian policy prove`: portfolio_signal within the signal boundary. The two ALLOWED log
+lines are api.fda.gov:443 under policy openfda.
+
+### The scan (SignalScanRequested seq 19985, scan SCAN-20261119T211657Z)
+
+- openFDA data date (`meta.last_updated`) **2026-10-28**; 2,767 reports with the drug of
+  21,054,158; 659 reaction terms with the drug, 250 with at least 3 reports.
+- 254 requests: 250 answered 200, **4 answered "Too Many Requests"** (HTTP 500) at 0.3 s
+  between requests: DRUG INTERACTION, HICCUPS, HYPERSEXUALITY, INABILITY TO AFFORD
+  MEDICATION. 1.0.0 does not retry (none was pre-registered), so those 4 are not tested;
+  the view lists them. **246 terms tested, 76 signals** (SIG-0001 to SIG-0076, seq 19986
+  onward), all open.
+- Every response is kept (`var/signals/19985/signal/openfda_responses.parquet`) and named
+  on the ActorWoke by path, query, status, sha256 and data date. `meridian signals replay
+  --trigger 19985`: 76 drafts, sha256 `49dd00f1e358fdcb`, **identical** to the recorded run
+  (run again after the query encoder changed in `3097be2`: still identical).
+
+The 15 strongest signals by PRR (all 76 on the Safety signals view):
+
+| Term | Reports (a) | PRR (95% CI) | ROR | Chi-squared | In the label text |
+|---|---:|---|---:|---:|---|
+| drooling | 58 | 64.4 (49.8 to 83.1) | 65.7 | 3,526 | listed |
+| psychiatric decompensation | 11 | 43.0 (23.8 to 77.7) | 43.2 | 408 | not found |
+| intrusive thoughts | 6 | 39.0 (17.5 to 86.8) | 39.0 | 185 | not found |
+| soliloquy | 4 | 35.4 (13.2 to 94.3) | 35.4 | 101 | not found |
+| urinary retention | 153 | 35.0 (30.0 to 40.9) | 37.0 | 5,007 | listed |
+| blunted affect | 3 | 31.1 (10.0 to 96.5) | 31.1 | 60 | not found |
+| hallucination, auditory | 56 | 26.9 (20.7 to 34.9) | 27.4 | 1,366 | not found |
+| vomiting projectile | 10 | 26.4 (14.2 to 49.0) | 26.5 | 219 | not found |
+| salivary hypersecretion | 31 | 23.6 (16.6 to 33.6) | 23.9 | 648 | listed |
+| inappropriate affect | 4 | 19.2 (7.2 to 51.3) | 19.3 | 52 | not found |
+| loss of therapeutic response | 7 | 16.7 (8.0 to 35.1) | 16.8 | 88 | not found |
+| schizophrenia | 26 | 16.3 (11.1 to 23.9) | 16.4 | 358 | listed (as the indication) |
+| psychotic disorder | 62 | 16.0 (12.5 to 20.5) | 16.3 | 856 | not found |
+| libido increased | 4 | 15.0 (5.6 to 40.0) | 15.0 | 39 | not found |
+| violence-related symptom | 3 | 14.8 (4.8 to 45.8) | 14.8 | 26 | not found |
+
+### Against the US label (COBENFY, set 8f0e73bf-6025-44f6-ab64-0983322de0df, version 6, effective 2026-01-16)
+
+**19 of 76 signals are named in the label's text** (exact phrase): nausea, vomiting,
+constipation, urinary retention, dyspepsia, vision blurred, dry mouth, heart rate
+increased, somnolence, drooling, abdominal discomfort, tachycardia, salivary
+hypersecretion, dysuria, schizophrenia, dyskinesia, akathisia, hypertensive crisis,
+urinary hesitation. "Schizophrenia" matches because the label names the indication, not
+because it lists it as a reaction: the exact-phrase rule cannot tell them apart.
+
+The label's ten most common adverse reactions (section 6.1, incidence at least 5% and at
+least twice placebo) against the signals: **5 are signals** (nausea, dyspepsia,
+constipation, vomiting, tachycardia); 5 are not under the rule as written: hypertension,
+abdominal pain, diarrhea, dizziness, and gastrointestinal reflux disease (its MedDRA
+term, GASTROOESOPHAGEAL REFLUX DISEASE, is a signal at PRR 5.9, and ABDOMINAL DISCOMFORT
+is one at 2.6, but the exact-phrase rule does not equate them).
+
+What the 57 signals not found in the label are, as they are: mostly psychiatric terms
+(psychotic disorder, auditory and visual hallucinations, delusion, paranoia, mania,
+agitation, aggression, suicidal ideation, catatonia) and terms about use (treatment
+noncompliance, loss of therapeutic response, therapy non-responder, drug screen positive,
+product supply issue, adverse event). COBENFY is used for schizophrenia, so worsening or
+unchanged illness is reported with it far more than with the average drug in FAERS:
+reporting that follows the indication, not evidence of harm. MRD-201 studies the drug in
+Alzheimer's disease; these reports come from another population.
+
+**The FAERS caveats apply to every line above** (quoted in the method section).

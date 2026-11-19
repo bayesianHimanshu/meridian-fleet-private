@@ -2058,15 +2058,21 @@ class Repository:
                 if x.statistic.endswith(f":{organ}")
                 and x.statistic.split(":")[1] in ("measure", "frequency", "review", "stopping")
             }
-            sources = [
-                MonitoringSourceView(
-                    source=fields(x)["SOURCE"],
-                    section=fields(x)["SECTION"],
-                    quote=(x.display or "").split(': "', 1)[-1].removesuffix('"'),
+            sources = []
+            for x in ev:
+                if x.statistic != f"monitoring:source:{organ}":
+                    continue
+                # The display is '<source>, <section>: "<quote>"'; a section may hold "; ",
+                # the selector's separator, so it is read from the display.
+                source = fields(x)["SOURCE"]
+                head, _, quote = (x.display or "").partition(': "')
+                sources.append(
+                    MonitoringSourceView(
+                        source=source,
+                        section=head.removeprefix(f"{source}, "),
+                        quote=quote.removesuffix('"'),
+                    )
                 )
-                for x in ev
-                if x.statistic == f"monitoring:source:{organ}"
-            ]
             mine = [
                 x for x in ev if x.statistic == "monitoring:finding" and fields(x)["ORGAN"] == organ
             ]
