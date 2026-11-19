@@ -20,6 +20,7 @@ from meridian.domain.events import (
     FindingNarrative,
     FindingRaised,
     HumanDecision,
+    InventoryLoaded,
     NoaelDecision,
     PolicyDenied,
     QualityObservation,
@@ -166,6 +167,12 @@ PAYLOADS: list[EventPayload] = [
         finding_ids=("PRE-0001",),
         rationale="Hepatocellular necrosis with ALT rise at 200 mg/kg; none at 20 mg/kg.",
         decided_by="leela.nair",
+    ),
+    InventoryLoaded(
+        asset_id="MRD-101",
+        cut_id="INV-0123abcd",
+        path="data/inventory_cuts/MRD-101/INV-0123abcd",
+        source_sha256="a" * 64,
     ),
 ]
 

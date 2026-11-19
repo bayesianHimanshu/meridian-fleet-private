@@ -44,7 +44,15 @@ from meridian.domain.findings import Decision, Evidence, Finding
 from tests.api_support import STUDY, Fixture, build, headers
 
 ROLES = list(Role)
-KINDS = ("rbqm", "safety_subject", "safety_v11", "safety_site", "restricted")
+KINDS = (
+    "rbqm",
+    "safety_subject",
+    "safety_v11",
+    "safety_site",
+    "restricted",
+    "dose_proposal",
+    "ind_readiness",
+)
 # safety.sae_reconciler 1.1 checks, with 1.1 evidence (case id, version and subject).
 V11_CHECKS = (
     s.DATA_QUALITY,
@@ -74,6 +82,9 @@ PATHS = [
     "/api/v1/preclinical/studies",
     "/api/v1/preclinical/MRD-101-TOX-01/endpoints",
     "/api/v1/preclinical/MRD-101-TOX-01/noael",
+    # Phase 5 step 2: the dose proposal's panel and the IND readiness checklist.
+    "/api/v1/preclinical/MRD-101-TOX-01/dose-translation",
+    "/api/v1/preclinical/assets/MRD-101/ind-readiness",
 ]
 
 spec = st.fixed_dictionaries(
@@ -137,14 +148,30 @@ def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
             FindingKind.SAE_RECONCILIATION,
             s.check_id(s.LATE_SITE, f"10{i:02d}"),
         ),
+        "dose_proposal": (
+            "preclinical.dose_translation",
+            "1.0.0",
+            FindingKind.DOSE_PROPOSAL,
+            f"dose_proposal:NOAEL-{i:012x}",
+        ),
+        "ind_readiness": (
+            "preclinical.ind_readiness",
+            "1.0.0",
+            FindingKind.IND_READINESS,
+            f"glp_status_missing:req{i}:MRD-101-S{i}",
+        ),
     }[kind]
+    if kind == "dose_proposal":
+        ev = ev.model_copy(
+            update={"selector": f"DECISION=NOAEL-{i:012x}; SEX=combined; SEQ={i + 1}"}
+        )
     restricted = kind == "restricted"
     finding = Finding(
         kind=fkind,
         agent_id=agent,
         agent_version=version,
-        study_id=STUDY,
-        site_id=f"10{i:02d}",
+        study_id={"dose_proposal": "MRD-101-TOX-01", "ind_readiness": "MRD-101"}.get(kind, STUDY),
+        site_id=None if kind in ("dose_proposal", "ind_readiness") else f"10{i:02d}",
         severity=Severity.MEDIUM,
         title=f"Finding {i}" + (f" about {subject}" if subject else ""),
         summary=f"Summary {i}" + (f" of {subject}" if subject else ""),

@@ -200,6 +200,8 @@ enabled = [
     "quality.tmf_completeness",
     "quality.audit_trail_reviewer",
     "preclinical.tox_study_monitor",
+    "preclinical.dose_translation",
+    "preclinical.ind_readiness",
 ]
 
 [agents.kri_monitor]
@@ -306,3 +308,44 @@ clinical_chemistry = 20.0
 urinalysis = 25.0
 organ_weight = 10.0
 other = 20.0
+
+[agents.dose_translation]
+# preclinical.dose_translation 1.0.0 (phase 5 step 2): the toxicologist's NOAEL to a
+# proposed maximum recommended starting dose by FDA, "Estimating the Maximum Safe Starting
+# Dose in Initial Clinical Trials for Therapeutics in Adult Healthy Volunteers" (July 2005).
+# Every figure quotes the guidance; a species not listed here gets no starting dose.
+# docs/fih-dose-notes.md.
+human_km = 37.0
+human_km_citation = "section V.A, Table 1: Human, km 37"
+safety_factor = 10.0
+safety_factor_citation = "section VII: \"The default safety factor that should normally be used is 10.\""
+human_weight_kg = 60.0
+human_weight_citation = "section V.A, Table 1, footnote a: \"Assumes 60 kg human.\""
+# The medical monitor decides the proposal; the clinical side of the hand-off sees it.
+visible_to = ["toxicologist", "medical_monitor", "portfolio_lead", "qa_auditor"]
+
+# Table 1 rows, by SEND TS SPECIES: divide the animal dose in mg/kg by divide_by (or
+# multiply by multiply_by) for the HED in mg/kg; km converts mg/kg to mg/m2.
+[agents.dose_translation.conversions.RAT]
+km = 6.0
+divide_by = 6.2
+multiply_by = 0.16
+citation = "section V.A, Table 1: Rat, km 6, divide animal dose by 6.2 (or multiply by 0.16)"
+
+[agents.dose_translation.conversions.DOG]
+km = 20.0
+divide_by = 1.8
+multiply_by = 0.54
+citation = "section V.A, Table 1: Dog, km 20, divide animal dose by 1.8 (or multiply by 0.54)"
+
+[agents.ind_readiness]
+# preclinical.ind_readiness 1.0.0 (phase 5 step 2), pre-registered in
+# docs/ind-readiness-eval.md before its code. The requirements are
+# config/ind_requirements.toml. MRD-110 is single and multiple ascending doses in healthy
+# volunteers: at most 14 days of dosing. The IND is planned for Q2 2027 (the portfolio):
+# its first day.
+asset_id = "MRD-101"
+planned_clinical_duration_days = 14
+multiple_dose = true
+planned_submission_date = 2027-04-01
+visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]

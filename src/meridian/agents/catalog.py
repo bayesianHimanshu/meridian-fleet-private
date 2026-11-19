@@ -7,6 +7,8 @@ without importing the ledger store, ingestion, faults or evals.
 from typing import Any
 
 from meridian.agents.base import Agent, AgentConfig
+from meridian.agents.preclinical.dose_translation import DoseTranslation
+from meridian.agents.preclinical.ind_readiness import IndReadiness
 from meridian.agents.preclinical.tox_study_monitor import ToxStudyMonitor
 from meridian.agents.quality.audit_trail_reviewer import AuditTrailReviewer
 from meridian.agents.quality.tmf_completeness import TmfCompleteness
@@ -28,6 +30,8 @@ def build_registry(cfg: AgentsSettings) -> AgentRegistry:
         (TmfCompleteness(), cfg.tmf_completeness),
         (AuditTrailReviewer(), cfg.audit_trail_reviewer),
         (ToxStudyMonitor(), cfg.tox_study_monitor),
+        (DoseTranslation(), cfg.dose_translation),
+        (IndReadiness(), cfg.ind_readiness),
     ]
     unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
     if unknown:

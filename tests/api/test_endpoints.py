@@ -21,6 +21,7 @@ from tests.api_support import (
     Fixture,
     build,
     headers,
+    study_live,
 )
 from tests.rbqm_support import write_tables_cut
 
@@ -97,6 +98,8 @@ def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
     fleet = _get(fx.client(), "/api/v1/fleet")
     by_id = {a["agent_id"]: a for a in fleet["agents"]}
     assert sorted(by_id) == [
+        "preclinical.dose_translation",
+        "preclinical.ind_readiness",
         "preclinical.tox_study_monitor",
         "quality.audit_trail_reviewer",
         "quality.tmf_completeness",
@@ -153,7 +156,7 @@ def test_portfolio_marks_static_and_live_fields(fx: Fixture) -> None:
     assert [a["live"] for a in assets] == [
         None,
         None,
-        {"open_findings": 2, "noael_status": None, "noael": []},
+        study_live(2),
         None,
     ]
 

@@ -83,6 +83,8 @@ export function PreclinicalView() {
               <Endpoints study={s} />
               <Findings study={s} />
               <NoaelPanel study={s} />
+              <DosePanel study={s} />
+              {s.asset_id ? <IndChecklist assetId={s.asset_id} /> : null}
             </div>
           ))
         : null}
@@ -772,5 +774,186 @@ function NoaelForm({ study, history }: { study: Study; history: Schemas["NoaelHi
         </p>
       ) : null}
     </form>
+  );
+}
+
+const STEP_LABEL: Record<string, string> = {
+  "mrsd:noael_mg_per_kg": "NOAEL",
+  "mrsd:noael_not_established": "NOAEL",
+  "mrsd:hed_mg_per_kg": "Human equivalent dose",
+  "mrsd:hed_cross_check_mg_per_kg": "Cross-check",
+  "mrsd:most_appropriate_species": "Most appropriate species",
+  "mrsd:mrsd_mg_per_kg": "Maximum recommended starting dose",
+  "mrsd:starting_dose_mg": "Starting dose, 60 kg adult",
+  "mrsd:decision_considered": "Decision considered",
+  "mrsd:study_design": "Study design",
+  "mrsd:exposure_information_only": "Exposure (information only)",
+  "mrsd:limitation": "Limitation",
+  "mrsd:safety_factor_used": "Safety factor used",
+};
+
+function DosePanel({ study }: { study: Study }) {
+  const dose = useApi(["preclinical", study.study_id, "dose-translation"], () =>
+    unwrap(
+      api.GET("/api/v1/preclinical/{study}/dose-translation", { params: { path: { study: study.study_id } } }),
+    ),
+  );
+  const steps = dose.data?.current?.steps ?? [];
+  const working = steps.filter((x) => x.role === "primary" || x.statistic === "mrsd:hed_cross_check_mg_per_kg" || x.statistic === "mrsd:most_appropriate_species");
+  const context = steps.filter((x) => !working.includes(x));
+  return (
+    <section className="panel" aria-labelledby="dose-title">
+      <div className="panel-head">
+        <h2 id="dose-title">Dose translation</h2>
+        <span className="src">preclinical.dose_translation, FDA 2005; a proposal, not a decision</span>
+      </div>
+      {dose.isPending ? <Loading what="the dose translation" /> : null}
+      {dose.isError ? <ErrorNote error={dose.error} /> : null}
+      {dose.isSuccess ? (
+        <>
+          <p className={dose.data.current ? "muted" : "message"} data-testid="dose-why">
+            {dose.data.why}
+          </p>
+          {dose.data.current ? (
+            <div className="stack" data-testid="dose-current">
+              <div className="finding-meta">
+                <FindingLink id={dose.data.current.finding_id} className="mono" />
+                <StatusChip status={dose.data.current.status} />
+                {dose.data.current.decided_by ? (
+                  <span className="muted">
+                    by {dose.data.current.decided_by}, ledger seq{" "}
+                    <span className="mono">{dose.data.current.decided_seq}</span>
+                  </span>
+                ) : null}
+              </div>
+              <p className="headline">{dose.data.current.title}</p>
+              <ol className="stack" aria-label="The working, step by step">
+                {working.map((x) => (
+                  <li key={`${x.statistic}-${x.selector}`}>
+                    <strong>{STEP_LABEL[x.statistic] ?? x.statistic}:</strong> {x.display}{" "}
+                    <span className="src mono">source {x.source}</span>
+                  </li>
+                ))}
+              </ol>
+              <ul className="stack" aria-label="Context and limitations">
+                {context.map((x) => (
+                  <li key={`${x.statistic}-${x.selector}`} className="muted">
+                    <strong>{STEP_LABEL[x.statistic] ?? x.statistic}:</strong> {x.display}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {dose.data.superseded.length ? (
+            <p className="muted">
+              Superseded proposals (an earlier NOAEL):{" "}
+              {dose.data.superseded.map((id, i) => (
+                <span key={id}>
+                  {i ? ", " : ""}
+                  <FindingLink id={id} className="mono" />
+                </span>
+              ))}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+const REQ_STATUS: Record<Schemas["RequirementView"]["status"], string> = {
+  met: "met",
+  not_met: "not met",
+  not_applicable: "not applicable",
+};
+
+const PROBLEM_TEXT: Record<string, string> = {
+  required_study_missing: "no study",
+  duration_short: "shorter than required",
+  report_not_ready: "report not QA audited by submission",
+  glp_status_missing: "GLP status not recorded",
+};
+
+function IndChecklist({ assetId }: { assetId: string }) {
+  const ind = useApi(["preclinical", assetId, "ind-readiness"], () =>
+    unwrap(api.GET("/api/v1/preclinical/assets/{asset}/ind-readiness", { params: { path: { asset: assetId } } })),
+  );
+  return (
+    <section className="panel" aria-labelledby="ind-title">
+      <div className="panel-head">
+        <h2 id="ind-title">IND readiness</h2>
+        <span className="src">preclinical.ind_readiness, ICH M3(R2)</span>
+      </div>
+      {ind.isPending ? <Loading what="the IND readiness checklist" /> : null}
+      {ind.isError ? <ErrorNote error={ind.error} /> : null}
+      {ind.isSuccess && ind.data.status === "not_loaded" ? (
+        <p className="message">No nonclinical inventory has been loaded for {assetId}.</p>
+      ) : null}
+      {ind.isSuccess && ind.data.status === "assessed" ? (
+        <>
+          <p data-testid="ind-summary">
+            <span className="fig">{String(ind.data.percent_met ?? 0)}%</span> of applicable requirements met (
+            {String(ind.data.met)} of {String(ind.data.applicable)}), for a trial of{" "}
+            {String(ind.data.planned_clinical_duration_days)} days of dosing
+            {ind.data.multiple_dose ? " (multiple doses)" : " (one dose)"} and an IND planned for{" "}
+            {ind.data.planned_submission_date}. A summary, not a finding; it does not say the IND can be submitted.
+          </p>
+          <div className="table-wrap" tabIndex={0} aria-label="IND readiness table">
+            <table>
+              <caption className="visually-hidden">Each first-in-human requirement, its status and its study</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Requirement</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Study</th>
+                  <th scope="col">Gap</th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ind.data.requirements.map((r) => (
+                  <tr key={r.id} data-testid={`req-${r.id}`}>
+                    <th scope="row">{r.title}</th>
+                    <td>
+                      <span className={`chip ${r.status === "met" ? "good" : r.status === "not_met" ? "warning" : "outline"}`}>
+                        {REQ_STATUS[r.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {r.study_id ? (
+                        <>
+                          <span className="mono">{r.study_id}</span>
+                          <div className="muted">
+                            {r.duration_weeks !== null ? `${String(r.duration_weeks)} weeks` : ""}
+                            {r.required_weeks !== null ? ` (at least ${r.required_weeks.toPrecision(2)})` : ""}
+                            {r.glp ? `, GLP ${r.glp}` : ""}
+                            {r.report_status ? `, report ${r.report_status.replace("_", " ")}` : ""}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="muted">none</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.problems.map((p) => PROBLEM_TEXT[p] ?? p).join("; ")}
+                      {r.finding_ids.map((id) => (
+                        <div key={id}>
+                          <FindingLink id={id} className="mono" />
+                        </div>
+                      ))}
+                    </td>
+                    <td>
+                      <span title={r.quote}>
+                        {r.source} {r.section}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : null}
+    </section>
   );
 }

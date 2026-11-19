@@ -38,6 +38,7 @@ from meridian.api.models import (
     AssetStatic,
     AuditFindingItem,
     AuditView,
+    ChainLink,
     CheckCount,
     ContainmentCheckView,
     ContainmentView,
@@ -46,6 +47,8 @@ from meridian.api.models import (
     CutSummary,
     DecisionResponse,
     DecisionView,
+    DoseStep,
+    DoseTranslationView,
     Enrollment,
     EvidenceChangedSince,
     FindingDetail,
@@ -54,6 +57,7 @@ from meridian.api.models import (
     FindingSummary,
     Fleet,
     FleetAgent,
+    IndReadinessView,
     LatestNarrative,
     LedgerPage,
     NarrativeView,
@@ -70,12 +74,15 @@ from meridian.api.models import (
     PreclinicalEndpoints,
     PreclinicalStudy,
     PreviousDecision,
+    ProposalView,
     RbqmSites,
     Reconciliation,
+    RequirementView,
     ReviewQueue,
     RunEvent,
     RunTrace,
     SiteFlag,
+    StartingDose,
     StudySummary,
     TmfCompletenessView,
     TmfFindingItem,
@@ -90,6 +97,7 @@ from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import make_dedup_key, parse_dedup_key
 from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
+    INVENTORY_CUT_PREFIX,
     ActorSuspended,
     ActorWoke,
     ContainmentCheckCompleted,
@@ -100,6 +108,7 @@ from meridian.domain.events import (
     FindingNarrative,
     FindingRaised,
     HumanDecision,
+    InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
     QualityObservation,
@@ -110,11 +119,14 @@ from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
 from meridian.platform.agent_settings import (
     AuditTrailReviewerConfig,
+    IndReadinessConfig,
     TmfCompletenessConfig,
     ToxStudyMonitorConfig,
 )
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
+from meridian.preclinical import readiness
+from meridian.preclinical.readiness import INVENTORY_TABLE
 from meridian.sandbox.policies import (
     ALL_POLICIES,
     LOCAL_MODEL_POLICY,
@@ -173,6 +185,8 @@ class Snapshot:
     # SEND study loads (phase 5): trigger seq -> SEND cut id, so a newer version's run on a
     # SEND cut retires what it no longer raises, as a run on a DataCut does.
     send_loads: dict[int, str] = field(default_factory=dict)
+    # Inventory loads (phase 5 step 2): trigger seq -> (asset, inventory cut id).
+    inventory_loads: dict[int, tuple[str, str]] = field(default_factory=dict)
     cut_events: dict[int, Event] = field(default_factory=dict)
     raised: dict[str, _Raised] = field(default_factory=dict)
     narratives: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
@@ -210,6 +224,8 @@ class Snapshot:
                 snap.cut_events[shown.seq] = shown
             elif isinstance(p, SendStudyLoaded):
                 snap.send_loads[shown.seq] = p.cut_id
+            elif isinstance(p, InventoryLoaded):
+                snap.inventory_loads[shown.seq] = (p.asset_id, p.cut_id)
             elif isinstance(p, FindingRaised):
                 if p.finding.finding_id is not None and visibility.can_see_finding(role, p.finding):
                     parts = parse_dedup_key(p.dedup_key)
@@ -249,6 +265,7 @@ class Snapshot:
                 snap.decisions[e.payload.decision.finding_id].append(e)
         snap.superseded_by = _supersession(snap.raised.values())
         snap.retired_by = _retirement(snap)
+        _latest_wins(snap)
         snap.previously_decided, snap.changed_since = _prior_decisions(snap)
         return snap
 
@@ -467,6 +484,58 @@ def _retirement(snap: Snapshot) -> dict[str, str]:
     return out
 
 
+def _latest_wins(snap: Snapshot) -> None:
+    """Phase 5 step 2, for the agents whose newest input replaces the old one rather than
+    adding a cut beside it.
+
+    * A dose proposal rests on the study's current NOAEL: the newest proposal of a study
+      (by seq) is current and supersedes every earlier one (a revised NOAEL wakes the agent
+      again; docs/fih-dose-notes.md).
+    * An IND readiness gap belongs to an inventory: the newest inventory cut the agent
+      completed a run on is current. A gap on an older cut is superseded by the same check
+      on that cut, or retired (by the version of that run) when the newer cut lacks it.
+    """
+    proposals: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
+    readiness: dict[tuple[str, str], list[_Raised]] = defaultdict(list)
+    for r in snap.raised.values():
+        f = r.finding
+        if f.kind is FindingKind.DOSE_PROPOSAL:
+            proposals[(f.agent_id, f.study_id)].append(r)
+        elif f.kind is FindingKind.IND_READINESS:
+            readiness[(f.agent_id, f.study_id)].append(r)
+    for members in proposals.values():
+        newest = max(members, key=lambda r: r.event.seq)
+        for r in members:
+            if r is not newest:
+                snap.superseded_by[r.finding_id] = newest.finding_id
+                snap.retired_by.pop(r.finding_id, None)
+    runs: dict[tuple[str, str], tuple[int, str]] = {}  # (agent, asset) -> (seq, cut, version)
+    versions: dict[tuple[str, int], str] = {}
+    for e in snap.suspended:
+        p = e.payload
+        if isinstance(p, ActorSuspended) and p.trigger_seq in snap.inventory_loads:
+            asset, cut = snap.inventory_loads[p.trigger_seq]
+            key = (p.agent_id, asset)
+            if key not in runs or p.trigger_seq > runs[key][0]:
+                runs[key] = (p.trigger_seq, cut)
+            versions[(p.agent_id, p.trigger_seq)] = p.agent_version or ""
+    for (agent, asset), members in readiness.items():
+        latest = runs.get((agent, asset))
+        if latest is None:
+            continue
+        seq, cut = latest
+        on_latest = {r.check: r for r in members if r.cut_id == cut}
+        for r in members:
+            if r.cut_id == cut:
+                continue
+            twin = on_latest.get(r.check)
+            if twin is not None:
+                snap.superseded_by[r.finding_id] = twin.finding_id
+                snap.retired_by.pop(r.finding_id, None)
+            elif r.finding_id not in snap.superseded_by:
+                snap.retired_by[r.finding_id] = versions.get((agent, seq), "")
+
+
 def primary_displays(f: Finding) -> list[str]:
     """Display strings of the primary evidence, described the same way for old findings."""
     return [e.display for e in describe(f.evidence) if e.role == "primary" and e.display]
@@ -555,6 +624,9 @@ class PortfolioEntry:
     asset_id: str
     static: AssetStatic
     live_study: bool
+    # Phase 5 step 2: the preclinical asset whose accepted dose proposal is this asset's
+    # planned starting dose (MRD-110's is MRD-101's).
+    starting_dose_from: str | None = None
 
 
 ScopeFilter = Literal["operational", "evaluation", "all"]
@@ -596,7 +668,12 @@ class Repository:
         send_reader: Callable[[str, str], StudyReader] | None = None,
         tox_config: ToxStudyMonitorConfig | None = None,
         preclinical_assets: Mapping[str, str] | None = None,
+        inventory_reader: Callable[[str, str], StudyReader] | None = None,
+        ind_config: IndReadinessConfig | None = None,
     ) -> None:
+        # Phase 5 step 2: (asset, inventory cut) to its reader, and the readiness rules.
+        self._inventory_reader = inventory_reader
+        self._ind_config = ind_config
         # Phase 5: (study, cut) to a SEND study reader, the agent's config (the endpoint
         # tables use its analysis), and preclinical asset id to its SEND study id.
         self._send_reader = send_reader
@@ -622,7 +699,7 @@ class Repository:
     def scope(self, cut_id: str) -> CutScope:
         """A data cut's scope. Findings about the ledger itself (audit findings, QA
         observations; cut "LEDGER") are about the live study: operational."""
-        if cut_id == LEDGER_SCOPE:
+        if cut_id == LEDGER_SCOPE or cut_id.startswith(INVENTORY_CUT_PREFIX):
             return "operational"
         return "operational" if cut_id in self._operational else "evaluation"
 
@@ -1537,14 +1614,27 @@ class Repository:
         queue = self.review_queue().items
         open_count = sum(1 for item in queue if item.study_id == self._study_id)
 
+        sources = {a.asset_id: a.starting_dose_from for a in self._portfolio}
+
         def live(asset_id: str) -> AssetLive | None:
             if asset_id == self._study_id:
                 return AssetLive(open_findings=open_count)
+            source = sources.get(asset_id)
+            if source is not None and source in self._preclinical_assets:
+                return AssetLive(
+                    open_findings=0,
+                    starting_dose=self.starting_dose(self._preclinical_assets[source]),
+                )
             study = self._preclinical_assets.get(asset_id)
             if study is None:
                 return None
             if not visibility.can_see_preclinical(self.role):
-                return AssetLive(open_findings=0, noael_status="not_shown")
+                return AssetLive(
+                    open_findings=0,
+                    noael_status="not_shown",
+                    ind_status="not_shown",
+                    starting_dose=self.starting_dose(study),
+                )
             current = [v for v in self._noael_views(study) if v.current]
             briefs = [
                 NoaelBrief(
@@ -1558,10 +1648,14 @@ class Repository:
                 )
                 for v in sorted(current, key=lambda v: v.sex)
             ]
+            ind = self.ind_readiness(asset_id) if self._ind_config is not None else None
             return AssetLive(
-                open_findings=sum(1 for item in queue if item.study_id == study),
+                open_findings=sum(1 for item in queue if item.study_id in (study, asset_id)),
                 noael_status="decided" if briefs else "not_yet_decided",
                 noael=briefs,
+                ind_status=None if ind is None else ind.status,
+                ind_readiness_percent=None if ind is None else ind.percent_met,
+                starting_dose=self.starting_dose(study),
             )
 
         return Portfolio(
@@ -1792,6 +1886,310 @@ class Repository:
         self._snapshot = None
         (view,) = [v for v in self._noael_views(study_id) if v.seq == event.seq]
         return view
+
+    # ---- the hand-off to the clinic (phase 5 step 2)
+
+    def _proposals(self, study_id: str) -> tuple[_Raised | None, list[_Raised]]:
+        """(the current dose proposal of a study, the earlier ones) as this role sees them."""
+        snap = self.snapshot()
+        mine = sorted(
+            (
+                r
+                for r in snap.raised.values()
+                if r.finding.kind is FindingKind.DOSE_PROPOSAL and r.finding.study_id == study_id
+            ),
+            key=lambda r: r.event.seq,
+        )
+        current = [r for r in mine if r.finding_id not in snap.superseded_by]
+        return (current[-1] if current else None), [r for r in mine if r not in current]
+
+    def _decided(self, finding_id: str) -> HumanDecision | None:
+        history = self.snapshot().decisions.get(finding_id, [])
+        if not history:
+            return None
+        last = history[-1].payload
+        assert isinstance(last, HumanDecision)
+        return last
+
+    def _proposal_view(self, r: _Raised) -> ProposalView:
+        snap = self.snapshot()
+        history = snap.decisions.get(r.finding_id, [])
+        last = history[-1] if history else None
+        decision = (
+            last.payload.decision
+            if last is not None and isinstance(last.payload, HumanDecision)
+            else None
+        )
+        basis = next(
+            (
+                fields.removeprefix("DECISION=")
+                for e in r.finding.evidence
+                for fields in e.selector.split("; ")
+                if fields.startswith("DECISION=") and e.role == "primary"
+            ),
+            None,
+        )
+        return ProposalView(
+            finding_id=r.finding_id,
+            seq=r.event.seq,
+            title=r.finding.title,
+            summary=r.finding.summary,
+            check=r.check.split(":", 1)[0],
+            status=snap.status(r.finding_id),
+            basis_decision_id=basis,
+            steps=[
+                DoseStep(
+                    statistic=e.statistic,
+                    role=e.role,
+                    value=e.value,
+                    source=e.source,
+                    selector=e.selector,
+                    display=e.display or e.statistic,
+                )
+                for e in r.finding.evidence
+            ],
+            decided_by=None if decision is None else decision.actor,
+            decided_seq=None if last is None else last.seq,
+            decision_reason=None if decision is None else decision.reason,
+        )
+
+    def dose_translation(self, study_id: str) -> DoseTranslationView:
+        """The Dose translation panel: preclinical roles, as the rest of the study's page."""
+        self._send_study(study_id)
+        current, earlier = self._proposals(study_id)
+        superseded = [r.finding_id for r in earlier]
+        if current is not None:
+            view = self._proposal_view(current)
+            proposed = view.check == "dose_proposal"
+            return DoseTranslationView(
+                study_id=study_id,
+                status="proposed" if proposed else "no_starting_dose",
+                why=(
+                    "The current NOAEL converted by FDA's 2005 method: a proposal the medical "
+                    "monitor accepts, escalates or dismisses."
+                    if proposed
+                    else current.finding.title
+                ),
+                current=view,
+                superseded=superseded,
+            )
+        decided = [v for v in self._noael_views(study_id) if v.current]
+        if not decided:
+            return DoseTranslationView(
+                study_id=study_id,
+                status="no_decision",
+                why=(
+                    "No NOAEL decision is recorded for this study, so "
+                    "preclinical.dose_translation records nothing: it starts from the "
+                    "toxicologist's NOAEL and never sets one."
+                ),
+                current=None,
+                superseded=superseded,
+            )
+        return DoseTranslationView(
+            study_id=study_id,
+            status="not_run",
+            why=(
+                "A NOAEL decision is recorded, but preclinical.dose_translation has not run on "
+                "it yet (the next agents run will)."
+            ),
+            current=None,
+            superseded=superseded,
+        )
+
+    def starting_dose(self, study_id: str) -> StartingDose:
+        """The planned first human dose from a preclinical study: the current proposal once
+        accepted, with the chain from the study to the acceptance; or why there is none."""
+        if not visibility.can_see_dose_proposal(self.role):
+            return StartingDose(status="not_shown", why="not shown to your role")
+        current, earlier = self._proposals(study_id)
+        if current is None and not visibility.can_see_preclinical(self.role):
+            # The medical monitor learns of preclinical work through a proposal only: with
+            # none, not even whether a NOAEL is recorded.
+            return StartingDose(status="no_proposal", why="No dose proposal has been raised yet.")
+        noael = {v.decision_id: v for v in self._noael_views(study_id)}
+        chain: list[ChainLink] = []
+        load = self._send_loads().get(study_id)
+        if load is not None and isinstance(load.payload, SendStudyLoaded):
+            chain.append(
+                ChainLink(
+                    step="study",
+                    label=f"{study_id}, SEND cut {load.payload.cut_id}",
+                    ref=study_id,
+                    who=load.actor,
+                    seq=load.seq,
+                )
+            )
+        if current is None:
+            if not any(v.current for v in noael.values()):
+                return StartingDose(
+                    status="no_decision",
+                    why=f"No NOAEL decision is recorded for {study_id}.",
+                    chain=chain,
+                )
+            return StartingDose(
+                status="no_proposal",
+                why="The NOAEL is recorded; preclinical.dose_translation has not run on it yet.",
+                chain=chain,
+            )
+        view = self._proposal_view(current)
+        basis = noael.get(view.basis_decision_id or "")
+        if basis is not None:
+            dose = (
+                f"NOAEL {basis.noael_dose:g} {basis.dose_unit}"
+                if basis.noael_dose is not None
+                else "NOAEL not established"
+            )
+            chain.append(
+                ChainLink(
+                    step="noael",
+                    label=f"{dose} ({basis.sex}), {basis.decision_id}",
+                    ref=basis.decision_id,
+                    who=basis.decided_by,
+                    seq=basis.seq,
+                )
+            )
+        chain.append(
+            ChainLink(
+                step="proposal",
+                label=view.title,
+                ref=view.finding_id,
+                who=current.finding.agent_id,
+                seq=view.seq,
+            )
+        )
+        if view.decided_by is not None and view.decided_seq is not None:
+            chain.append(
+                ChainLink(
+                    step="decision",
+                    label=f"{view.status} by {view.decided_by}",
+                    ref=view.finding_id,
+                    who=view.decided_by,
+                    seq=view.decided_seq,
+                )
+            )
+        values = {s.statistic: s.value for s in view.steps}
+        dose_mg = values.get("mrsd:starting_dose_mg")
+        mrsd = values.get("mrsd:mrsd_mg_per_kg")
+        weight_kg = (dose_mg / mrsd) if dose_mg is not None and mrsd else None
+        if view.check != "dose_proposal":
+            return StartingDose(status="no_starting_dose", why=view.title, chain=chain)
+        earlier_accepted = [
+            r for r in earlier if self.snapshot().decided(r.finding_id) == "accepted"
+        ]
+        if view.status == "accepted":
+            return StartingDose(
+                status="planned",
+                dose_mg=dose_mg,
+                mrsd_mg_per_kg=mrsd,
+                human_weight_kg=weight_kg,
+                why=f"Accepted by {view.decided_by} (ledger seq {view.decided_seq}).",
+                chain=chain,
+            )
+        if view.status == "dismissed":
+            return StartingDose(
+                status="dismissed",
+                dose_mg=dose_mg,
+                mrsd_mg_per_kg=mrsd,
+                human_weight_kg=weight_kg,
+                why=f"Dismissed by {view.decided_by}: {view.decision_reason or ''}".strip(),
+                chain=chain,
+            )
+        waiting = (
+            f"{view.finding_id} awaits the medical monitor's decision"
+            if view.status != "escalated"
+            else f"{view.finding_id} was escalated by {view.decided_by}"
+        )
+        if earlier_accepted:
+            waiting += (
+                f"; the accepted {earlier_accepted[-1].finding_id} was superseded on a revised "
+                "NOAEL, so no starting dose is planned until this one is decided"
+            )
+        return StartingDose(
+            status="escalated" if view.status == "escalated" else "proposed",
+            dose_mg=dose_mg,
+            mrsd_mg_per_kg=mrsd,
+            human_weight_kg=weight_kg,
+            why=waiting + ".",
+            chain=chain,
+        )
+
+    def ind_readiness(self, asset_id: str) -> IndReadinessView:
+        """The IND readiness checklist of a preclinical asset, from its newest inventory
+        load and the agent's own rules; each gap links to the agent's current finding."""
+        self._require_preclinical()
+        if asset_id not in self._preclinical_assets or self._ind_config is None:
+            raise NotFoundError(f"no IND readiness for {asset_id}")
+        cfg = self._ind_config
+        snap = self.snapshot()
+        loads = [(seq, cut) for seq, (a, cut) in snap.inventory_loads.items() if a == asset_id]
+        empty = IndReadinessView(
+            asset_id=asset_id,
+            status="not_loaded",
+            cut_id=None,
+            loaded_seq=None,
+            planned_submission_date=cfg.planned_submission_date.isoformat(),
+            planned_clinical_duration_days=cfg.planned_clinical_duration_days,
+            multiple_dose=cfg.multiple_dose,
+            percent_met=None,
+            met=0,
+            applicable=0,
+            requirements=[],
+        )
+        if not loads or self._inventory_reader is None:
+            return empty
+        seq, cut = max(loads)
+        try:
+            frame = self._inventory_reader(asset_id, cut).table(INVENTORY_TABLE)
+        except (OSError, StudyAccessError, MissingTableError) as exc:
+            raise NotFoundError(f"inventory {asset_id}/{cut} is not on this host") from exc
+        statuses = readiness.assess(readiness.studies_from(frame), cfg)
+        by_check = {
+            r.check: fid
+            for fid, r in snap.raised.items()
+            if r.finding.kind is FindingKind.IND_READINESS
+            and r.finding.study_id == asset_id
+            and snap.current(fid)
+        }
+        rows = []
+        for st in statuses:
+            s = st.study
+            rows.append(
+                RequirementView(
+                    id=st.requirement.id,
+                    title=st.requirement.title,
+                    source=st.requirement.source,
+                    section=st.requirement.section,
+                    quote=st.requirement.quote,
+                    note=st.requirement.note,
+                    status=st.status,  # type: ignore[arg-type]
+                    required_weeks=st.required_weeks,
+                    candidates=len(st.candidates),
+                    study_id=None if s is None else s.study_id,
+                    study_title=None if s is None else s.title,
+                    species=None if s is None else s.species,
+                    duration_weeks=None if s is None else s.duration_weeks,
+                    glp=None if s is None else s.glp,
+                    report_status=None if s is None else s.report_status,
+                    qa_audit_date=None
+                    if s is None or s.qa_audit_date is None
+                    else s.qa_audit_date.isoformat(),
+                    problems=[c.split(":", 1)[0] for c in st.checks()],
+                    finding_ids=[by_check[c] for c in st.checks() if c in by_check],
+                )
+            )
+        applicable = [st for st in statuses if st.applicable]
+        return empty.model_copy(
+            update={
+                "status": "assessed",
+                "cut_id": cut,
+                "loaded_seq": seq,
+                "percent_met": round(readiness.percent_met(statuses), 1),
+                "met": sum(st.met for st in applicable),
+                "applicable": len(applicable),
+                "requirements": rows,
+            }
+        )
 
     # ---- deciding
 

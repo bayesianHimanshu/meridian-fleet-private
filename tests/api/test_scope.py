@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from meridian.domain.enums import Role
 from meridian.domain.events import DataCut
 from tests.agent_support import clean
-from tests.api_support import STUDY, Fixture, blinded_finding, build, headers
+from tests.api_support import STUDY, Fixture, blinded_finding, build, headers, study_live
 from tests.rbqm_support import write_tables_cut
 
 OPS = headers(Role.CLINICAL_OPS_LEAD)
@@ -92,11 +92,7 @@ def test_the_review_queue_never_shows_evaluation_cuts_by_default(fx: Fixture) ->
     assert "RBQM-0003" in [i["finding_id"] for i in wide]
     portfolio = _get(client, "/api/v1/portfolio")["assets"]
     (mrd201,) = [a for a in portfolio if a["asset_id"] == STUDY]
-    assert mrd201["live"] == {
-        "open_findings": 2,
-        "noael_status": None,
-        "noael": [],
-    }  # the default queue, not every cut
+    assert mrd201["live"] == study_live(2)  # the default queue, not every cut
 
 
 def test_enrollment_is_cumulative_and_has_no_unblinded_columns(tmp_path: Path) -> None:

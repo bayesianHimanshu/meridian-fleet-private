@@ -25,7 +25,8 @@ export function PortfolioView() {
           <h1 id="portfolio-title">Portfolio</h1>
           <p>
             Meridian's four assets. Fields marked static are written in configuration and never computed.
-            Live fields come from the ledger: MRD-201's open findings, and MRD-101's current NOAEL decision.
+            Live fields come from the ledger: MRD-201's open findings; MRD-101's current NOAEL decision, its IND
+            readiness and its proposed starting dose; and MRD-110's planned starting dose with the chain behind it.
           </p>
         </div>
       </div>
@@ -64,13 +65,15 @@ export function PortfolioView() {
                     <p>
                       <span className={`chip ${STATUS_CLASS[a.static.status.level]}`}>{a.static.status.text}</span>
                     </p>
-                    {a.live?.noael_status === null ? (
+                    {a.live?.noael_status === null && !a.live.starting_dose ? (
                       <p>
                         <span className="chip outline">live</span>{" "}
                         <span className="fig">{a.live.open_findings}</span> open findings to review
                       </p>
                     ) : null}
                     {a.live?.noael_status ? <NoaelField live={a.live} /> : null}
+                    {a.live?.ind_status ? <IndField live={a.live} /> : null}
+                    {a.live?.starting_dose ? <StartingDoseField dose={a.live.starting_dose} /> : null}
                   </article>
                 ))}
             </section>
@@ -109,5 +112,81 @@ function NoaelField({ live }: { live: Schemas["AssetLive"] }) {
         </>
       )}
     </p>
+  );
+}
+
+function IndField({ live }: { live: Schemas["AssetLive"] }) {
+  return (
+    <p data-testid="ind-field">
+      <span className="chip outline">live</span>{" "}
+      {live.ind_status === "not_shown" ? (
+        <span className="muted">IND readiness: not shown to your role</span>
+      ) : live.ind_status === "not_loaded" ? (
+        <>IND readiness: no inventory loaded</>
+      ) : (
+        <>
+          IND readiness: <span className="fig">{String(live.ind_readiness_percent ?? 0)}%</span> of first-in-human
+          requirements met
+        </>
+      )}
+    </p>
+  );
+}
+
+const DOSE_STATUS: Record<Schemas["StartingDose"]["status"], string> = {
+  planned: "Planned starting dose",
+  proposed: "Proposed starting dose, not yet decided",
+  escalated: "Proposed starting dose, escalated",
+  dismissed: "Proposed starting dose, dismissed",
+  no_starting_dose: "No starting dose",
+  no_proposal: "No starting dose yet",
+  no_decision: "No starting dose yet",
+  not_shown: "Starting dose",
+};
+
+const STEP_TEXT: Record<Schemas["ChainLink"]["step"], string> = {
+  study: "Study",
+  noael: "NOAEL",
+  proposal: "Proposal",
+  decision: "Decision",
+};
+
+function mg(v: number | null | undefined): string {
+  return v === null || v === undefined ? "" : v.toPrecision(3);
+}
+
+export function StartingDoseField({ dose }: { dose: Schemas["StartingDose"] }) {
+  if (dose.status === "not_shown") {
+    return (
+      <p data-testid="dose-field">
+        <span className="chip outline">live</span> <span className="muted">Starting dose: not shown to your role</span>
+      </p>
+    );
+  }
+  const withDose = dose.dose_mg !== null && dose.dose_mg !== undefined;
+  const chain = dose.chain ?? [];
+  return (
+    <div data-testid="dose-field" className="stack">
+      <p>
+        <span className="chip outline">live</span> {DOSE_STATUS[dose.status]}
+        {withDose ? (
+          <>
+            : <span className="fig">{mg(dose.dose_mg)} mg</span> for a {String(dose.human_weight_kg ?? 60)} kg adult
+            (MRSD {mg(dose.mrsd_mg_per_kg)} mg/kg)
+          </>
+        ) : null}
+      </p>
+      <p className="muted">{dose.why}</p>
+      {chain.length ? (
+        <ol className="chain" aria-label="From the study to the starting dose">
+          {chain.map((link) => (
+            <li key={`${link.step}-${String(link.seq)}`}>
+              <strong>{STEP_TEXT[link.step]}:</strong> {link.label}
+              {link.who ? <> ({link.who})</> : null}, ledger seq <span className="mono">{link.seq}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
   );
 }

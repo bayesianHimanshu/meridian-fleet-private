@@ -321,6 +321,8 @@ class SubstrateExecutor:
         etmf_root: Path | None = None,
         audit_root: Path | None = None,
         send_root: Path | None = None,
+        noael_root: Path | None = None,
+        inventory_root: Path | None = None,
         staging_dir: Path | None = None,
         name_factory: Callable[[str, int], str] = sandbox_name,
         post: Callable[..., httpx.Response] = httpx.post,
@@ -346,6 +348,8 @@ class SubstrateExecutor:
         self._etmf_root = etmf_root
         self._audit_root = audit_root
         self._send_root = send_root
+        self._noael_root = noael_root
+        self._inventory_root = inventory_root
         self._staging_dir = staging_dir
         self._tracker = tracker
         self._log = log
@@ -430,6 +434,8 @@ class SubstrateExecutor:
                 etmf_root=self._etmf_root,
                 audit_root=self._audit_root,
                 send_root=self._send_root,
+                noael_root=self._noael_root,
+                inventory_root=self._inventory_root,
             )
             body = archive(staged.stage)
         body_sha = hashlib.sha256(body).hexdigest()

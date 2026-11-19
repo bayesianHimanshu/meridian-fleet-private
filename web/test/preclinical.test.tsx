@@ -87,8 +87,55 @@ const RATIONALE =
   "Changes at 20 mg/kg/day lacked a dose response or a correlating lesion.\n" +
   "Third line of the rationale.\nA fourth line the summary leaves out, with enough words to pass the minimum.";
 
-function preclinical(noael: Schemas["NoaelHistory"]) {
+const DOSE_STEPS: Schemas["DoseStep"][] = [
+  { statistic: "mrsd:noael_mg_per_kg", role: "primary", value: 2, source: "ledger:noael_decision", selector: "DECISION=NOAEL-cd4154d72a20; SEX=combined; SEQ=19943",
+    display: "Step 1, NOAEL: 2 mg/kg, the current decision for both sexes. FDA 2005 section IV: the NOAEL is the starting point." },
+  { statistic: "mrsd:hed_mg_per_kg", role: "primary", value: 0.3226, source: "config:agents.dose_translation.conversions", selector: "SPECIES=RAT",
+    display: "Step 2, human equivalent dose: HED = NOAEL / 6.2 = 2 / 6.2 = 0.323 mg/kg. FDA 2005 section V.A, Table 1: Rat." },
+  { statistic: "mrsd:mrsd_mg_per_kg", role: "primary", value: 0.03226, source: "config:agents.dose_translation", selector: "safety_factor",
+    display: "Step 4, MRSD = HED / safety factor = 0.323 / 10 = 0.0323 mg/kg." },
+  { statistic: "mrsd:starting_dose_mg", role: "primary", value: 1.935, source: "config:agents.dose_translation", selector: "human_weight_kg",
+    display: "Step 5, starting dose for a 60 kg adult = 1.94 mg." },
+  { statistic: "mrsd:limitation", role: "supporting", value: 0, source: "config:agents.dose_translation", selector: "LIMITATION=1",
+    display: "Limitation: One species only." },
+];
+
+function doseView(over: Partial<Schemas["DoseTranslationView"]> = {}): Schemas["DoseTranslationView"] {
+  return {
+    study_id: STUDY, status: "proposed", why: "The current NOAEL converted by FDA's 2005 method.",
+    current: {
+      finding_id: "PRE-0240", seq: 19950, title: "Proposed MRD-110 starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)",
+      summary: "", check: "dose_proposal", status: "accepted", basis_decision_id: "NOAEL-cd4154d72a20", steps: DOSE_STEPS,
+      decided_by: "karan.mehta", decided_seq: 19960, decision_reason: "Agreed.",
+    },
+    superseded: ["PRE-0232"],
+    ...over,
+  };
+}
+
+function requirement(over: Partial<Schemas["RequirementView"]>): Schemas["RequirementView"] {
+  return {
+    id: "x", title: "x", source: "ICH M3(R2)", section: "V (5)", quote: "q", note: "", status: "met", required_weeks: null,
+    candidates: 1, study_id: null, study_title: null, species: null, duration_weeks: null, glp: null, report_status: null,
+    qa_audit_date: null, problems: [], finding_ids: [], ...over,
+  };
+}
+
+const IND: Schemas["IndReadinessView"] = {
+  asset_id: "MRD-101", status: "assessed", cut_id: "INV-12345678", loaded_seq: 19947, planned_submission_date: "2027-04-01",
+  planned_clinical_duration_days: 14, multiple_dose: true, percent_met: 63.6, met: 7, applicable: 11,
+  requirements: [
+    requirement({ id: "repeat_dose_rodent", title: "Repeated-dose toxicity in a rodent", study_id: "MRD-101-TOX-01",
+      duration_weeks: 13, required_weeks: 2, glp: "Y", report_status: "qa_audited" }),
+    requirement({ id: "in_vitro_metabolism_protein_binding", title: "In vitro metabolism and plasma protein binding", status: "not_met",
+      section: "III (3)", candidates: 0, problems: ["required_study_missing"], finding_ids: ["PRE-0244"] }),
+  ],
+};
+
+function preclinical(noael: Schemas["NoaelHistory"], dose = doseView(), ind = IND) {
   server.use(
+    http.get(`${BASE}/preclinical/${STUDY}/dose-translation`, () => HttpResponse.json(dose)),
+    http.get(`${BASE}/preclinical/assets/MRD-101/ind-readiness`, () => HttpResponse.json(ind)),
     http.get(`${BASE}/preclinical/studies`, () => HttpResponse.json([study])),
     http.get(`${BASE}/preclinical/${STUDY}/endpoints`, () => HttpResponse.json(endpoints)),
     http.get(`${BASE}/preclinical/${STUDY}/noael`, () => HttpResponse.json(noael)),
@@ -300,10 +347,99 @@ describe("Portfolio NOAEL field", () => {
     expect(field.textContent).toContain("NOAEL: 20 mg/kg (both sexes)");
   });
 
+  it("shows MRD-110's planned starting dose with the chain behind it", async () => {
+    server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json({
+      assets: [{
+        asset_id: "MRD-110",
+        static: { title: "First-in-human SAD/MAD", stage: "phase_1", indication: "Healthy volunteers", intervention: null,
+          milestone: "MAD cohort 3 dosing", milestone_due: "Jan 2027", progress_percent: 55, probability_of_success: "52%",
+          status: { level: "good", text: "On track" } },
+        live: {
+          open_findings: 0,
+          starting_dose: {
+            status: "planned", dose_mg: 1.9355, mrsd_mg_per_kg: 0.032258, human_weight_kg: 60,
+            why: "Accepted by karan.mehta (ledger seq 19960).",
+            chain: [
+              { step: "study", label: "MRD-101-TOX-01, SEND cut TOX-FINAL", ref: STUDY, who: "system.ingest", seq: 19601 },
+              { step: "noael", label: "NOAEL 2 mg/kg (combined), NOAEL-cd4154d72a20", ref: "NOAEL-cd4154d72a20", who: "leela.nair", seq: 19943 },
+              { step: "proposal", label: "Proposed MRD-110 starting dose", ref: "PRE-0240", who: "preclinical.dose_translation", seq: 19950 },
+              { step: "decision", label: "accepted by karan.mehta", ref: "PRE-0240", who: "karan.mehta", seq: 19960 },
+            ],
+          },
+        },
+      }],
+    })));
+    renderApp("/portfolio", "karan.mehta");
+    const field = await screen.findByTestId("dose-field");
+    expect(field.textContent).toContain("Planned starting dose: 1.94 mg for a 60 kg adult (MRSD 0.0323 mg/kg)");
+    const chain = within(field).getByRole("list", { name: "From the study to the starting dose" });
+    const links = within(chain).getAllByRole("listitem").map((li) => li.textContent);
+    expect(links).toEqual([
+      "Study: MRD-101-TOX-01, SEND cut TOX-FINAL (system.ingest), ledger seq 19601",
+      "NOAEL: NOAEL 2 mg/kg (combined), NOAEL-cd4154d72a20 (leela.nair), ledger seq 19943",
+      "Proposal: Proposed MRD-110 starting dose (preclinical.dose_translation), ledger seq 19950",
+      "Decision: accepted by karan.mehta (karan.mehta), ledger seq 19960",
+    ]);
+    expect(screen.queryByText(/open findings to review/)).toBeNull();
+  });
+
+  it("shows MRD-101's IND readiness and why there is no starting dose yet", async () => {
+    server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json(portfolio({
+      open_findings: 4, noael_status: "not_yet_decided", noael: [], ind_status: "assessed", ind_readiness_percent: 63.6,
+      starting_dose: { status: "no_decision", why: "No NOAEL decision is recorded for MRD-101-TOX-01.", chain: [] },
+    }))));
+    renderApp("/portfolio", "rahul.iyer");
+    expect((await screen.findByTestId("ind-field")).textContent).toContain("IND readiness: 63.6% of first-in-human requirements met");
+    const dose = screen.getByTestId("dose-field");
+    expect(dose.textContent).toContain("No starting dose yet");
+    expect(dose.textContent).toContain("No NOAEL decision is recorded");
+  });
+
   it("says not yet decided, or not shown to the role", async () => {
     server.use(http.get(`${BASE}/portfolio`, () => HttpResponse.json(portfolio({ open_findings: 0, noael_status: "not_shown", noael: [] }))));
     renderApp("/portfolio", "asha.rao");
     expect((await screen.findByTestId("noael-field")).textContent).toContain("not shown to your role");
+  });
+});
+
+describe("Dose translation and IND readiness", () => {
+  it("shows the working step by step with its sources, and the decision on the proposal", async () => {
+    preclinical(history([decision()], false));
+    renderApp("/preclinical", "rahul.iyer");
+    const current = await screen.findByTestId("dose-current");
+    const steps = within(current).getByRole("list", { name: "The working, step by step" });
+    const items = within(steps).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toHaveLength(4);
+    expect(items[0]).toContain("NOAEL:");
+    expect(items[1]).toContain("HED = NOAEL / 6.2 = 2 / 6.2 = 0.323 mg/kg");
+    expect(items[1]).toContain("source config:agents.dose_translation.conversions");
+    expect(items[3]).toContain("1.94 mg");
+    expect(within(current).getByText(/One species only/)).toBeTruthy();
+    expect(within(current).getByRole("link", { name: "PRE-0240" })).toBeTruthy();
+    expect(within(current).getByText(/by karan.mehta/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "PRE-0232" })).toBeTruthy(); // superseded
+  });
+
+  it("says why there is no proposal", async () => {
+    preclinical(history([], false), doseView({ status: "no_decision", why: "No NOAEL decision is recorded for this study, so preclinical.dose_translation records nothing.", current: null, superseded: [] }));
+    renderApp("/preclinical", "rahul.iyer");
+    expect((await screen.findByTestId("dose-why")).textContent).toContain("records nothing");
+    expect(screen.queryByTestId("dose-current")).toBeNull();
+  });
+
+  it("lists every requirement with its status, its study and links to the gaps", async () => {
+    preclinical(history([], false));
+    renderApp("/preclinical", "rahul.iyer");
+    expect((await screen.findByTestId("ind-summary")).textContent).toContain("63.6% of applicable requirements met (7 of 11)");
+    const met = screen.getByTestId("req-repeat_dose_rodent");
+    expect(met.textContent).toContain("met");
+    expect(met.textContent).toContain("MRD-101-TOX-01");
+    expect(met.textContent).toContain("13 weeks (at least 2.0), GLP Y, report qa audited");
+    const gap = screen.getByTestId("req-in_vitro_metabolism_protein_binding");
+    expect(gap.textContent).toContain("not met");
+    expect(gap.textContent).toContain("no study");
+    expect(within(gap).getByRole("link", { name: "PRE-0244" })).toBeTruthy();
+    expect(gap.textContent).toContain("ICH M3(R2) III (3)");
   });
 });
 

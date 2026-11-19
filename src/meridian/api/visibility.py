@@ -25,6 +25,7 @@ from meridian.domain.events import (
     FindingNarrative,
     FindingRaised,
     HumanDecision,
+    InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
     QualityObservation,
@@ -167,8 +168,12 @@ def can_see_study_data(role: Role) -> bool:
 # A QA observation on a NOAEL decision reaches the preclinical roles only; of those, the
 # portfolio lead decides it (the toxicologist whose decision it is may not: actor under
 # review). Each role decides only the observations it can see.
+# A proposed starting dose (phase 5 step 2) is the clinic's to accept: the medical monitor,
+# or a toxicologist other than the one whose NOAEL it rests on (self_decision refuses that
+# one: the proposal names them as the actor under review).
 DECIDERS: dict[FindingKind, frozenset[Role]] = {
     FindingKind.AUDIT: frozenset({Role.CLINICAL_OPS_LEAD}),
+    FindingKind.DOSE_PROPOSAL: frozenset({Role.MEDICAL_MONITOR, Role.TOXICOLOGIST}),
     FindingKind.QA_OBSERVATION: frozenset(
         {Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD}
     ),
@@ -238,13 +243,24 @@ def can_see_preclinical(role: Role) -> bool:
     return role in PRECLINICAL_ROLES
 
 
+# Phase 5 step 2: who sees a proposed starting dose and the hand-off chain on the
+# portfolio: the preclinical roles and the medical monitor, who decides it
+# ([agents.dose_translation] visible_to; a test keeps the two equal).
+DOSE_PROPOSAL_ROLES = PRECLINICAL_ROLES | {Role.MEDICAL_MONITOR}
+
+
+def can_see_dose_proposal(role: Role) -> bool:
+    return role in DOSE_PROPOSAL_ROLES
+
+
 def can_record_noael(role: Role) -> bool:
     return role is NOAEL_RECORDER
 
 
 def is_preclinical_event(entry: Event) -> bool:
-    """A NOAEL decision, a SEND study load, or a run of a preclinical agent."""
+    """A NOAEL decision, a SEND study load, an inventory load, or a run of a preclinical
+    agent."""
     p = entry.payload
-    if isinstance(p, NoaelDecision | SendStudyLoaded):
+    if isinstance(p, NoaelDecision | SendStudyLoaded | InventoryLoaded):
         return True
     return isinstance(p, ActorWoke | ActorSuspended) and p.agent_id.startswith("preclinical.")

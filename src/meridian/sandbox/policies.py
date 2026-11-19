@@ -32,9 +32,11 @@ from pathlib import Path
 from meridian.data.stage_layout import (
     AUDIT,
     BLINDED,
+    INVENTORY,
     LM,
     META,
     NARR,
+    NOAEL,
     OPS,
     SEND,
     STAGE_AREAS,
@@ -47,9 +49,11 @@ from meridian.data.stage_layout import (
 __all__ = [
     "AUDIT",
     "BLINDED",
+    "INVENTORY",
     "LM",
     "META",
     "NARR",
+    "NOAEL",
     "OPS",
     "SEND",
     "STAGE_AREAS",
@@ -141,10 +145,12 @@ class ZonePolicy:
 # and the cut's eTMF index (tmf), and is the only zone that may read tmf; the unblinded
 # zone is the only one that may read the unblinded area; the preclinical zone reads the
 # SEND study (send) and nothing of a clinical cut, and is the only zone that may read send
-# (phase 5 step 1). The others have no agent yet and keep the blinded default.
+# (phase 5 step 1). Phase 5 step 2 adds the preclinical zone's NOAEL decisions (noael,
+# written by the host from the ledger) and the asset's study inventory (inventory), which
+# no other zone reads. The others have no agent yet and keep the blinded default.
 ZONE_READS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(ZONES, BLINDED_READS),
-    "preclinical": (META, SEND),
+    "preclinical": (META, SEND, NOAEL, INVENTORY),
     "safety": (META, BLINDED),
     "quality": (META, BLINDED, TMF),
     "unblinded": (META, BLINDED, OPS, UNBLINDED),

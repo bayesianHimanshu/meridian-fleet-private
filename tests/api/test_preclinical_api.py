@@ -313,7 +313,17 @@ def test_the_portfolio_shows_the_current_noael_to_preclinical_roles_only(fx: Fix
     assert live["noael_status"] == "decided"
     assert [(n["sex"], n["noael_dose"]) for n in live["noael"]] == [("combined", 10.0)]
     for role in CLINICAL:
-        assert mrd101(role) == {"open_findings": 0, "noael_status": "not_shown", "noael": []}
+        live = mrd101(role)
+        assert (live["open_findings"], live["noael_status"], live["noael"]) == (0, "not_shown", [])
+        assert (live["ind_status"], live["ind_readiness_percent"]) == ("not_shown", None)
+        # The medical monitor decides dose proposals; with none raised, nothing preclinical
+        # is told, not even that a NOAEL exists.
+        dose = live["starting_dose"]
+        if role is Role.MEDICAL_MONITOR:
+            assert (dose["status"], dose["chain"]) == ("no_proposal", [])
+            assert TOX not in dose["why"]
+        else:
+            assert dose["status"] == "not_shown"
 
 
 def test_the_ledger_hides_a_noael_from_clinical_roles(fx: Fixture) -> None:

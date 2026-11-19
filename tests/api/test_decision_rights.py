@@ -74,10 +74,13 @@ def fx(tmp_path: Path) -> Fixture:
 def test_nobody_decides_a_finding_that_names_them_on_every_kind(
     fx: Fixture, kind: FindingKind
 ) -> None:
-    asha = PEOPLE[Role.CLINICAL_OPS_LEAD]
-    fid = _raise(fx, finding(kind, under_review=asha), f"x:{kind.value}")
+    # The person named must be one whose role decides the kind: clinical ops for most; for
+    # a dose proposal (phase 5 step 2) the toxicologist whose NOAEL it rests on.
+    named = Role.TOXICOLOGIST if kind is FindingKind.DOSE_PROPOSAL else Role.CLINICAL_OPS_LEAD
+    person = PEOPLE[named]
+    fid = _raise(fx, finding(kind, under_review=person), f"x:{kind.value}")
     client = fx.client()
-    r = _decide(client, Role.CLINICAL_OPS_LEAD, fid)
+    r = _decide(client, named, fid)
     assert r.status_code == 403
     assert "names them as the actor under review" in r.json()["detail"]
     other = Role.CLINICAL_OPS_LEAD if kind is FindingKind.AUDIT else Role.MEDICAL_MONITOR
@@ -89,7 +92,7 @@ def test_nobody_decides_a_finding_that_names_them_on_every_kind(
         assert _decide(client, other, fid).status_code == 201
     # A finding about someone else is decided as before.
     free = _raise(fx, finding(kind, under_review="someone.else"), f"y:{kind.value}")
-    assert _decide(fx.client(), Role.CLINICAL_OPS_LEAD, free).status_code == 201
+    assert _decide(fx.client(), named, free).status_code == 201
 
 
 def test_audit_findings_are_decided_by_clinical_ops_only(fx: Fixture) -> None:

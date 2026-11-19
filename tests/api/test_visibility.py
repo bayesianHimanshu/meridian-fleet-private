@@ -37,6 +37,7 @@ from tests.api_support import (
     build,
     headers,
     restricted_finding,
+    study_live,
 )
 
 BLINDED_ROLES = [r for r in Role if r is not Role.UNBLINDED_STATISTICIAN]
@@ -68,11 +69,7 @@ def test_restricted_findings_are_invisible_and_uncounted_for_blinded_roles(fx: F
     assert clinical["total"] == 2
     portfolio = _get(client, Role.CLINICAL_OPS_LEAD, "/api/v1/portfolio")
     (mrd201,) = [a for a in portfolio["assets"] if a["asset_id"] == STUDY]
-    assert mrd201["live"] == {
-        "open_findings": 2,
-        "noael_status": None,
-        "noael": [],
-    }  # the restricted finding is not counted
+    assert mrd201["live"] == study_live(2)  # the restricted finding is not counted
     # Roles outside the findings' visible_to see none of them, and count none.
     assert _get(client, Role.PORTFOLIO_LEAD, "/api/v1/findings")["total"] == 0
 

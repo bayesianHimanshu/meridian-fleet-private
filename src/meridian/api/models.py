@@ -529,6 +529,43 @@ class NoaelBrief(BaseModel):
     decided_by: str
 
 
+class ChainLink(BaseModel):
+    """One link of the hand-off from a study to a planned first human dose, with the ledger
+    seq of the event that records it."""
+
+    model_config = _FROZEN
+
+    step: Literal["study", "noael", "proposal", "decision"]
+    label: str
+    ref: str  # the study id, the NOAEL decision id, or the finding id
+    who: str | None
+    seq: int
+
+
+class StartingDose(BaseModel):
+    """MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+    the medical monitor accepted the current proposal. not_shown: a role outside the
+    proposal's roles (then nothing else is filled)."""
+
+    model_config = _FROZEN
+
+    status: Literal[
+        "planned",
+        "proposed",
+        "escalated",
+        "dismissed",
+        "no_starting_dose",
+        "no_proposal",
+        "no_decision",
+        "not_shown",
+    ]
+    dose_mg: float | None = None
+    mrsd_mg_per_kg: float | None = None
+    human_weight_kg: float | None = None
+    why: str
+    chain: list[ChainLink] = Field(default_factory=list)
+
+
 class AssetLive(BaseModel):
     """Computed from the ledger at request time, as the caller may see it."""
 
@@ -539,6 +576,12 @@ class AssetLive(BaseModel):
     # "not_shown" for a role that does not see preclinical data (noael is then empty).
     noael_status: Literal["decided", "not_yet_decided", "not_shown"] | None = None
     noael: list[NoaelBrief] = Field(default_factory=list)
+    # Phase 5 step 2: the percent of first-in-human requirements met by the asset's
+    # inventory (preclinical roles), and the planned starting dose of its first human
+    # trial with its chain (the dose proposal's roles).
+    ind_status: Literal["assessed", "not_loaded", "not_shown"] | None = None
+    ind_readiness_percent: float | None = None
+    starting_dose: StartingDose | None = None
 
 
 class PortfolioAsset(BaseModel):
@@ -939,3 +982,88 @@ class NoaelHistory(BaseModel):
     # Phase 5 step 2: what the form needs to apply the API's own rules before submit.
     rationale_min_chars: int = NOAEL_RATIONALE_MIN
     candidates: list[NoaelCandidate] = Field(default_factory=list)
+
+
+class DoseStep(BaseModel):
+    """One evidence item of a dose proposal: a step of the working, its source, its value."""
+
+    model_config = _FROZEN
+
+    statistic: str
+    role: str | None
+    value: float
+    source: str
+    selector: str
+    display: str
+
+
+class ProposalView(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    seq: int
+    title: str
+    summary: str
+    check: str
+    status: str
+    basis_decision_id: str | None
+    steps: list[DoseStep]
+    decided_by: str | None
+    decided_seq: int | None
+    decision_reason: str | None
+
+
+class DoseTranslationView(BaseModel):
+    """The Dose translation panel (phase 5 step 2): the current proposal and its working,
+    or why there is none."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    status: Literal["proposed", "no_starting_dose", "no_decision", "not_run"]
+    why: str
+    current: ProposalView | None
+    superseded: list[str]
+
+
+class RequirementView(BaseModel):
+    model_config = _FROZEN
+
+    id: str
+    title: str
+    source: str
+    section: str
+    quote: str
+    note: str
+    status: Literal["met", "not_met", "not_applicable"]
+    required_weeks: float | None
+    candidates: int
+    study_id: str | None
+    study_title: str | None
+    species: str | None
+    duration_weeks: float | None
+    glp: str | None
+    report_status: str | None
+    qa_audit_date: str | None
+    problems: list[str]
+    finding_ids: list[str]
+
+
+class IndReadinessView(BaseModel):
+    """The IND readiness checklist (phase 5 step 2): every requirement with its status,
+    the study that meets it (or not) and links to the gap findings. The percentage is a
+    summary, not a finding."""
+
+    model_config = _FROZEN
+
+    asset_id: str
+    status: Literal["assessed", "not_loaded"]
+    cut_id: str | None
+    loaded_seq: int | None
+    planned_submission_date: str
+    planned_clinical_duration_days: int
+    multiple_dose: bool
+    percent_met: float | None
+    met: int
+    applicable: int
+    requirements: list[RequirementView]

@@ -179,6 +179,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/preclinical/assets/{asset}/ind-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Ind Readiness
+         * @description The first-in-human requirements checklist for an asset's nonclinical inventory, with
+         *     each requirement's status and links to the gap findings (preclinical.ind_readiness).
+         */
+        get: operations["preclinical_ind_readiness_api_v1_preclinical_assets__asset__ind_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/preclinical/studies": {
         parameters: {
             query?: never;
@@ -192,6 +213,27 @@ export interface paths {
          *     with the animals of each sex.
          */
         get: operations["preclinical_studies_api_v1_preclinical_studies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/preclinical/{study}/dose-translation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preclinical Dose Translation
+         * @description The current dose proposal (preclinical.dose_translation) with its working step by
+         *     step and its sources, or why there is none. A proposal, never a decision.
+         */
+        get: operations["preclinical_dose_translation_api_v1_preclinical__study__dose_translation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -622,12 +664,17 @@ export interface components {
          * @description Computed from the ledger at request time, as the caller may see it.
          */
         AssetLive: {
+            /** Ind Readiness Percent */
+            ind_readiness_percent?: number | null;
+            /** Ind Status */
+            ind_status?: ("assessed" | "not_loaded" | "not_shown") | null;
             /** Noael */
             noael?: components["schemas"]["NoaelBrief"][];
             /** Noael Status */
             noael_status?: ("decided" | "not_yet_decided" | "not_shown") | null;
             /** Open Findings */
             open_findings: number;
+            starting_dose?: components["schemas"]["StartingDose"] | null;
         };
         /**
          * AssetStatic
@@ -734,6 +781,26 @@ export interface components {
             review_from_seq: number | null;
             /** Review To Seq */
             review_to_seq: number | null;
+        };
+        /**
+         * ChainLink
+         * @description One link of the hand-off from a study to a planned first human dose, with the ledger
+         *     seq of the event that records it.
+         */
+        ChainLink: {
+            /** Label */
+            label: string;
+            /** Ref */
+            ref: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Step
+             * @enum {string}
+             */
+            step: "study" | "noael" | "proposal" | "decision";
+            /** Who */
+            who: string | null;
         };
         /** CheckCount */
         CheckCount: {
@@ -1022,6 +1089,24 @@ export interface components {
             setcd: string;
         };
         /**
+         * DoseStep
+         * @description One evidence item of a dose proposal: a step of the working, its source, its value.
+         */
+        DoseStep: {
+            /** Display */
+            display: string;
+            /** Role */
+            role: string | null;
+            /** Selector */
+            selector: string;
+            /** Source */
+            source: string;
+            /** Statistic */
+            statistic: string;
+            /** Value */
+            value: number;
+        };
+        /**
          * DoseSupport
          * @description Decision support for the NOAEL: per dose group, the findings that flag it.
          */
@@ -1037,6 +1122,25 @@ export interface components {
             phase: "main" | "recovery";
             /** Without Trend */
             without_trend: string[];
+        };
+        /**
+         * DoseTranslationView
+         * @description The Dose translation panel (phase 5 step 2): the current proposal and its working,
+         *     or why there is none.
+         */
+        DoseTranslationView: {
+            current: components["schemas"]["ProposalView"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "no_starting_dose" | "no_decision" | "not_run";
+            /** Study Id */
+            study_id: string;
+            /** Superseded */
+            superseded: string[];
+            /** Why */
+            why: string;
         };
         /** EndpointGroupView */
         EndpointGroupView: {
@@ -1132,7 +1236,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -1150,7 +1254,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -1342,7 +1446,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1583,6 +1687,60 @@ export interface components {
              * @enum {string}
              */
             type: "human_decision";
+        };
+        /**
+         * IndReadinessView
+         * @description The IND readiness checklist (phase 5 step 2): every requirement with its status,
+         *     the study that meets it (or not) and links to the gap findings. The percentage is a
+         *     summary, not a finding.
+         */
+        IndReadinessView: {
+            /** Applicable */
+            applicable: number;
+            /** Asset Id */
+            asset_id: string;
+            /** Cut Id */
+            cut_id: string | null;
+            /** Loaded Seq */
+            loaded_seq: number | null;
+            /** Met */
+            met: number;
+            /** Multiple Dose */
+            multiple_dose: boolean;
+            /** Percent Met */
+            percent_met: number | null;
+            /** Planned Clinical Duration Days */
+            planned_clinical_duration_days: number;
+            /** Planned Submission Date */
+            planned_submission_date: string;
+            /** Requirements */
+            requirements: components["schemas"]["RequirementView"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "assessed" | "not_loaded";
+        };
+        /**
+         * InventoryLoaded
+         * @description An asset's nonclinical study inventory loaded (phase 5 step 2): the trigger of
+         *     preclinical.ind_readiness. Its study is the asset (MRD-101): the inventory belongs to
+         *     the programme, not to one study. path is where the host keeps the cut.
+         */
+        InventoryLoaded: {
+            /** Asset Id */
+            asset_id: string;
+            /** Cut Id */
+            cut_id: string;
+            /** Path */
+            path: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "inventory_loaded";
         };
         /** LatestNarrative */
         LatestNarrative: {
@@ -2025,6 +2183,31 @@ export interface components {
             /** Seq */
             seq: number;
         };
+        /** ProposalView */
+        ProposalView: {
+            /** Basis Decision Id */
+            basis_decision_id: string | null;
+            /** Check */
+            check: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided Seq */
+            decided_seq: number | null;
+            /** Decision Reason */
+            decision_reason: string | null;
+            /** Finding Id */
+            finding_id: string;
+            /** Seq */
+            seq: number;
+            /** Status */
+            status: string;
+            /** Steps */
+            steps: components["schemas"]["DoseStep"][];
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+        };
         /**
          * QtlView
          * @description A study-level quality tolerance limit, as qtl_detector computes it.
@@ -2165,6 +2348,48 @@ export interface components {
             recorded_at: string;
             /** Seq */
             seq: number;
+        };
+        /** RequirementView */
+        RequirementView: {
+            /** Candidates */
+            candidates: number;
+            /** Duration Weeks */
+            duration_weeks: number | null;
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Glp */
+            glp: string | null;
+            /** Id */
+            id: string;
+            /** Note */
+            note: string;
+            /** Problems */
+            problems: string[];
+            /** Qa Audit Date */
+            qa_audit_date: string | null;
+            /** Quote */
+            quote: string;
+            /** Report Status */
+            report_status: string | null;
+            /** Required Weeks */
+            required_weeks: number | null;
+            /** Section */
+            section: string;
+            /** Source */
+            source: string;
+            /** Species */
+            species: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "met" | "not_met" | "not_applicable";
+            /** Study Id */
+            study_id: string | null;
+            /** Study Title */
+            study_title: string | null;
+            /** Title */
+            title: string;
         };
         /** ReviewQueue */
         ReviewQueue: {
@@ -2307,6 +2532,29 @@ export interface components {
             tested: boolean;
             /** Treated */
             treated: number;
+        };
+        /**
+         * StartingDose
+         * @description MRD-110's planned starting dose, or why there is none (phase 5 step 2). planned:
+         *     the medical monitor accepted the current proposal. not_shown: a role outside the
+         *     proposal's roles (then nothing else is filled).
+         */
+        StartingDose: {
+            /** Chain */
+            chain?: components["schemas"]["ChainLink"][];
+            /** Dose Mg */
+            dose_mg?: number | null;
+            /** Human Weight Kg */
+            human_weight_kg?: number | null;
+            /** Mrsd Mg Per Kg */
+            mrsd_mg_per_kg?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "proposed" | "escalated" | "dismissed" | "no_starting_dose" | "no_proposal" | "no_decision" | "not_shown";
+            /** Why */
+            why: string;
         };
         /** StudySummary */
         StudySummary: {
@@ -2847,6 +3095,42 @@ export interface operations {
             };
         };
     };
+    preclinical_ind_readiness_api_v1_preclinical_assets__asset__ind_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                asset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndReadinessView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preclinical_studies_api_v1_preclinical_studies_get: {
         parameters: {
             query?: never;
@@ -2868,6 +3152,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreclinicalStudy"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preclinical_dose_translation_api_v1_preclinical__study__dose_translation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                study: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoseTranslationView"];
                 };
             };
             /** @description Validation Error */
