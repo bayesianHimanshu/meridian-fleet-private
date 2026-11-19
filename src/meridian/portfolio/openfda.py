@@ -12,7 +12,6 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
 
 from meridian.platform.agent_settings import SignalScoutConfig
 
@@ -63,8 +62,26 @@ def _last_updated(body: str) -> str:
     return str(meta.get("last_updated", "")) if isinstance(meta, dict) else ""
 
 
+_SAFE = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~")
+
+
+def _encode(text: str) -> str:
+    """Form encoding, as urllib.parse.quote_plus with safe="" (a test checks it): kept here
+    so that meridian-worker's import closure, which reaches this module through the agent,
+    stays free of every network module."""
+    out = []
+    for ch in text:
+        if ch in _SAFE:
+            out.append(ch)
+        elif ch == " ":
+            out.append("+")
+        else:
+            out.extend(f"%{b:02X}" for b in ch.encode("utf-8"))
+    return "".join(out)
+
+
 def _q(params: Sequence[tuple[str, str]]) -> str:
-    return urlencode(list(params))
+    return "&".join(f"{_encode(k)}={_encode(v)}" for k, v in params)
 
 
 def product_search(cfg: SignalScoutConfig) -> str:
@@ -173,7 +190,8 @@ def label_of(r: Response) -> Label | None:
     common: tuple[str, ...] = ()
     if m:
         parts = re.split(r",\s*|\s+and\s+", m.group(1))
-        common = tuple(p.strip() for p in parts if p.strip())
+        # An Oxford comma leaves "and x" after the split: the "and" is not part of x.
+        common = tuple(p.strip().removeprefix("and ").strip() for p in parts if p.strip())
     return Label(
         set_id=str(doc.get("set_id", "")),
         version=str(doc.get("version", "")),

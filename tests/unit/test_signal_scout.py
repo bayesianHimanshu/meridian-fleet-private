@@ -83,7 +83,7 @@ DRUG_TERMS = {"NAUSEA": 50, "VOMITING": 30, "OFF LABEL USE": 10, "HEADACHE": 4, 
 TERM_TOTALS = {"NAUSEA": 20_000, "VOMITING": 9_000, "OFF LABEL USE": 50_000, "HEADACHE": 30_000}
 LABEL_TEXT = (
     "6 ADVERSE REACTIONS Most common adverse reactions (incidence ≥ 5% and at least twice "
-    "placebo) were nausea, dyspepsia, vomiting and hypertension. ( 6.1 )"
+    "placebo) were nausea, dyspepsia, vomiting, and hypertension. ( 6.1 )"
 )
 
 
@@ -215,3 +215,16 @@ def test_a_rerun_on_the_recorded_responses_gives_identical_drafts(tmp_path: Path
                        FakeOpenFda("2026-11-25"))  # fmt: skip
     assert other is not None
     assert SignalDocument.loads(other).drafts != doc.drafts
+
+
+@pytest.mark.parametrize(
+    "term",
+    ["NAUSEA", "HALLUCINATION, AUDITORY", "VIOLENCE-RELATED SYMPTOM", "PARKINSON'S DISEASE",
+     "DRUG SCREEN POSITIVE", "Ä/é (x) 100%"],
+)  # fmt: skip
+def test_the_query_encoding_is_urlencode(term: str) -> None:
+    from urllib.parse import urlencode
+
+    query = o.term_total_query(cfg(), term)
+    expected = urlencode([("search", f'{o.REACTION_FIELD}:"{term}"'), ("count", cfg().total_field)])
+    assert query == expected

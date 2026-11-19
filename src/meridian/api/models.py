@@ -1194,6 +1194,9 @@ class SafetySignalsView(BaseModel):
     all_reports: int | None
     terms_with_drug: int | None
     tested: int
+    # Terms with at least min_reports reports whose total query openFDA did not answer
+    # (for example "Too Many Requests"): not tested, never silently dropped.
+    not_answered: list[str] = Field(default_factory=list)
     signals: list[SignalRow]
     not_signals: list[SignalRow]
     label_set_id: str | None

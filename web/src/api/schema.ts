@@ -2641,6 +2641,8 @@ export interface components {
             label_set_id: string | null;
             /** Label Version */
             label_version: string | null;
+            /** Not Answered */
+            not_answered?: string[];
             /** Not Signals */
             not_signals: components["schemas"]["SignalRow"][];
             /** Product Query */

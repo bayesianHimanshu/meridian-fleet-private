@@ -2526,6 +2526,7 @@ class Repository:
             all_reports=scan.all_reports,
             terms_with_drug=scan.terms_with_drug,
             tested=len(scan.tested),
+            not_answered=list(scan.not_answered),
             signals=signals,
             not_signals=[row(t) for t in scan.tested if not t.signal],
             label_set_id=None if scan.label is None else scan.label.set_id,

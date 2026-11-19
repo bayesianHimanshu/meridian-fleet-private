@@ -79,6 +79,7 @@ def test_nobody_decides_a_finding_that_names_them_on_every_kind(
     named = {
         FindingKind.DOSE_PROPOSAL: Role.TOXICOLOGIST,
         FindingKind.MONITORING_RECOMMENDATION: Role.MEDICAL_MONITOR,  # its only decider
+        FindingKind.REPORTING_SIGNAL: Role.MEDICAL_MONITOR,  # its only decider
     }.get(kind, Role.CLINICAL_OPS_LEAD)
     person = PEOPLE[named]
     fid = _raise(fx, finding(kind, under_review=person), f"x:{kind.value}")
@@ -86,7 +87,7 @@ def test_nobody_decides_a_finding_that_names_them_on_every_kind(
     r = _decide(client, named, fid)
     assert r.status_code == 403
     assert "names them as the actor under review" in r.json()["detail"]
-    if kind is FindingKind.MONITORING_RECOMMENDATION:
+    if kind in (FindingKind.MONITORING_RECOMMENDATION, FindingKind.REPORTING_SIGNAL):
         # Only the medical monitor decides it: one naming them waits for another medical
         # monitor; no other role may decide it.
         assert _decide(client, Role.TOXICOLOGIST, fid).status_code == 403

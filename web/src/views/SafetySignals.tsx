@@ -105,6 +105,12 @@ export function SafetySignalsView() {
               {String(s.data.terms_with_drug)} reaction terms, {String(s.data.tested)} with at least 3 reports tested,{" "}
               <strong>{String(s.data.signals.length)} signals</strong>. {s.data.rule}.
             </p>
+            {s.data.not_answered?.length ? (
+              <p className="message" data-testid="not-answered">
+                Not tested ({String(s.data.not_answered.length)}): openFDA did not answer their total query:{" "}
+                {s.data.not_answered.join(", ").toLowerCase()}.
+              </p>
+            ) : null}
             <p className="muted mono">{s.data.product_query}</p>
           </section>
           <section className="panel" aria-labelledby="sig-title">
