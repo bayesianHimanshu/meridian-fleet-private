@@ -316,10 +316,28 @@ class ReviewQueue(BaseModel):
     items: list[FindingSummary]
 
 
+class CorrectionView(BaseModel):
+    """An AttributionCorrection of an event (phase 5 step 3b): the event stays as recorded;
+    this says what it recorded, what is true and who corrected it."""
+
+    model_config = _FROZEN
+
+    seq: int
+    corrects_seq: int
+    field: str
+    recorded_value: str
+    true_value: str
+    explanation: str
+    corrected_by: str
+    recorded_at: datetime
+
+
 class LedgerPage(BaseModel):
     model_config = _FROZEN
 
     entries: list[Event | RedactedEvent]
+    # Phase 5 step 3b: corrections of the attribution of events on this page, by seq.
+    corrections: dict[int, list[CorrectionView]] = Field(default_factory=dict)
     # order=asc: pass as ?since= to continue; None when this page reached the end.
     next_since: int | None
     # order=desc: pass as ?before= for the next (older) page; None at the first event.
@@ -1167,6 +1185,25 @@ class SignalRow(BaseModel):
     label_listed: bool | None
     finding_id: str | None
     status: str | None
+    # 1.0.1 triage (docs/signal-scout.md): listed, indication, use, weak, priority or
+    # not_signal. Only priority signals are findings in the review queue.
+    tier: str = "not_signal"
+
+
+class ScanSummary(BaseModel):
+    """One completed signal scan: who asked for it (as recorded, with any correction), the
+    agent version, and its findings."""
+
+    model_config = _FROZEN
+
+    scan_seq: int
+    scan_id: str
+    agent_version: str | None
+    requested_by: str
+    reuses_responses_of: int | None
+    findings: int
+    open: int
+    corrections: list[CorrectionView]
 
 
 class LabelReaction(BaseModel):
@@ -1207,4 +1244,11 @@ class SafetySignalsView(BaseModel):
     rule: str
     caveats: list[str]
     caveats_source: str
+    # Phase 5 step 3b: the shown scan as recorded and corrected, the scans before it, the
+    # tiers and the context every signal carries.
+    scan: ScanSummary | None = None
+    earlier_scans: list[ScanSummary] = Field(default_factory=list)
+    tiers: dict[str, int] = Field(default_factory=dict)
+    triage: str = ""
+    context: list[str] = Field(default_factory=list)
     requests: int

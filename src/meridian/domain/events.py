@@ -540,11 +540,31 @@ class SignalScanRequested(BaseModel):
     study_id: StudyId
     scan_id: Annotated[str, Field(pattern=r"^SCAN-[0-9]{8}T[0-9]{6}Z$")]
     requested_by: ActorId
+    # Phase 5 step 3b: the seq of an earlier scan whose recorded responses this one reuses;
+    # only the queries it has no 200 answer for are asked again (docs/signal-scout.md).
+    reuses_responses_of: PositiveInt | None = None
 
 
 # A scan's cut id is its scan_id: the live public data at that time, never an evaluation
 # copy, so operational wherever cuts are scoped.
 SCAN_CUT_PREFIX = "SCAN-"
+
+
+class AttributionCorrection(BaseModel):
+    """A correction of who an earlier event says acted (phase 5 step 3b). The ledger is
+    append-only: the corrected event stays as recorded, and this says what it recorded,
+    what is true, who corrects it and why. corrected_by is an operator, never a person
+    acting outside the API."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.ATTRIBUTION_CORRECTION] = EventType.ATTRIBUTION_CORRECTION
+    corrects_seq: PositiveInt
+    field: Annotated[str, Field(min_length=1, max_length=64)]  # for example requested_by
+    recorded_value: Annotated[str, Field(min_length=1, max_length=128)]
+    true_value: Annotated[str, Field(min_length=1, max_length=128)]
+    explanation: Annotated[str, Field(min_length=20, max_length=2000)]
+    corrected_by: ActorId
 
 
 NOAEL_SEXES = ("M", "F", "combined")
@@ -613,7 +633,8 @@ EventPayload = Annotated[
     | SendStudyLoaded
     | NoaelDecision
     | InventoryLoaded
-    | SignalScanRequested,
+    | SignalScanRequested
+    | AttributionCorrection,
     Field(discriminator="type"),
 ]
 

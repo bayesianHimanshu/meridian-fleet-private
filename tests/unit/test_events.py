@@ -8,6 +8,7 @@ from meridian.domain.enums import DecisionAction, EventType, Role, Severity, Vis
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    AttributionCorrection,
     AuditReviewRequested,
     ContainmentCheck,
     ContainmentCheckCompleted,
@@ -176,7 +177,18 @@ PAYLOADS: list[EventPayload] = [
         source_sha256="a" * 64,
     ),
     SignalScanRequested(
-        study_id="MRD-201", scan_id="SCAN-20261120T000000Z", requested_by="karan.mehta"
+        study_id="MRD-201",
+        scan_id="SCAN-20261120T000000Z",
+        requested_by="operator:test",
+        reuses_responses_of=7,
+    ),
+    AttributionCorrection(
+        corrects_seq=7,
+        field="requested_by",
+        recorded_value="karan.mehta",
+        true_value="operator:test",
+        explanation="Started from the CLI by an operator, not by the medical monitor.",
+        corrected_by="operator:test",
     ),
 ]
 

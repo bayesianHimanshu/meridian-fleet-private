@@ -79,8 +79,16 @@ def test_the_signal_rule_at_its_boundaries() -> None:
 # ---- a fake openFDA
 
 
-DRUG_TERMS = {"NAUSEA": 50, "VOMITING": 30, "OFF LABEL USE": 10, "HEADACHE": 4, "RARE THING": 2}
-TERM_TOTALS = {"NAUSEA": 20_000, "VOMITING": 9_000, "OFF LABEL USE": 50_000, "HEADACHE": 30_000}
+DRUG_TERMS = {
+    "NAUSEA": 50, "HYPERHIDROSIS": 40, "VOMITING": 30, "PSYCHOTIC DISORDER": 20,
+    "OFF LABEL USE": 10, "COLD SWEAT": 4, "HEADACHE": 4, "RARE THING": 2,
+}  # fmt: skip
+TERM_TOTALS = {
+    "NAUSEA": 20_000, "HYPERHIDROSIS": 5_000, "VOMITING": 9_000, "PSYCHOTIC DISORDER": 2_000,
+    "OFF LABEL USE": 50_000, "COLD SWEAT": 200, "HEADACHE": 30_000,
+}  # fmt: skip
+PLAN = ("NAUSEA", "HYPERHIDROSIS", "VOMITING", "PSYCHOTIC DISORDER", "OFF LABEL USE",
+        "COLD SWEAT", "HEADACHE")  # fmt: skip
 LABEL_TEXT = (
     "6 ADVERSE REACTIONS Most common adverse reactions (incidence ≥ 5% and at least twice "
     "placebo) were nausea, dyspepsia, vomiting, and hypertension. ( 6.1 )"
@@ -91,13 +99,35 @@ def _body(results: object, date: str = "2026-10-28") -> str:
     return json.dumps({"meta": {"last_updated": date}, "results": results})
 
 
+THROTTLED = json.dumps(
+    {"error": {"code": "SERVER_ERROR", "message": "Check your request and try again",
+               "details": "Too Many Requests"}}
+)  # fmt: skip
+
+
 class FakeOpenFda:
-    def __init__(self, date: str = "2026-10-28") -> None:
+    """throttle: query substring -> how many times to answer it as openFDA's throttling
+    (HTTP 500 "Too Many Requests") before answering."""
+
+    def __init__(
+        self,
+        date: str = "2026-10-28",
+        throttle: dict[str, int] | None = None,
+        extra: dict[str, tuple[int, int]] | None = None,
+    ) -> None:
         self.calls: list[tuple[str, str]] = []
         self.date = date
+        self.throttle = dict(throttle or {})
+        extra = extra or {}
+        self.terms = {**DRUG_TERMS, **{t: a for t, (a, _) in extra.items()}}
+        self.totals = {**TERM_TOTALS, **{t: n for t, (_, n) in extra.items()}}
 
     def __call__(self, path: str, query: str) -> tuple[int, str]:
         self.calls.append((path, query))
+        for key, left in self.throttle.items():
+            if key in query and left > 0:
+                self.throttle[key] = left - 1
+                return 500, THROTTLED
         q = {k: v[0] for k, v in parse_qs(query).items()}
         if path == o.LABEL:
             return 200, _body([{"set_id": "s-1", "version": "6", "effective_time": "20260116",
@@ -105,16 +135,16 @@ class FakeOpenFda:
         assert path == o.EVENT
         search = q.get("search", "")
         if q["count"] == o.REACTION_FIELD:
-            rows = [{"term": t, "count": n} for t, n in DRUG_TERMS.items()]
+            rows = [{"term": t, "count": n} for t, n in self.terms.items()]
             return 200, _body(rows, self.date)
         if search.startswith(cfg().product_field):
             return 200, _body([{"term": 1, "count": 150}, {"term": 2, "count": 50}], self.date)
         if not search:
             return 200, _body([{"term": 1, "count": 1_000_000}], self.date)
         term = search.split(":", 1)[1].strip('"')
-        if term not in TERM_TOTALS:
+        if term not in self.totals:
             return 404, json.dumps({"error": {"code": "NOT_FOUND", "message": "No matches found!"}})
-        return 200, _body([{"term": 2, "count": TERM_TOTALS[term]}], self.date)
+        return 200, _body([{"term": 2, "count": self.totals[term]}], self.date)
 
 
 def test_the_plan_is_count_queries_on_the_two_paths_only() -> None:
@@ -127,11 +157,9 @@ def test_the_plan_is_count_queries_on_the_two_paths_only() -> None:
             assert "count" in parse_qs(query)  # count queries only on the event endpoint
             assert "api_key" not in query
     terms = [parse_qs(q)["search"][0] for p, q in fake.calls[4:]]
-    assert terms == [
-        f'{o.REACTION_FIELD}:"{t}"' for t in ("NAUSEA", "VOMITING", "OFF LABEL USE", "HEADACHE")
-    ]
-    assert len(responses) == 8
-    assert sleeps == [cfg().request_interval_seconds] * 7
+    assert terms == [f'{o.REACTION_FIELD}:"{t}"' for t in PLAN]
+    assert len(responses) == 11
+    assert sleeps == [cfg().request_interval_seconds] * 10
     capped = o.fetch(
         FakeOpenFda(), cfg().model_copy(update={"max_requests": 6}), sleep=lambda _: None
     )
@@ -146,7 +174,7 @@ def test_signals_and_the_label() -> None:
     scan = analyse(responses, cfg())
     assert (scan.drug_reports, scan.all_reports, scan.data_date) == (200, 1_000_000, "2026-10-28")
     by_term = {t.term: t for t in scan.tested}
-    assert set(by_term) == {"NAUSEA", "VOMITING", "OFF LABEL USE", "HEADACHE"}  # a >= 3 only
+    assert set(by_term) == set(PLAN)  # a >= 3 only
     nausea = by_term["NAUSEA"]
     assert (nausea.table.a, nausea.table.b, nausea.table.c) == (50, 150, 19_950)
     assert nausea.signal
@@ -154,11 +182,18 @@ def test_signals_and_the_label() -> None:
     assert by_term["VOMITING"].listed is True
     assert by_term["OFF LABEL USE"].listed is False
     assert not by_term["HEADACHE"].signal  # 4 of 200 against 30,000 of 1,000,000: PRR 0.67
+    # 1.0.1's tiers: the first that applies.
+    tiers = {t: r.tier for t, r in by_term.items()}
+    assert tiers == {
+        "NAUSEA": "listed", "VOMITING": "listed", "PSYCHOTIC DISORDER": "indication",
+        "HYPERHIDROSIS": "priority", "COLD SWEAT": "weak", "OFF LABEL USE": "not_signal",
+        "HEADACHE": "not_signal",
+    }  # fmt: skip
     assert scan.label is not None
     assert scan.label.most_common == ("nausea", "dyspepsia", "vomiting", "hypertension")
 
 
-def _trigger() -> Event:
+def _trigger(reuses: int | None = None) -> Event:
     return Event(
         seq=77,
         event_id=uuid.UUID(int=77),
@@ -168,7 +203,10 @@ def _trigger() -> Event:
         study_id="MRD-201",
         visibility=Visibility.BLINDED,
         payload=SignalScanRequested(
-            study_id="MRD-201", scan_id="SCAN-20261120T000000Z", requested_by="karan.mehta"
+            study_id="MRD-201",
+            scan_id="SCAN-20261120T000000Z",
+            requested_by="operator:test",
+            reuses_responses_of=reuses,
         ),
         prev_hash="0" * 64,
         hash="1" * 64,
@@ -183,14 +221,21 @@ def test_a_rerun_on_the_recorded_responses_gives_identical_drafts(tmp_path: Path
     assert text is not None
     doc = SignalDocument.loads(text)
     assert not doc.replayed
-    assert len(doc.responses) == 8
+    assert len(doc.responses) == 11
     assert all(r.status in (200, 404) for r in doc.responses)
     signals = sorted(d.dedup_key.split("|")[-1] for d in doc.drafts)
-    # OFF LABEL USE: 10 of 200 against 50,000 of 1,000,000, PRR 1.0, not a signal.
-    assert signals == ["reporting_signal:NAUSEA", "reporting_signal:VOMITING"]
+    # Only the priority signal is a finding (1.0.1): nausea and vomiting are in the label,
+    # psychotic disorder is an indication term, cold sweat has 4 reports.
+    assert signals == ["reporting_signal:HYPERHIDROSIS"]
     for d in doc.drafts:
         assert "not an incidence and not evidence that the drug causes it" in d.summary
         assert sum(e.statistic == "signal:caveat" for e in d.evidence) == 5
+        context = [e.display or "" for e in d.evidence if e.statistic == "signal:context"]
+        assert len(context) == 2
+        assert "muscarinic antagonist" in context[0]
+        assert "transdermal xanomeline alone" in context[1]
+        (tier,) = [e.display or "" for e in d.evidence if e.statistic == "signal:tier"]
+        assert tier.startswith("Tier: priority")
     # The host keeps the responses; a replay stages them and fetches nothing.
     kept = tmp_path / "kept" / SIGNAL
     kept.mkdir(parents=True)
@@ -228,3 +273,106 @@ def test_the_query_encoding_is_urlencode(term: str) -> None:
     query = o.term_total_query(cfg(), term)
     expected = urlencode([("search", f'{o.REACTION_FIELD}:"{term}"'), ("count", cfg().total_field)])
     assert query == expected
+
+
+# ---- 1.0.1: retry, rerun on recorded responses, triage
+
+
+def test_throttling_is_retried_after_each_backoff_and_then_given_up() -> None:
+    fake = FakeOpenFda(throttle={"HYPERHIDROSIS": 2, "VOMITING": 9})
+    sleeps: list[float] = []
+    responses = o.fetch(fake, cfg(), sleep=sleeps.append)
+    hyper = [r for r in responses if "HYPERHIDROSIS" in r.query]
+    assert [r.status for r in hyper] == [500, 500, 200]
+    vomiting = [r for r in responses if "VOMITING" in r.query]
+    assert [r.status for r in vomiting] == [500] * 5  # four retries, then not answered
+    assert 2.0 in sleeps
+    assert 16.0 in sleeps
+    assert sleeps.count(16.0) == 1  # only VOMITING reached the last backoff
+    scan = analyse(responses, cfg())
+    assert "VOMITING" in scan.not_answered
+    assert "HYPERHIDROSIS" not in scan.not_answered
+    assert o.throttled(o.Response.of(o.EVENT, "q", 429, ""))
+    assert not o.throttled(o.Response.of(o.EVENT, "q", 500, '{"error": {"details": "x"}}'))
+    assert not o.throttled(o.Response.of(o.EVENT, "q", 404, ""))
+
+
+def test_retries_count_toward_the_request_cap() -> None:
+    capped = cfg().model_copy(update={"max_requests": 6})
+    out = o.fetch(FakeOpenFda(throttle={"NAUSEA": 9}), capped, sleep=lambda _: None)
+    assert len(out) == 6
+
+
+def test_a_rerun_asks_only_what_the_earlier_scan_lacks() -> None:
+    first = o.fetch(FakeOpenFda(throttle={"COLD+SWEAT": 9}), cfg(), sleep=lambda _: None)
+    assert "COLD SWEAT" in analyse(first, cfg()).not_answered
+    fake = FakeOpenFda()
+    merged = o.top_up(fake, cfg(), first, sleep=lambda _: None)
+    assert len(fake.calls) == 1
+    assert "COLD+SWEAT" in fake.calls[0][1]
+    assert merged[: len(first)] == first
+    assert analyse(merged, cfg()).not_answered == ()
+    # Nothing missing: nothing asked.
+    again = FakeOpenFda()
+    assert o.top_up(again, cfg(), merged, sleep=lambda _: None) == merged
+    assert again.calls == []
+    # openFDA's data moved on: refused, a full scan is needed.
+    with pytest.raises(o.DataDateChangedError, match="full scan"):
+        o.top_up(FakeOpenFda("2026-11-25"), cfg(), first, sleep=lambda _: None)
+
+
+def _tier(term: str, a: int, low: float, listed: bool = False) -> str:
+    from meridian.agents.portfolio.safety_signal_scout import tier_of
+    from meridian.portfolio.disproportionality import Ratio
+
+    return tier_of(term, True, listed, a, Ratio(value=low * 2, low=low, high=low * 4), cfg())
+
+
+def test_the_triage_at_its_boundaries() -> None:
+    assert _tier("HYPERHIDROSIS", 10, 2.0001) == "priority"
+    assert _tier("HYPERHIDROSIS", 10, 2.0) == "weak"  # above 2, not at 2
+    assert _tier("HYPERHIDROSIS", 9, 50.0) == "weak"
+    assert _tier("HYPERHIDROSIS", 100, 50.0, listed=True) == "listed"
+    assert _tier("SCHIZOPHRENIA", 100, 50.0) == "indication"
+    assert _tier("hallucination, auditory", 100, 50.0) == "indication"
+    assert _tier("TREATMENT NONCOMPLIANCE", 100, 50.0) == "use"
+    from meridian.agents.portfolio.safety_signal_scout import tier_of
+
+    assert tier_of("HYPERHIDROSIS", False, False, 100, None, cfg()) == "not_signal"
+
+
+def test_the_label_comparison_spellings_and_synonym() -> None:
+    label = o.Label(
+        set_id="s", version="6", effective_time="2026",
+        text=" ".join(o.normalise("gastrointestinal reflux disease, oedema-free esophageal "
+                                  "pain, diarrhea").split()),
+        most_common=(),
+    )  # fmt: skip
+    c = cfg()
+    assert o.listed("GASTROOESOPHAGEAL REFLUX DISEASE", label, c.label_spellings, c.label_synonyms)
+    assert not o.listed("GASTROOESOPHAGEAL REFLUX DISEASE", label)  # 1.0.0's rule
+    assert o.listed("DIARRHOEA", label, c.label_spellings, c.label_synonyms)
+    assert o.listed("OESOPHAGEAL PAIN", label, c.label_spellings, c.label_synonyms)
+    assert not o.listed("HICCUPS", label, c.label_spellings, c.label_synonyms)
+
+
+def test_the_worker_reruns_on_staged_earlier_responses(tmp_path: Path) -> None:
+    log = structlog.get_logger()
+    first = o.fetch(FakeOpenFda(throttle={"HYPERHIDROSIS": 9}), cfg(), sleep=lambda _: None)
+    area = tmp_path / "prior" / SIGNAL
+    area.mkdir(parents=True)
+    responses_frame(first).write_parquet(area / f"{o.PRIOR_TABLE}.parquet")
+    stage = stage_areas({SIGNAL: area}, _trigger(reuses=5), tmp_path / "rerun")
+    fake = FakeOpenFda()
+    code, text = execute(AGENT_ID, stage / "meta" / "trigger.json", stage, CONFIG, log, fake)
+    assert code == 0, text
+    assert text is not None
+    doc = SignalDocument.loads(text)
+    assert not doc.replayed
+    assert len(fake.calls) == 1  # only HYPERHIDROSIS, which the first scan never got
+    assert len(doc.responses) == len(first) + 1
+    assert [d.dedup_key.split("|")[-1] for d in doc.drafts] == ["reporting_signal:HYPERHIDROSIS"]
+    # Staged earlier responses on a scan that reuses none: refused as a data error.
+    wrong = stage_areas({SIGNAL: area}, _trigger(), tmp_path / "wrong")
+    code, _ = execute(AGENT_ID, wrong / "meta" / "trigger.json", wrong, CONFIG, log, FakeOpenFda())
+    assert code == 3

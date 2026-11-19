@@ -49,6 +49,34 @@ DECISION_REASON = "DECISION_REASON"
 TEMPLATE_SHA256 = "TEMPLATE_SHA256"
 GOLDEN_SNAPSHOT = "GOLDEN_SNAPSHOT"
 
+# Phase 5 step 3b: who an event says acted, with each actor's kind (person, operator,
+# agent or system; meridian.domain.identity), which the host knows (config/people.toml, the
+# registry) and the sandboxed reviewer does not. ENVELOPE_ACTOR: the event's own actor (ACTOR
+# is a decision's decider); ENVELOPE_KIND its kind. NAMED: a JSON list of [field, value,
+# kind], one per payload field that records someone as acting (requested_by, decided_by,
+# raised_by, corrected_by, a decision's actor, a finding's raised_by); never
+# actor_under_review. CORRECTS_SEQ: an AttributionCorrection's corrected event.
+ENVELOPE_ACTOR = "ENVELOPE_ACTOR"
+ENVELOPE_KIND = "ENVELOPE_KIND"
+NAMED = "NAMED"
+CORRECTS_SEQ = "CORRECTS_SEQ"
+PERSON = "person"
+# The event types the Fleet API records on a person's behalf, with the person as the
+# event's actor. A person named on any other type, or with another envelope actor, did not
+# act through the API. FindingRaised only for a QA observation (OBSERVATION_AGENT).
+API_PERSON_TYPES: frozenset[str] = frozenset(
+    {
+        "human_decision",
+        "noael_decision",
+        "quality_observation",
+        "finding_raised",
+        "portfolio_review_requested",
+        "gate_request",
+        "gate_decision",
+    }
+)
+OBSERVATION_AGENT = "human.observation"
+
 COLUMNS: tuple[str, ...] = (
     SEQ,
     HASH,
@@ -75,8 +103,12 @@ COLUMNS: tuple[str, ...] = (
     TEMPLATE_SHA256,
     GOLDEN_SNAPSHOT,
     STARTED_AT,
+    ENVELOPE_ACTOR,
+    ENVELOPE_KIND,
+    NAMED,
+    CORRECTS_SEQ,
 )
-INT_COLUMNS: tuple[str, ...] = (SEQ, FINDING_GROUP, TRIGGER_SEQ)
+INT_COLUMNS: tuple[str, ...] = (SEQ, FINDING_GROUP, TRIGGER_SEQ, CORRECTS_SEQ)
 # The only columns a redacted row fills.
 REDACTED_COLUMNS: tuple[str, ...] = (SEQ, HASH, PREV_HASH, TYPE, RECORDED_AT, REDACTED)
 
@@ -97,6 +129,9 @@ RAPID_DECISIONS = "audit_rapid_decisions"
 REASON_QUALITY = "audit_reason_quality"
 DECISION_ON_RETIRED = "audit_decision_on_retired"
 DATA_QUALITY = "audit_data_quality"
+# 1.3.0 (phase 5 step 3b): an event that names a person as acting but did not come through
+# the Fleet API (a person acts only there, with their own identity).
+PERSON_OUTSIDE_API = "audit_person_attribution_outside_api"
 CHECKS: tuple[str, ...] = (
     CHAIN_LINKAGE,
     UNSANDBOXED_OPERATIONAL_RUN,
@@ -105,6 +140,7 @@ CHECKS: tuple[str, ...] = (
     REASON_QUALITY,
     DECISION_ON_RETIRED,
     DATA_QUALITY,
+    PERSON_OUTSIDE_API,
 )
 
 

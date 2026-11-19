@@ -116,6 +116,8 @@ class Container:
 
     def write_audit_extract(self, trigger: Event, entries: Sequence[LedgerEntry]) -> Path:
         """The audit extract of an audit review, under <audit_root>/<trigger seq>/audit."""
+        from meridian.domain.identity import people_ids
+
         p = trigger.payload
         assert isinstance(p, AuditReviewRequested)
         rows = extract_rows(
@@ -123,6 +125,8 @@ class Container:
             from_seq=p.from_seq,
             through_seq=p.through_seq,
             operational_cuts=self.settings.cuts.operational,
+            people=people_ids(self.settings.api.people_file),
+            agents=frozenset(r.agent.agent_id for r in self.agent_registry().all()),
         )
         return write_extract(rows, self.settings.audit_root / str(trigger.seq) / AUDIT)
 

@@ -60,6 +60,8 @@ class EventType(StrEnum):
     NOAEL_DECISION = "noael_decision"
     INVENTORY_LOADED = "inventory_loaded"
     SIGNAL_SCAN_REQUESTED = "signal_scan_requested"
+    # Phase 5 step 3b.
+    ATTRIBUTION_CORRECTION = "attribution_correction"
 
 
 class DecisionAction(StrEnum):

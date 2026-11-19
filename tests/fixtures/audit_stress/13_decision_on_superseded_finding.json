@@ -137,6 +137,9 @@
     ],
     "1.2.0": [
       "audit_decision_on_retired:9"
+    ],
+    "1.3.0": [
+      "audit_decision_on_retired:9"
     ]
   }
 }

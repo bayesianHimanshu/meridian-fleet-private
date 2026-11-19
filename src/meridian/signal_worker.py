@@ -23,12 +23,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
+import polars as pl
 import structlog
 from pydantic import ValidationError
 
 from meridian.agents.catalog import build_registry
 from meridian.agents.execute import run_agent
-from meridian.agents.portfolio.safety_signal_scout import AGENT_ID, responses_frame
+from meridian.agents.portfolio.safety_signal_scout import AGENT_ID, responses_frame, responses_from
 from meridian.agents.registry import RegistrationError
 from meridian.data.inputs_manifest import MANIFEST_FILE, InputsManifestError, verify_manifest
 from meridian.data.stage_layout import META, SIGNAL
@@ -45,6 +46,8 @@ EXIT_BAD_ARGS = 2
 EXIT_DATA = 3
 EXIT_AGENT = 4
 USER_AGENT = "meridian-fleet-signal-scout/1.0"  # a generic client name, no contact details
+# The signal stage's two forms besides a live scan: this scan's own kept responses (a
+# replay: nothing is fetched) or, for a rerun (1.0.1), an earlier scan's as prior_responses.
 
 
 class _Parser(argparse.ArgumentParser):
@@ -126,6 +129,7 @@ def execute(
         return EXIT_DATA, None
     scan = trigger.payload.scan_id
     staged = cut_dir / SIGNAL / f"{o.RESPONSES_TABLE}.parquet"
+    prior_file = cut_dir / SIGNAL / f"{o.PRIOR_TABLE}.parquet"
     with tempfile.TemporaryDirectory(prefix="signal-") as tmp:
         if staged.exists():
             reader = SignalStageReader.at_cut_dir(cut_dir, cut_id=scan, study_id=cfg.study_id)
@@ -135,7 +139,14 @@ def execute(
             try:
                 if get is None:
                     client, get = http_get(cfg)
-                responses = o.fetch(get, cfg)
+                if prior_file.exists():
+                    # 1.0.1: a rerun on an earlier scan's responses asks only what it lacks.
+                    if trigger.payload.reuses_responses_of is None:
+                        raise ValueError("earlier responses staged for a scan that reuses none")
+                    prior = responses_from(pl.read_parquet(prior_file))
+                    responses = o.top_up(get, cfg, prior)
+                else:
+                    responses = o.fetch(get, cfg)
             except (httpx.HTTPError, ValueError) as exc:
                 log.error("signal_worker.fetch_failed", error=f"{type(exc).__name__}: {exc}")
                 return EXIT_DATA, None

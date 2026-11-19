@@ -759,6 +759,32 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * AttributionCorrection
+         * @description A correction of who an earlier event says acted (phase 5 step 3b). The ledger is
+         *     append-only: the corrected event stays as recorded, and this says what it recorded,
+         *     what is true, who corrects it and why. corrected_by is an operator, never a person
+         *     acting outside the API.
+         */
+        AttributionCorrection: {
+            /** Corrected By */
+            corrected_by: string;
+            /** Corrects Seq */
+            corrects_seq: number;
+            /** Explanation */
+            explanation: string;
+            /** Field */
+            field: string;
+            /** Recorded Value */
+            recorded_value: string;
+            /** True Value */
+            true_value: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "attribution_correction";
+        };
         /** AuditFindingItem */
         AuditFindingItem: {
             /** Actor Under Review */
@@ -1005,6 +1031,32 @@ export interface components {
             substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Zone */
             zone: string;
+        };
+        /**
+         * CorrectionView
+         * @description An AttributionCorrection of an event (phase 5 step 3b): the event stays as recorded;
+         *     this says what it recorded, what is true and who corrected it.
+         */
+        CorrectionView: {
+            /** Corrected By */
+            corrected_by: string;
+            /** Corrects Seq */
+            corrects_seq: number;
+            /** Explanation */
+            explanation: string;
+            /** Field */
+            field: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Recorded Value */
+            recorded_value: string;
+            /** Seq */
+            seq: number;
+            /** True Value */
+            true_value: string;
         };
         /** CutSummary */
         CutSummary: {
@@ -1283,7 +1335,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"] | components["schemas"]["SignalScanRequested"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"] | components["schemas"]["SignalScanRequested"] | components["schemas"]["AttributionCorrection"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -1301,7 +1353,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded" | "signal_scan_requested";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded" | "signal_scan_requested" | "attribution_correction";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -1839,6 +1891,10 @@ export interface components {
         };
         /** LedgerPage */
         LedgerPage: {
+            /** Corrections */
+            corrections?: {
+                [key: string]: components["schemas"]["CorrectionView"][];
+            };
             /** Entries */
             entries: (components["schemas"]["Event"] | components["schemas"]["RedactedEvent"])[];
             /** Next Before */
@@ -2627,12 +2683,16 @@ export interface components {
             caveats: string[];
             /** Caveats Source */
             caveats_source: string;
+            /** Context */
+            context?: string[];
             /** Data Date */
             data_date: string | null;
             /** Drug */
             drug: string;
             /** Drug Reports */
             drug_reports: number | null;
+            /** Earlier Scans */
+            earlier_scans?: components["schemas"]["ScanSummary"][];
             /** Label Effective */
             label_effective: string | null;
             /** Label Most Common */
@@ -2651,6 +2711,7 @@ export interface components {
             requests: number;
             /** Rule */
             rule: string;
+            scan?: components["schemas"]["ScanSummary"] | null;
             /** Scan Id */
             scan_id: string | null;
             /** Scan Seq */
@@ -2670,6 +2731,38 @@ export interface components {
             terms_with_drug: number | null;
             /** Tested */
             tested: number;
+            /** Tiers */
+            tiers?: {
+                [key: string]: number;
+            };
+            /**
+             * Triage
+             * @default
+             */
+            triage: string;
+        };
+        /**
+         * ScanSummary
+         * @description One completed signal scan: who asked for it (as recorded, with any correction), the
+         *     agent version, and its findings.
+         */
+        ScanSummary: {
+            /** Agent Version */
+            agent_version: string | null;
+            /** Corrections */
+            corrections: components["schemas"]["CorrectionView"][];
+            /** Findings */
+            findings: number;
+            /** Open */
+            open: number;
+            /** Requested By */
+            requested_by: string;
+            /** Reuses Responses Of */
+            reuses_responses_of: number | null;
+            /** Scan Id */
+            scan_id: string;
+            /** Scan Seq */
+            scan_seq: number;
         };
         /**
          * SendStudyLoaded
@@ -2727,6 +2820,11 @@ export interface components {
             term: string;
             /** Term Reports */
             term_reports: number;
+            /**
+             * Tier
+             * @default not_signal
+             */
+            tier: string;
         };
         /**
          * SignalScanRequested
@@ -2736,6 +2834,8 @@ export interface components {
         SignalScanRequested: {
             /** Requested By */
             requested_by: string;
+            /** Reuses Responses Of */
+            reuses_responses_of?: number | null;
             /** Scan Id */
             scan_id: string;
             /** Study Id */

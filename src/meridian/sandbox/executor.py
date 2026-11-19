@@ -47,7 +47,7 @@ from meridian.domain.events import (
     SubstrateRun,
 )
 from meridian.portfolio.document import ResponseRecord, SignalDocument
-from meridian.portfolio.store import signal_dir
+from meridian.portfolio.store import prior_area, signal_dir
 from meridian.preclinical.noael_stage import noael_dir
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
@@ -208,6 +208,10 @@ def stage_run(
             raise ExecutionError(f"trigger {trigger.seq} is not a signal scan")
         kept = None if signal_root is None else signal_dir(signal_root, trigger.seq) / SIGNAL
         sources = {SIGNAL: kept} if kept is not None and kept.is_dir() else {}
+        base = trigger.payload.reuses_responses_of
+        if not sources and base is not None:
+            # 1.0.1: a rerun on an earlier scan's kept responses, staged as prior_responses.
+            sources = {SIGNAL: prior_area(signal_root, trigger.seq, base)}
         stage = stage_areas(sources, trigger, dest)
         recomputed = build_manifest(stage)
         if (stage / META / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():

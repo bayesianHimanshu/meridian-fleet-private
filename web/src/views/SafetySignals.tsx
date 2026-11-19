@@ -2,8 +2,31 @@ import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, StatusChip, isStatus } from "../components/common";
 import { FindingLink } from "../components/text";
 import { useApi } from "../queries";
+import { CorrectionNote } from "./Ledger";
 
 type Row = Schemas["SignalRow"];
+type Scan = Schemas["ScanSummary"];
+
+const TIER_LABELS: Record<string, string> = {
+  priority: "priority",
+  listed: "in the label",
+  indication: "indication",
+  use: "use or supply",
+  weak: "weak",
+  not_signal: "not a signal",
+};
+
+function ScanLine({ scan }: { scan: Scan }) {
+  return (
+    <li data-testid={`scan-${String(scan.scan_seq)}`}>
+      {scan.scan_id} (seq {scan.scan_seq}, {scan.agent_version ?? "?"}): requested by{" "}
+      {scan.requested_by}
+      {scan.reuses_responses_of ? `, on the responses of seq ${String(scan.reuses_responses_of)}` : ""};{" "}
+      {scan.findings} findings, {scan.open} in the queue.
+      <CorrectionNote corrections={scan.corrections} />
+    </li>
+  );
+}
 
 function ratio(v: number | null | undefined, low: number | null | undefined, high: number | null | undefined) {
   if (v === null || v === undefined) return "undefined";
@@ -30,6 +53,7 @@ function SignalTable({ rows, caption }: { rows: Row[]; caption: string }) {
               Chi-squared
             </th>
             <th scope="col">US label</th>
+            <th scope="col">Tier</th>
             <th scope="col">Finding</th>
           </tr>
         </thead>
@@ -45,6 +69,7 @@ function SignalTable({ rows, caption }: { rows: Row[]; caption: string }) {
               <td>{ratio(r.ror, r.ror_low, r.ror_high)}</td>
               <td className="num">{r.chi2.toFixed(1)}</td>
               <td>{r.label_listed === null ? "no label" : r.label_listed ? "listed" : "not found"}</td>
+              <td data-testid={`tier-${r.term}`}>{TIER_LABELS[r.tier] ?? r.tier}</td>
               <td>
                 {r.finding_id ? (
                   <>
@@ -112,6 +137,29 @@ export function SafetySignalsView() {
               </p>
             ) : null}
             <p className="muted mono">{s.data.product_query}</p>
+            {s.data.scan ? (
+              <ul aria-label="This scan" className="plain">
+                <ScanLine scan={s.data.scan} />
+              </ul>
+            ) : null}
+          </section>
+          <section className="panel" aria-labelledby="triage-title">
+            <div className="panel-head">
+              <h2 id="triage-title">Triage</h2>
+            </div>
+            <p data-testid="triage">{s.data.triage}</p>
+            <ul aria-label="Signals by tier">
+              {Object.entries(s.data.tiers ?? {}).map(([tier, n]) => (
+                <li key={tier}>
+                  {TIER_LABELS[tier] ?? tier}: {n}
+                </li>
+              ))}
+            </ul>
+            <ul aria-label="Context of these reports">
+              {(s.data.context ?? []).map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
           </section>
           <section className="panel" aria-labelledby="sig-title">
             <div className="panel-head">
@@ -139,6 +187,18 @@ export function SafetySignalsView() {
               ))}
             </ul>
           </section>
+          {s.data.earlier_scans?.length ? (
+            <section className="panel" aria-labelledby="earlier-title">
+              <div className="panel-head">
+                <h2 id="earlier-title">Earlier scans</h2>
+              </div>
+              <ul className="plain">
+                {s.data.earlier_scans.map((e) => (
+                  <ScanLine key={e.scan_seq} scan={e} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <details>
             <summary>Terms tested that are not signals ({String(s.data.not_signals.length)})</summary>
             <SignalTable rows={s.data.not_signals} caption="Terms tested, not signals" />

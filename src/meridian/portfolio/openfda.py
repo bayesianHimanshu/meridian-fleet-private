@@ -9,7 +9,7 @@ import hashlib
 import json
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +19,8 @@ EVENT = "/drug/event.json"
 LABEL = "/drug/label.json"
 REACTION_FIELD = "patient.reaction.reactionmeddrapt.exact"
 RESPONSES_TABLE = "openfda_responses"
+# 1.0.1: an earlier scan's responses, staged for a rerun that reuses them.
+PRIOR_TABLE = "prior_responses"
 
 Get = Callable[[str, str], tuple[int, str]]  # (path, query string) -> (status, body)
 
@@ -127,6 +129,56 @@ def total(r: Response) -> int | None:
     return sum(c for _, c in counts(r))
 
 
+def throttled(r: Response) -> bool:
+    """openFDA's throttling: HTTP 429, or HTTP 500 whose error details say "Too Many
+    Requests" (what 1.0.0 received). Nothing else is retried (1.0.1)."""
+    if r.status == 429:
+        return True
+    if r.status != 500:
+        return False
+    error = r.json().get("error")
+    return isinstance(error, dict) and error.get("details") == "Too Many Requests"
+
+
+def plan(cfg: SignalScoutConfig, reactions: Response) -> list[tuple[str, str]]:
+    """The term-total queries, most reported term first (the reaction, drug, all-report and
+    label queries come before them)."""
+    terms = sorted(
+        ((t, n) for t, n in counts(reactions) if n >= cfg.min_reports),
+        key=lambda x: (-x[1], x[0]),
+    )
+    return [(EVENT, term_total_query(cfg, term)) for term, _ in terms]
+
+
+class _Caller:
+    """Requests in order, pausing between them, retrying throttling after each backoff,
+    never more than max_requests attempts. Every attempt is kept."""
+
+    def __init__(self, get: Get, cfg: SignalScoutConfig, sleep: Callable[[float], None]) -> None:
+        self.get, self.cfg, self.sleep = get, cfg, sleep
+        self.out: list[Response] = []
+        self.start = 0  # responses that were not requested here (a rerun's earlier ones)
+
+    def full(self) -> bool:
+        return len(self.out) - self.start >= self.cfg.max_requests
+
+    def call(self, path: str, query: str) -> Response:
+        waits = iter(self.cfg.retry_backoff_seconds)
+        pause = self.cfg.request_interval_seconds
+        while True:
+            if self.out:
+                self.sleep(pause)
+            status, body = self.get(path, query)
+            r = Response.of(path, query, status, body)
+            self.out.append(r)
+            if not throttled(r) or self.full():
+                return r
+            wait = next(waits, None)
+            if wait is None:
+                return r
+            pause = wait
+
+
 def fetch(
     get: Get,
     cfg: SignalScoutConfig,
@@ -134,30 +186,55 @@ def fetch(
 ) -> list[Response]:
     """The pre-registered plan: the reaction terms, the drug's and all reports, the label,
     then one total for each term with at least min_reports reports with the drug, most
-    reported first, never more than max_requests requests, pausing between them."""
-    out: list[Response] = []
-
-    def call(path: str, query: str) -> Response:
-        if out:
-            sleep(cfg.request_interval_seconds)
-        status, body = get(path, query)
-        r = Response.of(path, query, status, body)
-        out.append(r)
-        return r
-
-    reactions = call(EVENT, reactions_query(cfg))
-    call(EVENT, drug_total_query(cfg))
-    call(EVENT, all_total_query(cfg))
-    call(LABEL, label_query(cfg))
-    terms = sorted(
-        ((t, n) for t, n in counts(reactions) if n >= cfg.min_reports),
-        key=lambda x: (-x[1], x[0]),
-    )
-    for term, _ in terms:
-        if len(out) >= cfg.max_requests:
+    reported first, never more than max_requests requests (retries included), pausing
+    between them; since 1.0.1 retrying openFDA's throttling."""
+    c = _Caller(get, cfg, sleep)
+    reactions = c.call(EVENT, reactions_query(cfg))
+    c.call(EVENT, drug_total_query(cfg))
+    c.call(EVENT, all_total_query(cfg))
+    c.call(LABEL, label_query(cfg))
+    for path, query in plan(cfg, reactions):
+        if c.full():
             break
-        call(EVENT, term_total_query(cfg, term))
-    return out
+        c.call(path, query)
+    return c.out
+
+
+class DataDateChangedError(ValueError):
+    pass
+
+
+def top_up(
+    get: Get,
+    cfg: SignalScoutConfig,
+    prior: Sequence[Response],
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[Response]:
+    """A rerun on an earlier scan's responses (1.0.1): the earlier responses, then a request
+    (with retries) for each query of the plan the earlier scan has no 200 answer for. Every
+    new answer must carry the earlier data date; otherwise DataDateChangedError."""
+    answered = {(r.path, r.query): r for r in prior if r.status == 200}
+    base = [(EVENT, reactions_query(cfg)), (EVENT, drug_total_query(cfg))]
+    base += [(EVENT, all_total_query(cfg)), (LABEL, label_query(cfg))]
+    reactions = answered.get(base[0])
+    if reactions is None:
+        raise ValueError("the earlier scan has no answer to the reaction query")
+    date = reactions.last_updated
+    c = _Caller(get, cfg, sleep)
+    c.out = list(prior)
+    c.start = len(prior)
+    for path, query in [*base, *plan(cfg, reactions)]:
+        if (path, query) in answered:
+            continue
+        if c.full():
+            break
+        r = c.call(path, query)
+        if r.status == 200 and path == EVENT and r.last_updated != date:
+            raise DataDateChangedError(
+                f"openFDA's data date is {r.last_updated}, the earlier scan's {date}: a full "
+                "scan is needed"
+            )
+    return c.out
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,8 +278,20 @@ def label_of(r: Response) -> Label | None:
     )
 
 
-def listed(term: str, label: Label) -> bool:
+def listed(
+    term: str,
+    label: Label,
+    spellings: Sequence[tuple[str, str]] = (),
+    synonyms: Mapping[str, Sequence[str]] | None = None,
+) -> bool:
     """The pre-registered rule: the term, lower-cased, as a phrase in the label's text
-    (punctuation as spaces). No synonyms, no MedDRA hierarchy."""
-    phrase = normalise(term)
-    return bool(phrase) and f" {phrase} " in f" {label.text} "
+    (punctuation as spaces). No MedDRA hierarchy. 1.0.1: the term also after the spelling
+    rules (British to American), and the label's own synonyms for it."""
+    phrases = {normalise(term)}
+    american = normalise(term)
+    for british, us in spellings:
+        american = american.replace(british, us)
+    phrases.add(american)
+    phrases |= {normalise(x) for x in (synonyms or {}).get(term.upper(), ())}
+    text = f" {label.text} "
+    return any(p and f" {p} " in text for p in phrases)

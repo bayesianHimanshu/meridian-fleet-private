@@ -716,6 +716,63 @@
         "title": "AssetStatus",
         "type": "object"
       },
+      "AttributionCorrection": {
+        "additionalProperties": false,
+        "description": "A correction of who an earlier event says acted (phase 5 step 3b). The ledger is\nappend-only: the corrected event stays as recorded, and this says what it recorded,\nwhat is true, who corrects it and why. corrected_by is an operator, never a person\nacting outside the API.",
+        "properties": {
+          "corrected_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Corrected By",
+            "type": "string"
+          },
+          "corrects_seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Corrects Seq",
+            "type": "integer"
+          },
+          "explanation": {
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "field": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "recorded_value": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Recorded Value",
+            "type": "string"
+          },
+          "true_value": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "True Value",
+            "type": "string"
+          },
+          "type": {
+            "const": "attribution_correction",
+            "default": "attribution_correction",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "corrects_seq",
+          "field",
+          "recorded_value",
+          "true_value",
+          "explanation",
+          "corrected_by"
+        ],
+        "title": "AttributionCorrection",
+        "type": "object"
+      },
       "AuditFindingItem": {
         "additionalProperties": false,
         "properties": {
@@ -1386,6 +1443,57 @@
           "checks"
         ],
         "title": "ContainmentView",
+        "type": "object"
+      },
+      "CorrectionView": {
+        "additionalProperties": false,
+        "description": "An AttributionCorrection of an event (phase 5 step 3b): the event stays as recorded;\nthis says what it recorded, what is true and who corrected it.",
+        "properties": {
+          "corrected_by": {
+            "title": "Corrected By",
+            "type": "string"
+          },
+          "corrects_seq": {
+            "title": "Corrects Seq",
+            "type": "integer"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_value": {
+            "title": "Recorded Value",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "true_value": {
+            "title": "True Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "corrects_seq",
+          "field",
+          "recorded_value",
+          "true_value",
+          "explanation",
+          "corrected_by",
+          "recorded_at"
+        ],
+        "title": "CorrectionView",
         "type": "object"
       },
       "CutSummary": {
@@ -2138,6 +2246,7 @@
               "mapping": {
                 "actor_suspended": "#/components/schemas/ActorSuspended",
                 "actor_woke": "#/components/schemas/ActorWoke",
+                "attribution_correction": "#/components/schemas/AttributionCorrection",
                 "audit_review_requested": "#/components/schemas/AuditReviewRequested",
                 "containment_check_completed": "#/components/schemas/ContainmentCheckCompleted",
                 "data_cut": "#/components/schemas/DataCut",
@@ -2203,6 +2312,9 @@
               },
               {
                 "$ref": "#/components/schemas/SignalScanRequested"
+              },
+              {
+                "$ref": "#/components/schemas/AttributionCorrection"
               }
             ],
             "title": "Payload"
@@ -2270,7 +2382,8 @@
           "send_study_loaded",
           "noael_decision",
           "inventory_loaded",
-          "signal_scan_requested"
+          "signal_scan_requested",
+          "attribution_correction"
         ],
         "title": "EventType",
         "type": "string"
@@ -3859,6 +3972,16 @@
       "LedgerPage": {
         "additionalProperties": false,
         "properties": {
+          "corrections": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CorrectionView"
+              },
+              "type": "array"
+            },
+            "title": "Corrections",
+            "type": "object"
+          },
           "entries": {
             "items": {
               "anyOf": [
@@ -6323,6 +6446,13 @@
             "title": "Caveats Source",
             "type": "string"
           },
+          "context": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Context",
+            "type": "array"
+          },
           "data_date": {
             "anyOf": [
               {
@@ -6348,6 +6478,13 @@
               }
             ],
             "title": "Drug Reports"
+          },
+          "earlier_scans": {
+            "items": {
+              "$ref": "#/components/schemas/ScanSummary"
+            },
+            "title": "Earlier Scans",
+            "type": "array"
           },
           "label_effective": {
             "anyOf": [
@@ -6415,6 +6552,16 @@
             "title": "Rule",
             "type": "string"
           },
+          "scan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "scan_id": {
             "anyOf": [
               {
@@ -6475,6 +6622,18 @@
           "tested": {
             "title": "Tested",
             "type": "integer"
+          },
+          "tiers": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Tiers",
+            "type": "object"
+          },
+          "triage": {
+            "default": "",
+            "title": "Triage",
+            "type": "string"
           }
         },
         "required": [
@@ -6502,6 +6661,73 @@
           "requests"
         ],
         "title": "SafetySignalsView",
+        "type": "object"
+      },
+      "ScanSummary": {
+        "additionalProperties": false,
+        "description": "One completed signal scan: who asked for it (as recorded, with any correction), the\nagent version, and its findings.",
+        "properties": {
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionView"
+            },
+            "title": "Corrections",
+            "type": "array"
+          },
+          "findings": {
+            "title": "Findings",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "reuses_responses_of": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuses Responses Of"
+          },
+          "scan_id": {
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "scan_seq": {
+            "title": "Scan Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scan_seq",
+          "scan_id",
+          "agent_version",
+          "requested_by",
+          "reuses_responses_of",
+          "findings",
+          "open",
+          "corrections"
+        ],
+        "title": "ScanSummary",
         "type": "object"
       },
       "SendStudyLoaded": {
@@ -6675,6 +6901,11 @@
           "term_reports": {
             "title": "Term Reports",
             "type": "integer"
+          },
+          "tier": {
+            "default": "not_signal",
+            "title": "Tier",
+            "type": "string"
           }
         },
         "required": [
@@ -6706,6 +6937,18 @@
             "minLength": 1,
             "title": "Requested By",
             "type": "string"
+          },
+          "reuses_responses_of": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuses Responses Of"
           },
           "scan_id": {
             "pattern": "^SCAN-[0-9]{8}T[0-9]{6}Z$",

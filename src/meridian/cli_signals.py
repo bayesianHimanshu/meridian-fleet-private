@@ -13,7 +13,6 @@ signals_app = typer.Typer(
     no_args_is_help=True,
     help="Signals of disproportionate reporting in openFDA for MRD-201's drug.",
 )
-SCAN_ACTOR = "meridian.signals"
 
 
 def _fail(message: str) -> typer.Exit:
@@ -23,34 +22,69 @@ def _fail(message: str) -> typer.Exit:
 
 @signals_app.command("scan")
 def signals_scan(
-    by: Annotated[str, typer.Option("--by", help="Who asks for the scan (recorded).")] = SCAN_ACTOR,
+    by: Annotated[
+        str | None,
+        typer.Option("--by", help="The operator id recorded (operator:<name>); never a person."),
+    ] = None,
+    reuse: Annotated[
+        int | None,
+        typer.Option(
+            "--reuse",
+            help="Rerun on this earlier scan's recorded responses; ask only what it lacks.",
+        ),
+    ] = None,
 ) -> None:
     """Record a SignalScanRequested and run the scout on it in its OpenShell sandbox
     (portfolio_signal: egress to api.fda.gov only). Each response is kept under
     [signal_root] and named on the run's ActorWoke."""
     from meridian.domain.enums import Visibility
     from meridian.domain.events import EventDraft, SignalScanRequested
+    from meridian.domain.identity import (
+        NotAnOperatorError,
+        operator_id,
+        people_ids,
+        require_operator,
+    )
 
     settings = Settings()
     cfg = settings.agents.safety_signal_scout
+    try:
+        operator = require_operator(by or operator_id(), people_ids(settings.api.people_file))
+    except NotAnOperatorError as exc:
+        raise _fail(str(exc)) from exc
     with Container.build(settings) as c:
         from meridian.cli import _configure_logging
 
         log = _configure_logging(c.clock)
+        if reuse is not None:
+            from meridian.domain.events import Event
+            from meridian.portfolio.store import kept
+
+            base = next((e for e in c.ledger.read() if e.seq == reuse), None)
+            if not isinstance(base, Event) or not isinstance(base.payload, SignalScanRequested):
+                raise _fail(f"seq {reuse} is not a signal scan")
+            if kept(settings.signal_root, reuse) is None:
+                raise _fail(f"no recorded responses for scan seq {reuse}")
         now = c.clock.now()
         scan_id = "SCAN-" + now.astimezone(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
         event = c.ledger.append(
             EventDraft(
                 occurred_at=now,
-                actor=SCAN_ACTOR,
+                actor=operator,
                 study_id=cfg.study_id,
                 visibility=Visibility.BLINDED,
                 payload=SignalScanRequested(
-                    study_id=cfg.study_id, scan_id=scan_id, requested_by=by
+                    study_id=cfg.study_id,
+                    scan_id=scan_id,
+                    requested_by=operator,
+                    reuses_responses_of=reuse,
                 ),
             )
         )
-        typer.echo(f"SignalScanRequested {scan_id} at ledger seq {event.seq}")
+        typer.echo(
+            f"SignalScanRequested {scan_id} at ledger seq {event.seq} by {operator}"
+            + (f", reusing the responses of seq {reuse}" if reuse is not None else "")
+        )
         report = c.agent_runner(log).run_pending(
             agents={"portfolio.safety_signal_scout"}, cuts={scan_id}
         )

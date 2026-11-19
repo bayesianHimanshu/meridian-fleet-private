@@ -448,7 +448,8 @@ FAERS_CAVEATS: tuple[str, ...] = (
 
 
 class SignalScoutConfig(AgentConfig):
-    """portfolio.safety_signal_scout 1.0.0 (docs/signal-scout.md, pre-registered)."""
+    """portfolio.safety_signal_scout 1.0.0 and 1.0.1 (docs/signal-scout.md, each
+    pre-registered). 1.0.1: retry openFDA's throttling, context on every signal, triage."""
 
     study_id: str = "MRD-201"
     drug: str = "xanomeline (with trospium chloride, COBENFY)"
@@ -466,3 +467,14 @@ class SignalScoutConfig(AgentConfig):
     caveats_source: str = "open.fda.gov/apis/drug/event (Disclaimer)"
     caveats: tuple[str, ...] = FAERS_CAVEATS
     visible_to: tuple[Role, ...] = (Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD)
+    # 1.0.1 (phase 5 step 3b).
+    retry_backoff_seconds: tuple[float, ...] = (2.0, 4.0, 8.0, 16.0)
+    priority_prr_low_above: float = Field(2.0, gt=0)
+    priority_min_reports: int = Field(10, ge=1)
+    indication_terms: tuple[str, ...] = ()
+    indication_source: str = ""
+    use_terms: tuple[str, ...] = ()
+    label_spellings: tuple[tuple[str, str], ...] = ()
+    label_synonyms: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    context: tuple[str, ...] = ()
+    indication_caveat: str = ""
