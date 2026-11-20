@@ -118,7 +118,7 @@ agents reports. People decide the findings.
 
 ## Quickstart: a laptop with kind
 
-This takes about 45 minutes the first time, most of it downloads and the image build. It
+This takes about 30 minutes once Substrate is installed, most of it downloads and the image build. It
 runs the operational data cut (DC-BASE) through the agents in Agent Substrate on kind,
 records everything in a new ledger, and shows the result in the Command Center.
 
@@ -135,8 +135,8 @@ and `kubectl-ate`, and writes its install record to
 `~/.cache/ate-setup/installs/kind-kind.yaml`. Then check:
 
 ```sh
-kubectl --context kind-kind -n ate-system get pods     # every pod Running
-kubectl ate version                                     # client v1.0.0
+kubectl --context kind-kind -n ate-system get pods     # Running (and one Completed job)
+kubectl ate --version                                   # kubectl-ate version ... v1.0.0
 ```
 
 **2. Clone and install.**
@@ -168,6 +168,7 @@ uv run meridian dispatcher token             # the shared token: ~/.config/merid
 uv run meridian substrate deploy             # image to the kind registry, WorkerPool, atespace, templates
 uv run meridian dispatcher deploy            # the dispatcher, the only member of the atespace
 uv run meridian dispatcher status            # templates with golden snapshots, free workers
+uv run meridian substrate conformance        # in a real actor per zone: every egress refused, controls allowed
 ```
 
 **5. Run the agents and look at the result.**
@@ -186,9 +187,11 @@ uv run meridian api serve                    # the Fleet API on http://127.0.0.1
 cd web && npm ci && npm run dev              # the Command Center on http://127.0.0.1:5173
 ```
 
-Open http://127.0.0.1:5173. Pick a person in the role switcher (development identity, not a
-sign-in), open the review queue, and record a decision on a finding. The decision is a new
-ledger event, under that person.
+If port 5173 is taken, run `npm run dev -- --port 5174`; the API stays on 8765. Open the
+page and pick a person in the role switcher (development identity, not a sign-in). In the
+review queue you will find one finding: site 1008 has more protocol deviations than
+expected. That is a known false positive of the operational cut. Record a decision on it,
+and the decision becomes a new ledger event under that person.
 
 **Beside another deployment.** To keep a second copy apart from one that is already on the
 cluster, give it its own names in a TOML overlay. Then prefix every command with
