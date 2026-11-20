@@ -14,7 +14,6 @@ from typing import Annotated
 
 import numpy as np
 import polars as pl
-from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 OPS_TABLES: tuple[str, ...] = ("data_entry", "queries", "deviations", "screening")
@@ -118,10 +117,6 @@ def _visits(sv: pl.DataFrame, subjects: pl.DataFrame) -> pl.DataFrame:
         )
         .sort("USUBJID", "VISITNUM", "SVSTDTC", maintain_order=True)
     )
-
-
-def _per_site(values: NDArray[np.float64], sites: pl.DataFrame, name: str) -> pl.DataFrame:
-    return pl.DataFrame({"SITEID": sites["SITEID"], name: values})
 
 
 def synth_data_entry(

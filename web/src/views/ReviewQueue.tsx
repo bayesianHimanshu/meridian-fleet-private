@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, SeverityChip, StatusChip, Time, agentName } from "../components/common";
 import { FindingLink, WithTimes } from "../components/text";
@@ -19,7 +20,15 @@ export function secondLine(f: Finding): string {
   return f.primary_evidence.join("; ");
 }
 
+/** A study filter from the URL (?study=MRD-101, linked from the portfolio outlook): the
+ * asset's own findings and those of its studies (MRD-101-TOX-01). */
+export function inStudy(studyId: string, filter: string): boolean {
+  return !filter || studyId === filter || studyId.startsWith(`${filter}-`);
+}
+
 export function ReviewQueue() {
+  const [params] = useSearchParams();
+  const study = params.get("study") ?? "";
   const [includeEvaluation, setIncludeEvaluation] = useState(false);
   const [severity, setSeverity] = useState("");
   const [agent, setAgent] = useState("");
@@ -32,6 +41,7 @@ export function ReviewQueue() {
   const items: Finding[] = queue.data?.items ?? [];
   const shown = items.filter(
     (f) =>
+      inStudy(f.study_id, study) &&
       (!severity || f.severity === severity) &&
       (!agent || f.agent_id === agent) &&
       (!site || (f.site_id ?? "Study-wide") === site),
@@ -49,6 +59,12 @@ export function ReviewQueue() {
           </p>
         </div>
       </div>
+      {study ? (
+        <p data-testid="study-filter">
+          Showing <span className="mono">{study}</span> only.{" "}
+          <Link to="/review">Show every study</Link>
+        </p>
+      ) : null}
       <div className="toolbar" role="group" aria-label="Filters">
         <label className="field">
           Severity

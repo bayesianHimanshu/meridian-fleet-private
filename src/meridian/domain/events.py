@@ -3,7 +3,7 @@
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from meridian.domain.enums import EventType, Severity, Visibility
 from meridian.domain.findings import Decision, Finding
@@ -639,6 +639,10 @@ class AssetOutlook(BaseModel):
     facts: tuple[OutlookFact, ...]
     risks: tuple[OutlookRisk, ...]  # the top risks, most severe first
     changes: tuple[str, ...]
+    # Wrap-up (pipeline_intelligence 1.1.0): the risks beyond the top ones, and the open
+    # findings counted in the facts (1.0.0 listed each one; both default to 0 for it).
+    more_risks: NonNegativeInt = 0
+    open_findings: NonNegativeInt = 0
 
 
 class PortfolioOutlook(BaseModel):
@@ -730,9 +734,6 @@ class GateDecision(BaseModel):
         if self.decision != "conditional_go" and self.conditions:
             raise ValueError("only a conditional go has conditions")
         return self
-
-
-NOAEL_SEXES = ("M", "F", "combined")
 
 
 class NoaelDecision(BaseModel):

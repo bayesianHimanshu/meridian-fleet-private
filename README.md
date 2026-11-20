@@ -1,365 +1,357 @@
 # Meridian Agent Fleet
 
-A learning project: a fleet of clinical-trial oversight agents for Meridian Therapeutics,
-a fictional pharma company.
+Meridian Agent Fleet is a learning project. It builds oversight agents for a fictional pharma
+company, Meridian Therapeutics, covering the path from a rat toxicology study through a
+Phase 2 trial to a portfolio stage gate. The agents compute and cite, and the people decide.
+Agents run in sandboxes with no network, and every agent output and every human decision is
+an event in an append-only, hash-chained ledger. Each agent is measured against
+pre-registered targets, and the misses are recorded as plainly as the passes.
 
-## Phase 1 status
+## Contents
 
-Phase 1 is closed. Three RBQM agents (rbqm.kri_monitor 2.1.0, rbqm.qtl_detector 2.0.0,
-rbqm.csm 2.0.0) run on blinded cuts of the CDISC pilot study. The rule checks agree 100%
-with condition truth on all 30 cuts and the detectors raise at most one false positive
-on the clean cut, but detector recall is 0.67 against a target of 0.8: AE
-under-reporting is not detectable on this data. The criteria were revised after step 4,
-and the report shows the original ones next to the revised ones. See
-[docs/phase1-summary.md](docs/phase1-summary.md), and
-[docs/eval-phase1.md](docs/eval-phase1.md) for every number.
+- [Who it is for](#who-it-is-for)
+- [How it fits together](#how-it-fits-together)
+- [The agents](#the-agents)
+- [Quickstart: a laptop with kind](#quickstart-a-laptop-with-kind)
+- [Running the checks](#running-the-checks)
+- [Project status](#project-status)
+- [Documentation](#documentation)
+- [Honest limits](#honest-limits)
+- [Configuration, conventions and layout](#configuration-conventions-and-layout)
 
-## Phase 2 status
+## Who it is for
 
-Phase 2 is closed: see [docs/phase2-summary.md](docs/phase2-summary.md) for what
-containment proves, costs, known gaps and lessons.
+- **Engineers building agents for regulated work.** The project shows one way to put agents
+  next to people without letting them decide: containment by infrastructure, a ledger
+  that can be verified, and evaluations that state their misses.
+- **Clinical development and quality readers.** It shows the oversight work itself:
+  risk-based monitoring, SAE reconciliation, TMF completeness, the audit trail, a NOAEL,
+  a first-in-human dose, an IND readiness check and a stage gate. Each one is tied to
+  the regulation or guidance it comes from.
+- **Anyone reviewing it.** Every number in the documents comes from the ledger
+  ([docs/project-stats.md](docs/project-stats.md), computed by `meridian stats`) or from
+  a phase summary, with the ledger seq it was taken at.
 
-Step 1: agents run in NVIDIA OpenShell sandboxes, one per run, with no network, no ledger
-and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
-[docs/openshell-notes.md](docs/openshell-notes.md) and
-[docs/threat-model.md](docs/threat-model.md).
+## How it fits together
 
-```sh
-uv run meridian image build                  # docker build meridian-agent:<version>, print digest
-uv run meridian policy render                # policies/*.yaml and profiles/ (committed)
-uv run meridian sandbox verify               # in process vs sandbox, byte for byte
-uv run meridian sandbox conformance --zone all   # each zone policy in a real sandbox
-uv run meridian sandbox reap                 # delete tracked sandboxes left behind
-uv run meridian agents run                   # openshell by default
-uv run pytest -m openshell                   # needs openshell, a gateway and the image
+```mermaid
+flowchart LR
+  subgraph laptop["Laptop (host)"]
+    runner["meridian CLI and runner<br/>stages each run's inputs,<br/>checks every answer"]
+    ledger[("Ledger<br/>SQLite, append-only,<br/>SHA-256 hash chain,<br/>one writer")]
+    api["Fleet API<br/>127.0.0.1:8765<br/>visibility in one module"]
+    cc["Command Center<br/>React, web/"]
+    subgraph openshell["NVIDIA OpenShell sandboxes"]
+      narr["rbqm.narrator"]
+      local["safety.local_model<br/>term adjudicator, local narrator"]
+      scout["portfolio.safety_signal_scout"]
+    end
+    ollama["Ollama<br/>local model"]
+  end
+  subgraph cluster["Agent Substrate v1.0.0 on kind (or GKE in phase 4b)"]
+    disp["Dispatcher<br/>the only Substrate identity"]
+    subgraph actors["gVisor actors, one per run, no network"]
+      z1["rbqm"]
+      z2["safety.sae_reconciler"]
+      z3["quality, quality.audit_trail"]
+      z4["preclinical"]
+      z5["portfolio"]
+    end
+  end
+  anthropic["Anthropic<br/>Messages API"]
+  fda["openFDA"]
+  people(["People: clinical ops lead,<br/>medical monitor, toxicologist,<br/>QA auditor, portfolio lead"])
+
+  runner -- "one port-forward,<br/>token and HMAC" --> disp
+  disp --> actors
+  runner --> openshell
+  narr --> anthropic
+  local --> ollama
+  scout --> fda
+  runner -- "appends events" --> ledger
+  api -- "reads; records decisions" --> ledger
+  cc --> api
+  people --> cc
 ```
 
-`[runtime] executor` in config/default.toml picks the default executor: openshell, so a
-plain `meridian agents run` runs every agent in a sandbox. The in-process executor is used
-only when asked for (`--executor inprocess`), and only for evaluation cuts. Operational cuts
-(`[cuts] operational`, DC-BASE) are processed only by the executor in
-`[cuts] operational_executor` (openshell): the runner refuses any other one for them before
-it records anything. `meridian agents run --executor inprocess --evaluation-only` runs
-evaluation cuts in process and leaves operational cuts pending.
+- **Zones.** Each agent belongs to a zone, and each zone has a policy. The policy says which
+  staged data areas the zone may read and which network endpoints, if any, it may reach.
+  Six zones have no network and run in Agent Substrate actors. Three zones need one
+  endpoint each (the Anthropic API, the local model, openFDA) and run in OpenShell
+  sandboxes. The policies are rendered from code, proved against their boundaries, and
+  passed conformance in real sandboxes.
+- **Executors.** In process (evaluation cuts only), OpenShell, or Substrate. The runner
+  refuses any executor other than OpenShell or Substrate for the study's operational data.
+- **The dispatcher.** It runs in the cluster and is the only identity that may act on
+  actors. It refuses suspend, revert and tag, and holds each pass's inputs in memory only.
+- **The ledger.** It stays on the laptop with one writer, the runner. Runs go out in
+  parallel, and their events are appended in a fixed order.
+- **The Fleet API and the Command Center.** People read findings and record decisions
+  through them, under their own (development) identity. Who may see and decide what is one
+  rule in `src/meridian/api/visibility.py`.
 
-Step 3: the first LLM use. rbqm.narrator explains a finding in plain language for a
-clinical operations reader; detection stays deterministic, and a reply is recorded only if
-it passes validation against the evidence. It runs in its own sandbox
-(policies/rbqm.narrator.yaml) whose only egress is the Anthropic Messages API, with the
-key supplied by an OpenShell provider the user creates (see docs/openshell-notes.md).
-Results: [docs/narrator-eval.md](docs/narrator-eval.md).
+More detail, and the decisions behind it: [docs/architecture.md](docs/architecture.md).
+
+## The agents
+
+Agents are deterministic unless marked LLM. They raise findings, or for the portfolio
+agents reports. People decide the findings.
+
+| Zone | Agent (version) | Executor | What it does | Who decides |
+|---|---|---|---|---|
+| rbqm | rbqm.kri_monitor 2.2.0 | Substrate | Site key risk indicators (entry lag, query aging, AE rate, deviations) | Clinical ops lead |
+| rbqm | rbqm.qtl_detector 2.1.0 | Substrate | Quality tolerance limits on study-wide rates | Clinical ops lead |
+| rbqm | rbqm.csm 2.1.0 | Substrate | Central statistical monitoring of vital-sign variance between sites | Clinical ops lead |
+| rbqm.narrator | rbqm.narrator 1.1.1 (LLM) | OpenShell, Anthropic API only | Explains a finding in plain language; recorded only if it passes validation | Nobody (information) |
+| safety | safety.sae_reconciler 1.1.1 | Substrate | Matches clinical SAEs against the safety database | Medical monitor |
+| safety.local_model | safety.term_adjudicator 1.1.1 (LLM) | OpenShell, local model only | Asks two local models whether two terms are one event; answers yes or no only when both agree | Medical monitor |
+| safety.local_model | safety.local_narrator 1.0.2 (LLM) | OpenShell, local model only | Explains safety findings with subject ids that never leave the laptop | Nobody (information) |
+| quality | quality.tmf_completeness 1.0.0 | Substrate | Is the Trial Master File complete and filed on time | Clinical ops lead |
+| quality.audit_trail | quality.audit_trail_reviewer 1.3.0 | Substrate | Reviews the ledger itself: runs without a sandbox, decisions on retired findings, people named outside the API | Clinical ops lead (QA auditor raises observations) |
+| preclinical | preclinical.tox_study_monitor 1.1.0 | Substrate | Treatment-related effects in a SEND repeat-dose study (Dunnett, trend tests, deaths and neoplasms as rules) | Toxicologist (the NOAEL is a person's decision) |
+| preclinical | preclinical.dose_translation 1.0.0 | Substrate | The first-in-human maximum recommended starting dose by FDA's 2005 method | Medical monitor |
+| preclinical | preclinical.ind_readiness 1.0.0 | Substrate | The nonclinical inventory against ICH M3(R2), S7A, S7B, S2(R1) | Portfolio lead (through the gate) |
+| preclinical | preclinical.translational_bridge 1.0.0 | Substrate | Target organs to cited Phase 1 monitoring, with safety margins | Medical monitor |
+| portfolio_signal | portfolio.safety_signal_scout 1.0.1 | OpenShell, two openFDA paths only | Signals of disproportionate reporting in FAERS, triaged, compared with the US label | Medical monitor |
+| portfolio | portfolio.pipeline_intelligence 1.1.0 | Substrate | A PortfolioOutlook per review: status, top 5 risks with seqs, changes | Nobody (information) |
+| portfolio | portfolio.stage_gate_pack 1.0.0 | Substrate | An evidence pack per gate request: each criterion met, not met or not applicable; no verdict | Portfolio lead (GateDecision) |
+
+## Quickstart: a laptop with kind
+
+This takes about 30 minutes once Substrate is installed, most of it downloads and the image build. It
+runs the operational data cut (DC-BASE) through the agents in Agent Substrate on kind,
+records everything in a new ledger, and shows the result in the Command Center.
+
+**You need:** Linux on x86-64, 8 GB of free memory, 30 GB of free disk, git, Docker
+(Engine, cgroup v2), [uv](https://docs.astral.sh/uv/), kubectl, Go 1.27 or later, Node.js
+22 or later with npm, and network access to github.com, PyPI, npm and the CDISC pilot
+files. No sudo is needed. Nothing here creates a cloud resource.
+
+**1. Agent Substrate v1.0.0 on kind.** Follow Substrate's own quickstart at tag `v1.0.0`
+([github.com/agent-substrate/substrate](https://github.com/agent-substrate/substrate),
+`docs/get-started/quickstart.md`), which needs no sudo. It creates the kind cluster
+`kind` (context `kind-kind`), a registry on `localhost:5001`, the `ate-system` namespace
+and `kubectl-ate`, and writes its install record to
+`~/.cache/ate-setup/installs/kind-kind.yaml`. Then check:
 
 ```sh
-uv run meridian sandbox conformance --policy rbqm.narrator   # first, after any image build
-uv run meridian agents narrate [--cut DC-BASE] [--max-calls 20]
-uv run python scripts/narrator_eval.py      # counts, tokens, cost, accepted narratives
+kubectl --context kind-kind -n ate-system get pods     # Running (and one Completed job)
+kubectl ate --version                                   # kubectl-ate version ... v1.0.0
 ```
 
-Step 4: evidence carries a role, direction, reference and display; detectors kri_monitor
-2.2.0, qtl_detector 2.1.0 and csm 2.1.0 flag exactly what their previous versions did;
-narrator 1.1.0 uses the displays, and its validator is measured on a labelled set.
+**2. Clone and install.**
 
 ```sh
-uv run python scripts/detector_equivalence.py       # same findings on every cut
-uv run python scripts/build_narrator_labels.py      # data/narrator_eval/labelled.jsonl
-uv run python scripts/narrator_validator_eval.py    # validator 1.0.0 vs 1.1.0
-uv run python scripts/narrator_rerun_table.py       # live 1.1.0 vs 1.0.0
-```
-
-## Phase 3 status
-
-Phase 3 is complete: [docs/phase3-summary.md](docs/phase3-summary.md) (what was built, the
-evidence by ledger seq, the evaluation including the misses, known gaps and lessons).
-
-Step 1: the Fleet API, the read and decision layer for the Command Center. Development
-identity only (headers checked against config/people.toml; not authentication), on
-127.0.0.1. Contract: [openapi/meridian-api.json](openapi/meridian-api.json). Notes:
-[docs/api-notes.md](docs/api-notes.md).
-
-```sh
-uv run meridian api serve            # http://127.0.0.1:8765/api/v1 (docs at /api/docs)
-uv run meridian api openapi          # regenerate openapi/meridian-api.json
-curl -s http://127.0.0.1:8765/api/v1/review-queue \
-  -H 'X-Meridian-Actor: asha.rao' -H 'X-Meridian-Role: clinical_ops_lead'
-```
-
-Step 2: the Command Center (`web/`), a React client of the Fleet API built from the design
-mock. It reads live API data only; the role switcher is development identity, not sign-in.
-Run it with two commands, in two terminals, from the repository root:
-
-```sh
-uv run meridian api serve                      # the Fleet API on 127.0.0.1:8765
-cd web && npm ci && npm run dev                # the Command Center on http://127.0.0.1:5173
-```
-
-Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:api` (in `web/`).
-The API types in `web/src/api/schema.ts` are generated from `openapi/meridian-api.json`
-with `npm run gen:api`.
-
-Step 3b: a local model (Ollama on the host, reached only from the safety.local_model
-sandbox) judges whether two event terms are one event and explains safety findings with
-subject ids: [docs/local-model-notes.md](docs/local-model-notes.md). Step 3b2:
-safety.term_adjudicator 1.1.0 asks two models and says "yes" or "no" only when both do,
-safety.local_narrator 1.0.1 has a host-written opening, and the terms fault set runs the
-path end to end: [docs/local-model-eval.md](docs/local-model-eval.md).
-
-```sh
-uv run meridian agents adjudicate [--cut DC-...]      # term adjudicator, both models
-uv run meridian agents narrate-local [--cut DC-...]   # local narrator
-uv run python scripts/term_agreement_eval.py          # dev pairs: 1.0.0, agreement, unsure prompt
-uv run meridian safety inject --set terms             # 10 cuts with recoded and look-alike terms
-```
-
-Step 4a: the first quality agent, quality.tmf_completeness 1.0.0 (deterministic): is the
-Trial Master File complete and filed on time? It reads a synthetic eTMF index per cut
-(data/etmf, metadata only; staged as /stage/tmf, which only the quality zone reads) and
-blinded DM for site milestones. The expected records are config/tmf_expected.toml (TMF
-Reference Model names, no numbers). The Command Center's Quality and audit item shows the
-TMF page; the API serves `GET /api/v1/quality/{cut}/tmf`. Notes:
-[docs/tmf-notes.md](docs/tmf-notes.md); evaluation: [docs/tmf-eval.md](docs/tmf-eval.md).
-
-```sh
-uv run meridian tmf generate                 # a clean eTMF snapshot for every recorded cut
-uv run meridian tmf inject --set dev         # dev, holdout (30 cuts each) or clean (10)
-uv run meridian tmf run [--set dev]          # in OpenShell sandboxes (DC-BASE without --set)
-uv run meridian tmf eval --set dev           # precision and recall per check
-PYTHONPATH=. uv run python scripts/tmf_stress.py   # the hand-written stress set (run once)
-uv run python scripts/term_adjudicator_rerun.py    # term adjudicator 1.1.1 on the dev pairs
-```
-
-Step 4b: quality.audit_trail_reviewer 1.0.0 reviews the ledger itself from an audit
-extract (identifiers and hashes only, staged as /stage/audit for policies/quality.audit_trail.yaml),
-and the QA auditor raises observations that someone else decides. Nobody decides a finding
-about their own actions. Notes: [docs/audit-notes.md](docs/audit-notes.md); evaluation:
-[docs/audit-eval.md](docs/audit-eval.md).
-
-```sh
-uv run meridian audit review                      # one review of the whole ledger, sandboxed
-PYTHONPATH=. uv run python scripts/audit_stress.py   # the hand-written audit stress set (run once)
-```
-
-## Phase 4a status
-
-Phase 4a status: complete. The four no-network zones run in Agent Substrate v1.0.0 actors
-(gVisor, one fresh actor per run from a golden snapshot) and the narrator and local model
-stay on OpenShell; runs go in parallel up to the pool's free workers. Summary, proofs and
-open gaps: [docs/phase4a-summary.md](docs/phase4a-summary.md).
-
-## Phase 4b status
-
-Phase 4b status: complete. The same four zones ran on Agent Substrate in a GKE cluster
-behind one in-cluster dispatcher, with each pass's inputs held only in its memory: a full
-pass of 910 runs in 270 s, leak checks and conformance passing, the cluster since torn
-down. Summary, measurements against kind, costs and gaps:
-[docs/phase4b-summary.md](docs/phase4b-summary.md).
-
-## Phase 5 status (preclinical)
-
-Phase 5 status: complete. SEND ingest, tox_study_monitor 1.0 and 1.1, the NOAEL as a
-person's decision, dose translation, IND readiness, the translational bridge, the signal
-scout, pipeline intelligence and the stage-gate pack; summary, evaluations including
-misses, decisions and gaps in [docs/phase5-summary.md](docs/phase5-summary.md).
-
-Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
-toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
-[docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
-API; preclinical.dose_translation proposes MRD-101's first-in-human maximum recommended starting dose by
-FDA's 2005 method and the medical monitor decides it; preclinical.ind_readiness checks the
-nonclinical inventory against ICH M3(R2)
-([docs/fih-dose-notes.md](docs/fih-dose-notes.md),
-[docs/ind-readiness-eval.md](docs/ind-readiness-eval.md)).
-
-Step 3a: MRD-101's accepted dose is its own first-in-human starting dose (not MRD-110's);
-preclinical.translational_bridge maps the NOAEL's target organs to cited Phase 1
-monitoring with safety margins ([docs/translational-notes.md](docs/translational-notes.md));
-portfolio.safety_signal_scout reports signals of disproportionate reporting for MRD-201's
-drug from openFDA in the portfolio_signal zone, and compares them with the US label
-([docs/signal-scout.md](docs/signal-scout.md)).
-
-Step 3b: CLI actions are recorded under an operator id (operator:<os user>), never a
-person's; an AttributionCorrection corrects seq 19985; quality.audit_trail_reviewer 1.3.0
-flags a person named outside the API. Signal scout 1.0.1 retries openFDA's throttling and
-triages its signals: only priority ones reach the review queue. portfolio.pipeline_intelligence
-writes a PortfolioOutlook per review and portfolio.stage_gate_pack an evidence pack per gate
-request, both from facts built as the portfolio lead; the portfolio lead records the
-GateDecision ([docs/stage-gate-notes.md](docs/stage-gate-notes.md)).
-
-```sh
-uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
-uv run meridian signals scan                 # one openFDA scan, in its OpenShell sandbox
-uv run meridian signals replay --trigger SEQ # the same scan on its kept responses
-uv run meridian signals scan --reuse SEQ     # rerun on a scan's responses, asking only what it lacks
-uv run meridian ledger correct-attribution --seq N --field F --true operator:x --explanation "..."
-uv run meridian portfolio review-due         # the month's scheduled portfolio review (for cron)
-uv run python scripts/gate_stress.py         # the stage-gate stress set (run once)
-uv run python scripts/ind_stress.py          # the IND readiness stress set (run once)
-```
-
-## Setup
-
-```sh
+git clone https://github.com/bayesianHimanshu/meridian-fleet.git
+cd meridian-fleet
 uv python install 3.14.10
 uv sync
+git config core.hooksPath .githooks                     # the project's hooks (this clone only)
 ```
 
-## Checks
+**3. Data and the ledger.** The CDISC pilot study (public, de-identified) becomes MRD-201,
+with synthetic operational, safety and TMF data, all seeded:
 
 ```sh
-scripts/check.sh            # every check CI runs locally; non-zero on the first failure
+uv run meridian ledger init                  # var/ledger.sqlite3
+uv run meridian data fetch                   # the CDISC pilot SDTM files, hash-checked
+uv run meridian data ingest --cut DC-BASE    # MRD-201's operational cut, recorded as a DataCut
+uv run meridian safety generate              # the synthetic safety database for each cut
+uv run meridian tmf generate                 # the synthetic eTMF index for each cut
+```
+
+**4. The agent image and the deployment.** Workers run only on a node with the label
+`meridian.dev/pool=substrate`, which a new kind install lacks:
+
+```sh
+uv run meridian image build                  # docker build from a clean tree; prints the digest
+kubectl --context kind-kind label node kind-control-plane meridian.dev/pool=substrate --overwrite
+uv run meridian dispatcher token             # the shared token: ~/.config/meridian/dispatcher.token (0600)
+uv run meridian substrate deploy             # image to the kind registry, WorkerPool, atespace, templates
+uv run meridian dispatcher deploy            # the dispatcher, the only member of the atespace
+uv run meridian dispatcher status            # templates with golden snapshots, free workers
+uv run meridian substrate conformance        # in a real actor per zone: every egress refused, controls allowed
+```
+
+**5. Run the agents and look at the result.**
+
+```sh
+uv run meridian agents run                   # every pending (agent, trigger) pair, in Substrate
+uv run meridian findings show --cut DC-BASE  # one line per finding
+uv run meridian ledger verify                # {"ok": true, ...}
+uv run meridian stats --markdown             # the numbers of your ledger
+```
+
+**6. The Command Center**, in two terminals from the repository root:
+
+```sh
+uv run meridian api serve                    # the Fleet API on http://127.0.0.1:8765
+cd web && npm ci && npm run dev              # the Command Center on http://127.0.0.1:5173
+```
+
+If port 5173 is taken, run `npm run dev -- --port 5174`; the API stays on 8765. Open the
+page and pick a person in the role switcher (development identity, not a sign-in). In the
+review queue you will find one finding: site 1008 has more protocol deviations than
+expected. That is a known false positive of the operational cut. Record a decision on it,
+and the decision becomes a new ledger event under that person.
+
+**Beside another deployment.** To keep a second copy apart from one that is already on the
+cluster, give it its own names in a TOML overlay. Then prefix every command with
+`MERIDIAN_CONFIG_OVERLAY=<file>`:
+
+```toml
+[substrate]
+atespace = "meridian-2"
+namespace = "meridian-2"
+worker_pool = "meridian-2"
+dispatcher_namespace = "meridian-2-dispatch"
+dispatcher_port = 8091
+dispatcher_token_file = "~/.config/meridian-2/dispatcher.token"
+```
+
+atenet-router admits exactly one dispatcher, and `dispatcher deploy` sets it to the
+dispatcher being deployed. Two copies on one cluster therefore need the router's
+`--ingress-allowed-spiffe-ids` to list both, which is a change to ate-system.
+
+**What the quickstart leaves out.**
+- **The narrator.** It needs an Anthropic API key in an OpenShell provider
+  ([docs/openshell-notes.md](docs/openshell-notes.md)).
+- **The local model.** It needs Ollama
+  ([docs/local-model-notes.md](docs/local-model-notes.md)).
+- **The SEND study and the portfolio.**
+  ([docs/commands.md](docs/commands.md), phase 5).
+- **The evaluation suites.**
+  ([docs/commands.md](docs/commands.md), phase 1).
+
+## Running the checks
+
+```sh
+scripts/check.sh            # everything CI runs; non-zero on the first failure (about 20 minutes)
 scripts/check.sh --fast     # the pre-commit subset (about 1 minute)
-scripts/check.sh --no-web   # the same without web/
+scripts/check.sh --no-web   # the same as the first, without web/
+uv run meridian policy prove                  # openshell-prover on every committed policy (CI too)
+uv run pytest -m substrate                    # against the kind deployment above
+uv run pytest -m openshell                    # needs an OpenShell gateway and the image
 ```
 
-The full script runs ruff format --check, ruff check, mypy --strict (src, tests, scripts),
-pytest without the slow, openshell and substrate marks, the policy render check, and in
-`web/` typecheck, lint, tests and the generated API types check. `--fast` runs ruff,
-mypy, the unit tests (`tests/unit`, the same marks), the policy render check and the web
-typecheck and lint; it leaves out the API, property and contract tests, the web tests
-and the API types check.
+The full script runs these, and stops at the first failure:
+- ruff format --check and ruff check
+- mypy --strict (src, tests, scripts)
+- pytest without the slow, openshell and substrate marks
+- the policy render check
+- in `web/`: typecheck, lint, tests and the generated API types check
 
-Two hooks in `.githooks/` run it (phase 5 step 3a; before, one pre-commit hook ran the
-full suite in about 20 minutes):
+Two hooks in `.githooks/` run it: pre-commit runs `--fast`, and pre-push runs everything.
+They check the working tree, so commit or stash everything first, and never skip them.
+CI runs everything on each pull request, plus the policy prover and the production web
+build.
 
-| Hook | Runs | Time on the laptop |
+## Project status
+
+The project is complete: phases 1 to 5 and a wrap-up. Each phase has a summary covering
+what was built, the evidence by ledger seq, the evaluation including the misses, the gaps
+and the lessons.
+
+| Phase | What | Summary |
 |---|---|---|
-| pre-commit | `scripts/check.sh --fast` | about 1 minute (66 s measured) |
-| pre-push | `scripts/check.sh` (everything) | about 20 minutes |
+| 1 | Three RBQM agents on the CDISC pilot, an append-only ledger, faults, and an honest evaluation; detector recall 0.67 against 0.8 (AE under-reporting undetectable) | [phase1-summary.md](docs/phase1-summary.md) |
+| 2 | OpenShell sandboxes, conformance, the policy prover; the narrator, the first LLM use | [phase2-summary.md](docs/phase2-summary.md) |
+| 3 | Fleet API and Command Center; SAE reconciliation; a local model; TMF; the audit trail | [phase3-summary.md](docs/phase3-summary.md) |
+| 4a | The no-network zones in Agent Substrate on kind, in parallel | [phase4a-summary.md](docs/phase4a-summary.md) |
+| 4b | The same zones on GKE behind one in-cluster dispatcher; a full pass of 910 runs in 270 s | [phase4b-summary.md](docs/phase4b-summary.md) |
+| 5 | SEND toxicology, the NOAEL as a person's decision, first-in-human dose, IND readiness, the signal scout, the portfolio outlook and stage gate | [phase5-summary.md](docs/phase5-summary.md) |
 
-CI runs everything on every pull request, plus the policy prover and the production web
-build. Enable the hooks once per clone (this repository only, never `--global`):
+**Phase 5 status:** complete. The NOAEL was decided by the toxicologist, the starting dose
+of 1.94 mg was accepted by the medical monitor, and the deaths PRE-0221 and PRE-0222 were
+accepted by the toxicologist. The portfolio lead recorded a conditional go on MRD-101's
+IND gate (seq 20158), with five conditions. Details are in
+[docs/phase5-summary.md](docs/phase5-summary.md).
 
-```sh
-git config core.hooksPath .githooks
-```
+**Wrap-up:** the numbers are in [docs/project-stats.md](docs/project-stats.md) (ledger seq
+20158, verified). The one-page summary is [docs/project-summary.md](docs/project-summary.md),
+and the open items are in [docs/backlog.md](docs/backlog.md).
 
-Two commits (ae3a1fd, 52429fb) went in with a failing check before the hook existed. The
-hooks check the working tree, not only what is staged or pushed, so stage everything you
-changed (or stash the rest) and push from a clean tree. Never skip them
-(`--no-verify`): a commit or push that fails a check is fixed, not forced.
+## Documentation
 
-## CLI
+Start here:
+- [docs/project-summary.md](docs/project-summary.md): the project on one page
+- [docs/architecture.md](docs/architecture.md): the design, the decisions behind it, and
+  where it differs from the plan
+- [docs/lessons.md](docs/lessons.md): the lessons across all phases, each with the
+  incident that taught it
+- [docs/backlog.md](docs/backlog.md): open items, why each matters, and a first step
+- [docs/project-stats.md](docs/project-stats.md) ([JSON](docs/project-stats.json)): the
+  numbers from the ledger
+- [docs/commands.md](docs/commands.md): the command reference, phase by phase
 
-```sh
-uv run meridian ledger init                 # create the SQLite ledger (WAL, STRICT, triggers)
-uv run meridian ledger append-demo          # append a DataCut and one restricted FindingRaised
-uv run meridian ledger show                 # JSON lines; restricted events are redacted
-uv run meridian ledger show --since 2 --role unblinded_statistician
-uv run meridian ledger verify               # exit 0 when the chain is intact, 1 when broken
-```
+Phase summaries: [1](docs/phase1-summary.md), [2](docs/phase2-summary.md),
+[3](docs/phase3-summary.md), [4a](docs/phase4a-summary.md), [4b](docs/phase4b-summary.md),
+[5](docs/phase5-summary.md).
 
-## Data (phase 1, step 2)
+| Area | Documents |
+|---|---|
+| Data | [data-notes.md](docs/data-notes.md) (CDISC pilot to MRD-201), [preclinical-data.md](docs/preclinical-data.md) (the public SEND study) |
+| RBQM (phase 1) | [rbqm-notes.md](docs/rbqm-notes.md), [calibration-step3.md](docs/calibration-step3.md), [tuning-phase1.md](docs/tuning-phase1.md), [eval-phase1.md](docs/eval-phase1.md), [ae-experiment.md](docs/ae-experiment.md) |
+| Containment (phase 2) | [openshell-notes.md](docs/openshell-notes.md), [threat-model.md](docs/threat-model.md) |
+| Narrator (phase 2) | [narrator-eval.md](docs/narrator-eval.md), [narrator-labels.md](docs/narrator-labels.md) |
+| API and review (phase 3) | [api-notes.md](docs/api-notes.md) |
+| Safety (phase 3) | [safety-notes.md](docs/safety-notes.md), [safety-eval.md](docs/safety-eval.md), [local-model-notes.md](docs/local-model-notes.md), [local-model-eval.md](docs/local-model-eval.md) |
+| Quality (phase 3) | [tmf-notes.md](docs/tmf-notes.md), [tmf-eval.md](docs/tmf-eval.md), [audit-notes.md](docs/audit-notes.md), [audit-eval.md](docs/audit-eval.md) |
+| Agent Substrate (phase 4) | [substrate-design.md](docs/substrate-design.md), [substrate-eval.md](docs/substrate-eval.md), [gke-plan.md](docs/gke-plan.md), [gke-session.md](docs/gke-session.md), [input-staging.md](docs/input-staging.md) |
+| Preclinical (phase 5) | [preclinical-notes.md](docs/preclinical-notes.md), [preclinical-eval.md](docs/preclinical-eval.md), [noael-decision.md](docs/noael-decision.md), [noael-assessment-MRD-101-TOX-01.md](docs/noael-assessment-MRD-101-TOX-01.md), [fih-dose-notes.md](docs/fih-dose-notes.md), [ind-readiness-eval.md](docs/ind-readiness-eval.md), [translational-notes.md](docs/translational-notes.md) |
+| Portfolio (phase 5) | [signal-scout.md](docs/signal-scout.md), [stage-gate-notes.md](docs/stage-gate-notes.md) |
+| API contract | [openapi/meridian-api.json](openapi/meridian-api.json) |
 
-```sh
-uv run meridian data fetch                  # download the CDISC pilot SDTM files, hash-checked
-uv run meridian data ingest --cut DC-BASE   # curate MRD-201, synthesize ops data, record a DataCut
-uv run meridian data show --cut DC-BASE     # tables and a per-site summary (blinded and ops only)
-uv run pytest -m slow                       # end to end against the real files (needs network)
-```
+## Honest limits
 
-A cut lives in `data/curated/MRD-201/<cut>/` with `blinded/`, `ops/`, `unblinded/` and a
-`manifest.json`. Agents read cuts only through `ParquetStudyReader`, which cannot see
-`unblinded/`. See [docs/data-notes.md](docs/data-notes.md) for what the data contains and
-why the blinding split is what it is.
+- **Synthetic and public data only.** MRD-201 is the public CDISC pilot study, de-identified,
+  with seeded synthetic operational, safety and TMF data. MRD-101's toxicology study is
+  instem's public SEND sample. The signals come from public FAERS data through openFDA.
+  Meridian Therapeutics, its assets and its people are fictional.
+- **Not a validated GxP system.** Nothing here has been validated under 21 CFR Part 11,
+  EU Annex 11 or GAMP 5. The hash-chained ledger shows tampering after the fact, but it is
+  not an electronic-signature system, and the stress sets are specification tests written
+  by the same author as the agents.
+- **Development identity only.** The Fleet API trusts the person and role headers it is
+  sent (config/people.toml). Anyone who can reach 127.0.0.1:8765 can claim any listed
+  person. There is no authentication and no sign-in.
+- **A laptop project.** The ledger lives on one machine with one writer. GKE ran for two
+  sessions in phase 4b and was then torn down.
+- **Agents are not people.** No agent decides anything. An agent's finding, pack or
+  outlook is information until a named person records a decision, and the misses in each
+  phase summary show why that matters.
 
-## Faults, agents and findings (phase 1, step 3)
+## Configuration, conventions and layout
 
-```sh
-uv run meridian faults inject --scenario config/scenarios/rbqm_core.toml   # DC-RBQM-CORE + ground truth
-uv run meridian agents list                         # known agents and whether they are enabled
-uv run meridian agents run                          # one pass over every pending DataCut
-uv run meridian findings show --cut DC-RBQM-CORE    # one line per finding
-uv run python scripts/calibration_report.py         # writes docs/calibration-step3.md
-```
-
-The fault injector writes a faulted copy of a cut that carries no trace of the faults;
-what was planted lives only in `data/ground_truth/` (gitignored). Agents run on every
-DataCut through the blinded `StudyReader` and can never import `meridian.faults`. See
-[docs/rbqm-notes.md](docs/rbqm-notes.md) for what each check measures, and
-[docs/calibration-step3.md](docs/calibration-step3.md) for the untuned starting point.
-
-## Evaluation (phase 1, step 4)
-
-```sh
-uv run meridian eval run --cut DC-RBQM-CORE [--agent-version 2.0.0]   # needs ground truth
-uv run meridian eval null --cut DC-BASE                               # every finding is a FP
-uv run meridian eval suite      # null cuts, holdout, sweep, agents, scorecards, report
-uv run meridian eval report     # rewrite docs/eval-phase1.md from the latest scorecards
-uv run python scripts/tune_phase1.py   # the tuning loop (dev and null cuts only)
-```
-
-Scorecards are written once to `data/evals/<run_id>.json` (gitignored). The phase 1
-result is in [docs/eval-phase1.md](docs/eval-phase1.md) and the tuning record in
-[docs/tuning-phase1.md](docs/tuning-phase1.md). `meridian.evals` never imports agents.
-
-## Rules, detectors and the AE experiment (phase 1, step 5)
-
-```sh
-uv run python scripts/ae_experiment.py   # the pre-registered AE variant experiment (dev cuts)
-uv run meridian eval suite               # also holdout 2 and the AE holdouts, after the freeze
-```
-
-Each check is a rule (a threshold on a measured value) or a detector (a statistical
-test), in `meridian.stats.checks`. Rule findings are scored against condition truth
-computed from the cut; detector findings against planted faults. Cuts made from step 5
-on have opaque ids: `DC-` plus 8 hex characters of the scenario file's sha256. The
-experiment and its decision are in [docs/ae-experiment.md](docs/ae-experiment.md).
-
-## Configuration
-
-Settings come from `config/default.toml` and can be overridden by environment variables
-prefixed `MERIDIAN_`, for example `MERIDIAN_LEDGER_PATH=/tmp/ledger.sqlite3`. Point at a
-different TOML file with `MERIDIAN_CONFIG_FILE`. Precedence, highest first: constructor
-arguments, environment, TOML file, field defaults.
-
-## Conventions
-
-* Append-only: ledger events, cuts, ground truth and scorecards are written once.
-* Time comes from the injected Clock; randomness from seeded numpy Generators spawned
-  from a SeedSequence in a fixed order.
-* Every polars `group_by` whose output feeds a computation or a file either passes
-  `maintain_order=True` or is followed by `.sort(...)` in the same chain. polars returns
-  groups in arbitrary order, and in step 3 that order reached `np.polyfit` and made a
-  cut non-reproducible. `tests/contract/test_group_by_order.py` enforces the rule.
-
-## Layout
+- **Configuration.** Settings come from `config/default.toml`. An environment variable
+  prefixed `MERIDIAN_` overrides one setting (for example
+  `MERIDIAN_LEDGER_PATH=/tmp/l.sqlite3`; nested keys use `__`, such as
+  `MERIDIAN_SUBSTRATE__ATESPACE`). `MERIDIAN_CONFIG_OVERLAY` merges another TOML file over
+  the defaults.
+- **Append-only.** Ledger events, cuts, ground truth and scorecards are written once.
+- **Determinism.** Time comes from an injected Clock, and randomness from seeded numpy
+  Generators. Every polars `group_by` that feeds a computation keeps its order;
+  `tests/contract/test_group_by_order.py` enforces this.
+- **Identity.** People act only through the Fleet API. The CLI and the runner record an
+  operator (`operator:<os user>`), an agent or a system id, never a person.
 
 ```
 src/meridian/
-  domain/    pure Pydantic v2 types; imports nothing from meridian outside domain
-  ledger/    hashing (canonical JSON, SHA-256 chain), SQLite store, verifier
-  data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
-  faults/    fault catalog, scenarios, injector and FullCutReader (never imported by agents)
-  agents/    agent protocol, registry, runner; rbqm, safety and quality agents
-  stats/     robust z, quasi-Poisson, expected-AE variants, Poisson GLM, rule values and
-             check types, shared by agents and evals
-  evals/     matching, metrics, condition truth, scorecards and the phase 1 report
-             (never imports agents)
-  sandbox/   staging, zone policies, the agent image, executors (in process, OpenShell)
-  tmf/       site milestones from DM and the synthetic eTMF index generator
-  platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
-  cli.py     typer app exposed as the `meridian` console script
-  worker.py  `meridian-worker`: one agent run on a staged cut (what runs in a sandbox)
-docker/      agent.Dockerfile
-policies/    one OpenShell policy per zone, rendered by `meridian policy render`
-scripts/     calibration, tuning and AE experiment scripts (nothing in src imports them)
-tests/
-  unit/      validators, round trips, hashing, ledger behaviour, CLI
-  property/  hypothesis: any draft sequence verifies; any flipped payload byte is caught
-  contract/  repo rules (no U+2014, domain isolation, clock) and data rules (blinding, reader
-             confinement, atomic and repeatable cuts, one DataCut per cut)
-  slow/      real pilot data end to end (marked slow, needs network)
+  domain/     pure Pydantic v2 types (imports nothing outside domain)
+  ledger/     canonical JSON, the SHA-256 chain, the SQLite store, the verifier
+  data/       CDISC and SEND readers, cut writer, staged readers per zone
+  faults/     fault catalog and injector (never imported by agents)
+  agents/     agent protocol, registry, runner; rbqm, safety, quality, preclinical, portfolio
+  stats/      the statistics shared by agents and evals
+  evals/      matching, metrics, scorecards (never imports agents)
+  sandbox/    staging, policies, the image, executors (in process, OpenShell, Substrate,
+              dispatcher), conformance, leak check
+  api/        the Fleet API: repository, visibility, routes
+  platform/   Clock, Settings, Container
+  cli*.py     the `meridian` command; worker.py and dispatcher_serve.py run in sandboxes
+web/          the Command Center (React, generated API types)
+policies/     one OpenShell policy per zone (rendered, committed, proved)
+deploy/       Substrate templates and WorkerPool, the dispatcher, GKE scripts
+scripts/      evaluations, stress sets, project stats (nothing in src imports them)
+tests/        unit, property, contract, api, slow, openshell and substrate tests
 ```
-
-## Ledger design
-
-* One `events` table, `STRICT`, in WAL mode. Triggers abort any `UPDATE` or `DELETE` with
-  `ledger is append-only`, and a third trigger aborts any `INSERT` that does not extend the
-  chain (next seq, correct prev_hash).
-* Each event's hash is `sha256(prev_hash + canonical_json(event_without_hash))`. The genesis
-  prev_hash is 64 zeros. `payload_json` is stored in exactly the canonical form that was
-  hashed, and the verifier rejects any payload that is not canonical, so changing any single
-  byte is always detected.
-* Agent ids have the form `<zone>.<name>` (for example `rbqm.kri_sentinel`). The zone selects
-  the finding id prefix, and the ledger issues ids as `<PREFIX>-0001`, `<PREFIX>-0002`, ...
-* Readers that are not `unblinded_statistician` (including no role at all) get a
-  `RedactedEvent` for every restricted event.

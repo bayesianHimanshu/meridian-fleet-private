@@ -96,7 +96,6 @@ CLINICAL_ANCHORED = frozenset(
         TERM_MISMATCH,
     }
 )
-CASE_ANCHORED = frozenset({CASE_WITHOUT_SAE, LATE_REPORT, SUBJECT_MISMATCH})
 
 _SPACE = re.compile(r"\s+")
 

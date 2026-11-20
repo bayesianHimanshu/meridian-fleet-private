@@ -35,7 +35,6 @@ AE_VARIANTS: dict[str, str] = {
     "e": "lab_concordance",
 }
 ABNORMAL_LAB = ("HIGH", "LOW", "ABNORMAL")
-AGE_GROUPS = ("<70", "70-79", ">=80")
 
 
 def _sum_by_site(frame: pl.DataFrame, column: str) -> dict[str, float]:

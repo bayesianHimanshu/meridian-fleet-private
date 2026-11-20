@@ -15,6 +15,7 @@ The steps, each with the section it comes from:
 
 from dataclasses import dataclass
 
+from meridian.domain.display import sig
 from meridian.platform.agent_settings import DoseTranslationConfig, SpeciesConversion
 
 
@@ -72,9 +73,11 @@ def working(noael: float, unit: str, species: str, cfg: DoseTranslationConfig) -
     )
 
 
-def sig(value: float, digits: int = 3) -> str:
-    """A value at a fixed number of significant figures, for display."""
-    return f"{value:.{digits}g}"
-
-
-__all__ = ["NoCitedFactorError", "Working", "conversion_for", "per_kg", "sig", "working"]
+__all__ = [
+    "NoCitedFactorError",
+    "Working",
+    "conversion_for",
+    "per_kg",
+    "sig",
+    "working",
+]

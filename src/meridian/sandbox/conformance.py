@@ -301,7 +301,6 @@ SIGNAL_CHECKS: tuple[CheckSpec, ...] = (
     CONTROL_TMP,
 )
 CHECKS = ZONE_CHECKS  # the zone checks (step 2b name)
-NETWORK_CHECK = EGRESS_TEST_NET.name
 # Network refusals are recorded from the supervisor's log line, not the harness.
 NETWORK_CHECKS = frozenset(
     {EGRESS_TEST_NET.name, EGRESS_EXAMPLE.name, EGRESS_ANTHROPIC.name, EGRESS_OLLAMA.name}

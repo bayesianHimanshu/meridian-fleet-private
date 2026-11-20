@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import { secondLine } from "../src/views/ReviewQueue";
+import { inStudy, secondLine } from "../src/views/ReviewQueue";
 import { renderApp } from "./render";
 import { BASE, finding, seen, server } from "./server";
 
@@ -35,6 +35,16 @@ describe("review queue", () => {
     await user.selectOptions(screen.getByLabelText("Site"), "1016");
     expect(screen.getByText("Nothing waits for review with these filters.")).toBeTruthy();
     expect(screen.getByText("Showing 0 of 3 findings.")).toBeTruthy();
+  });
+
+  it("keeps only one asset's findings when the outlook links to it", async () => {
+    renderApp("/review?study=MRD-101");
+    expect((await screen.findByTestId("study-filter")).textContent).toContain("MRD-101");
+    expect(await screen.findByText("Nothing waits for review with these filters.")).toBeTruthy();
+    expect(inStudy("MRD-101-TOX-01", "MRD-101")).toBe(true);
+    expect(inStudy("MRD-101", "MRD-101")).toBe(true);
+    expect(inStudy("MRD-1010", "MRD-101")).toBe(false);
+    expect(inStudy("MRD-201", "")).toBe(true);
   });
 
   it("asks for evaluation cuts only when the reader opts in", async () => {

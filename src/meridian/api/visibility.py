@@ -14,7 +14,7 @@
 Repository functions call these; no route handler filters anything itself.
 """
 
-from collections.abc import Collection, Iterable
+from collections.abc import Collection
 
 from meridian.domain.enums import FindingKind, Role, Visibility
 from meridian.domain.events import (
@@ -75,12 +75,6 @@ def redact(role: Role, entry: LedgerEntry) -> LedgerEntry:
         hash=entry.hash,
         prev_hash=entry.prev_hash,
     )
-
-
-def finding_id_of(entry: Event) -> str | None:
-    """The finding an event is about, if any (the first, for an assessment)."""
-    ids = finding_ids_of(entry)
-    return ids[0] if ids else None
 
 
 def finding_ids_of(entry: Event) -> tuple[str, ...]:
@@ -159,10 +153,6 @@ def redact_with_findings(
 # The count of safety cases that carry an unblinded treatment field (never the field).
 def can_see_unblinded_counts(role: Role) -> bool:
     return role is FULL_ACCESS
-
-
-def visible_findings(role: Role, findings: Iterable[Finding]) -> list[Finding]:
-    return [f for f in findings if can_see_finding(role, f)]
 
 
 def can_see_cut_label(role: Role) -> bool:

@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -200,8 +200,47 @@ def apply_pool(kubectl: str, context: str, pool_file: Path) -> None:
     _run([kubectl, "--context", context, "apply", "-f", str(pool_file)])
 
 
-def wait_pool(kubectl: str, context: str, namespace: str, name: str, timeout: float) -> None:
-    _run(
+def require_worker_node(
+    kubectl: str, context: str, label: str, run: Callable[..., str] | None = None
+) -> str:
+    """The WorkerPool's nodeSelector is the worker label (config [substrate]
+    worker_node_label): with no node carrying it, no worker is ever scheduled and the
+    rollout waits in vain (the fresh-clone check of the wrap-up: a new kind install has no
+    such label)."""
+    out = (run or _run)([kubectl, "--context", context, "get", "nodes", "-l", label, "-o", "name"])
+    nodes = [line for line in out.splitlines() if line.strip()]
+    if not nodes:
+        raise DeployError(
+            f"no node carries the worker label {label}; on kind: kubectl --context {context} "
+            f"label node kind-control-plane {label}"
+        )
+    return nodes[0]
+
+
+def wait_pool(
+    kubectl: str,
+    context: str,
+    namespace: str,
+    name: str,
+    timeout: float,
+    run: Callable[..., str] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Wait for the WorkerPool's Deployment to roll out. On a first deploy the controller
+    creates the Deployment a moment after the WorkerPool is applied (the fresh-clone check
+    of the wrap-up found `rollout status` failing with NotFound), so wait for it to exist."""
+    run = run or _run
+    start = time.monotonic()
+    get = [kubectl, "--context", context, "-n", namespace, "get", f"deployment/{name}"]
+    while True:
+        try:
+            run(get)
+            break
+        except DeployError as exc:
+            if "NotFound" not in str(exc) or time.monotonic() - start > timeout:
+                raise
+            sleep(1.0)
+    run(
         [
             kubectl,
             "--context",
@@ -211,7 +250,7 @@ def wait_pool(kubectl: str, context: str, namespace: str, name: str, timeout: fl
             "rollout",
             "status",
             f"deployment/{name}",
-            f"--timeout={int(timeout)}s",
+            f"--timeout={max(1, int(timeout - (time.monotonic() - start)))}s",
         ],
         timeout=timeout + 30,
     )

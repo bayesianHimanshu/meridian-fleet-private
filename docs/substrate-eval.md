@@ -16,7 +16,7 @@ committed. The commands are under `meridian substrate`.
 
 ### C1. No data at rest: passed
 
-`meridian substrate canary --runs 20`: a unique string `MERIDIAN-CANARY-<32 hex>` (new on each run; sha256 of the reported
+`meridian substrate canary --runs 20` (phase 4a; replaced by `meridian leakcheck` in phase 4b): a unique string `MERIDIAN-CANARY-<32 hex>` (new on each run; sha256 of the reported
 one `918dc543...`) replaced AETERM in one row of
 blinded/ae.parquet of a copy of DC-BASE, and DECISION_REASON in one row of a copy of the audit
 extract. Both files were written uncompressed, and the canary was checked to be in their bytes.

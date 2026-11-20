@@ -3,13 +3,13 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: quality-audit-trail-8f6cc7caae90-m384
+  name: quality-audit-trail-c27133021fce-m384
 workerSelector:
   matchLabels:
     workload: meridian
 containers:
   - name: worker
-    image: "localhost:5001/meridian-agent@sha256:8f6cc7caae90abece160af62355135088afb0efb18a62b3511dd39ad0448dedf"
+    image: "localhost:5001/meridian-agent@sha256:c27133021fce8ad6da28b427dcf0f016deb3fd6f783c258d545e96d6b724b414"
     command:
       - "/opt/meridian/venv/bin/meridian-worker"
       - serve

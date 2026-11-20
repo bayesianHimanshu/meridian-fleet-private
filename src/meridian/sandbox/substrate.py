@@ -8,24 +8,19 @@ deploy` (meridian.sandbox.substrate_deploy). Tests inject a fake with the same p
 A run reaches its actor through `kubectl ate proxy actor`, which mints a client
 certificate, connects to atenet-router and forwards a local port to the actor's port.
 
-Two identities (phase 4a step 3, docs/substrate-design.md):
-- The runner acts as its own ServiceAccount, meridian/meridian-runner, with a short-lived
-  token (--token-file). Its only grant is `editor` on the atespace (the access policy in
-  deploy/substrate/access-policy.yaml), so Substrate refuses it anything outside the
-  atespace. Substrate v1.0.0 cannot refuse it suspend: an editor may create, delete,
-  suspend, revert and tag actors alike (cmd/ateapi/internal/authz/model.fga).
-  So the runner's client also carries a verb allow-list (RUNNER_VERBS) and refuses every
-  other `kubectl ate` call (suspend, revert, tag, update) before it is made, raising
-  GuardRefusedError. That guard is ours, in this process, not Substrate's.
-- Deploying templates and the proofs' positive control use the shared bootstrap identity
-  (ate-client), without a guard.
+Identities: phase 4a step 3 gave the laptop's runner its own ServiceAccount, with a verb
+allow-list (RUNNER_VERBS) that refuses suspend, revert, tag and update before they are
+sent, because Substrate v1.0.0 gives every editor those verbs
+(cmd/ateapi/internal/authz/model.fga). Phase 4b step 3 removed that identity: the
+in-cluster dispatcher is now the only Substrate identity, and its client carries
+DISPATCHER_VERBS, the same list without proxy (docs/phase4b-summary.md). Deploying
+templates and the proofs' positive control use the shared bootstrap identity (ate-client).
 """
 
 import contextlib
 import json
 import re
 import subprocess
-import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
@@ -252,72 +247,6 @@ def _await_proxy(process: subprocess.Popen[str], timeout: float) -> str:
         if match:
             return match.group(1)
     raise SubstrateError("kubectl ate proxy did not start listening")
-
-
-class ServiceAccountToken:
-    """A short-lived token for a ServiceAccount (kubectl create token), kept in a 0600 file
-    and minted again when it is older than half its lifetime. Thread safe."""
-
-    def __init__(
-        self,
-        *,
-        path: Path,
-        namespace: str,
-        service_account: str,
-        audience: str,
-        kubectl: str = KUBECTL,
-        context: str | None = None,
-        lifetime_seconds: int = 3600,
-    ) -> None:
-        self._path = path
-        self._argv = [kubectl]
-        if context:
-            self._argv += ["--context", context]
-        self._argv += [
-            "-n",
-            namespace,
-            "create",
-            "token",
-            service_account,
-            "--audience",
-            audience,
-            "--duration",
-            f"{lifetime_seconds}s",
-        ]
-        self._lifetime = lifetime_seconds
-        self._minted_at: float | None = None
-        self._lock = threading.Lock()
-
-    def __call__(self) -> Path:
-        with self._lock:
-            now = time.monotonic()
-            if self._minted_at is None or now - self._minted_at > self._lifetime / 2:
-                done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
-                    self._argv, capture_output=True, text=True, timeout=60, check=False
-                )
-                if done.returncode != 0 or not done.stdout.strip():
-                    raise SubstrateError(f"cannot mint the runner token: {done.stderr[-500:]}")
-                self._path.parent.mkdir(parents=True, exist_ok=True)
-                tmp = self._path.with_suffix(".tmp")
-                tmp.touch(mode=0o600)
-                tmp.chmod(0o600)
-                tmp.write_text(done.stdout.strip(), encoding="utf-8")
-                tmp.replace(self._path)
-                self._minted_at = now
-            return self._path
-
-
-def pool_ready_workers(kubectl: str, context: str | None, namespace: str, pool: str) -> int:
-    """readyReplicas of the WorkerPool (Kubernetes status; the runner's Substrate identity
-    may not list workers, which are global)."""
-    argv = [kubectl, *(["--context", context] if context else []), "-n", namespace]
-    argv += ["get", "workerpool", pool, "-o", "jsonpath={.status.readyReplicas}"]
-    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
-        argv, capture_output=True, text=True, timeout=60, check=False
-    )
-    if done.returncode != 0:
-        raise SubstrateError(f"cannot read WorkerPool {namespace}/{pool}: {done.stderr[-300:]}")
-    return int(done.stdout.strip() or 0)
 
 
 def free_workers(client: KubectlAteClient, ready: Callable[[], int]) -> int:

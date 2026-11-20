@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from meridian.domain.display import display_doses
+from meridian.domain.events import GatePack
 from meridian.portfolio.facts import CLOSED, OPEN, Fact
 
 GATES_FILE = "gates.toml"
@@ -201,3 +203,20 @@ def evaluate(gate: Gate, facts: Sequence[Fact]) -> list[Result]:
         status, why, used, items = RULES[c.rule](mine)
         out.append(Result(c, status, why, _seqs(used), tuple(items)))
     return out
+
+
+def pack_for_display(pack: GatePack) -> GatePack:
+    """A recorded pack as a person reads it (wrap-up): doses at 3 significant figures in
+    its texts. The ledger event keeps them as recorded."""
+    return pack.model_copy(
+        update={
+            "summary": display_doses(pack.summary),
+            "criteria": tuple(
+                c.model_copy(update={"explanation": display_doses(c.explanation)})
+                for c in pack.criteria
+            ),
+            "open_items": tuple(
+                o.model_copy(update={"text": display_doses(o.text)}) for o in pack.open_items
+            ),
+        }
+    )

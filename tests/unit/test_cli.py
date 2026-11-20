@@ -20,13 +20,41 @@ def ledger_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
+def _append_cut_and_restricted_finding(path: Path, n: int) -> None:
+    """A DataCut and one restricted finding (what the retired `ledger append-demo` wrote)."""
+    from meridian.domain.enums import FindingKind, Role, Severity, Visibility
+    from meridian.domain.events import DataCut, EventDraft, FindingRaised
+    from meridian.domain.findings import Evidence, Finding
+    from meridian.platform.clock import FixedClock
+    from tests.support import T0, make_ledger
+
+    with make_ledger(path, FixedClock(T0)) as ledger:
+        cut = ledger.append(
+            EventDraft(occurred_at=T0, actor="system.ingest", study_id="MER-101",
+                       visibility=Visibility.BLINDED,
+                       payload=DataCut(cut_id=f"CUT-{n:04d}", study_id="MER-101",
+                                       path=f"cut-{n:04d}"))
+        )  # fmt: skip
+        finding = Finding(
+            kind=FindingKind.QTL_BREACH, agent_id="unblinded.efficacy_watch",
+            agent_version="0.1.0", study_id="MER-101", site_id="SITE-007",
+            severity=Severity.HIGH, title="Arm-level dropout above QTL", summary="Test.",
+            evidence=(Evidence(source=f"data_cut:{cut.seq}", selector="arm=B",
+                               statistic="dropout_rate", value=0.21, threshold=0.15),),
+            visibility=Visibility.RESTRICTED,
+            visible_to=frozenset({Role.UNBLINDED_STATISTICIAN}), score=0.87,
+        )  # fmt: skip
+        ledger.append(
+            EventDraft(occurred_at=T0, actor="unblinded.efficacy_watch", study_id="MER-101",
+                       visibility=Visibility.RESTRICTED,
+                       payload=FindingRaised(finding=finding, dedup_key=f"demo:{cut.seq}"))
+        )  # fmt: skip
+
+
 def test_cli_end_to_end(ledger_env: Path) -> None:
     assert runner.invoke(app, ["ledger", "init"]).exit_code == 0
-    first = runner.invoke(app, ["ledger", "append-demo"])
-    second = runner.invoke(app, ["ledger", "append-demo"])
-    assert first.exit_code == 0, first.output
-    assert second.exit_code == 0, second.output
-    assert "DSMB-0002" in second.stdout
+    _append_cut_and_restricted_finding(ledger_env, 1)
+    _append_cut_and_restricted_finding(ledger_env, 2)
 
     full = runner.invoke(app, ["ledger", "show", "--role", "unblinded_statistician"])
     lines = [json.loads(line) for line in full.stdout.splitlines()]

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 from pydantic import BaseModel, ConfigDict
 
 from meridian.data.cut_writer import (
@@ -185,11 +184,3 @@ class FaultInjector:
             event=event,
             event_appended=appended,
         )
-
-
-def unchanged_unblinded(base: FullCut, cut_dir: Path) -> bool:
-    """True when every unblinded table in cut_dir equals the base cut's."""
-    return all(
-        pl.read_parquet(cut_dir / "unblinded" / f"{name}.parquet").equals(frame, null_equal=True)
-        for name, frame in base.unblinded.items()
-    )

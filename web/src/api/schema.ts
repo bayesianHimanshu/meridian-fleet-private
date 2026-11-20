@@ -820,6 +820,16 @@ export interface components {
             changes: string[];
             /** Facts */
             facts: components["schemas"]["OutlookFact"][];
+            /**
+             * More Risks
+             * @default 0
+             */
+            more_risks: number;
+            /**
+             * Open Findings
+             * @default 0
+             */
+            open_findings: number;
             /** Risks */
             risks: components["schemas"]["OutlookRisk"][];
             /** Static */

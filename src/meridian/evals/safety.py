@@ -22,8 +22,6 @@ from meridian.faults.inject import GroundTruth
 from meridian.faults.safety import expected
 from meridian.ledger.store import LedgerReader
 
-SETS = ("dev", "holdout", "clean")
-
 
 @dataclass(slots=True)
 class CheckScore:

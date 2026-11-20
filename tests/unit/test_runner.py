@@ -618,3 +618,55 @@ def test_a_send_study_triggers_only_its_subscribers_under_its_own_study_id(
         and e.payload.finding.agent_id == "preclinical.fake"
     ]  # fmt: skip
     assert raised == ["MRD-101-TOX-01"]
+
+
+class ReviewAgent(FakeAgent):
+    subscribes_to = frozenset({EventType.PORTFOLIO_REVIEW_REQUESTED})
+
+
+def test_a_request_is_answered_once_whatever_the_version(
+    ledger: SqliteLedger, tmp_path: Path
+) -> None:
+    """Wrap-up: a new version does not answer an old scan, review or gate request again
+    (the 1.0.1 scout reran scan 19985 with live calls); a new request it does answer."""
+    from meridian.domain.events import PortfolioReviewRequested
+
+    def scan(stamp: str) -> Event:
+        return ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="operator:test",
+                visibility=Visibility.BLINDED,
+                payload=PortfolioReviewRequested(
+                    review_id=f"REVIEW-{stamp}", requested_by="system.schedule", reason="scheduled"
+                ),
+            )
+        )
+
+    def runner(version: str) -> AgentRunner:
+        registry = AgentRegistry()
+        registry.register(ReviewAgent(version=version), AgentConfig())
+        inner = InProcessExecutor(
+            registry=registry,
+            reader_factory=StubReader,
+            log=structlog.get_logger(),
+            portfolio_root=tmp_path,
+        )
+        return AgentRunner(
+            ledger=ledger,
+            registry=registry,
+            executor=_NamedExecutor(inner, "openshell"),
+            clock=FixedClock(T0),
+            study_id=STUDY,
+            log=structlog.get_logger(),
+            operational_cuts=("DC-BASE",),
+            prepare_portfolio=lambda trigger: (tmp_path / str(trigger.seq)).mkdir(),
+        )
+
+    first = scan("20260101T000000Z")
+    assert runner("1.0.0").run_pending().completed == [("rbqm.fake", first.seq)]
+    newer = runner("1.0.1")
+    assert newer.run_pending().completed == []
+    assert newer.run_pending(rerun=True).completed == []
+    second = scan("20260102T000000Z")
+    assert newer.run_pending().completed == [("rbqm.fake", second.seq)]

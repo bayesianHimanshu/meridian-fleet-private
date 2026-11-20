@@ -25,7 +25,7 @@ the rules below and the stress set with its ideals. Background: docs/fih-dose-no
   study_type, species, route, duration_weeks, glp (Y, N, or empty when not recorded),
   report_status (planned, ongoing, draft, final, qa_audited), start_date,
   report_final_date and qa_audit_date (actual once done, planned before), and part_of (the
-  study a toxicokinetic part belongs to). `meridian preclinical inventory load` writes it
+  study a toxicokinetic part belongs to). `meridian preclinical inventory-load` writes it
   as a parquet table to `data/inventory_cuts/MRD-101/<cut>/inventory/studies.parquet`
   (cut `INV-<first 8 hex of the CSV's sha256>`) and records an `InventoryLoaded` event,
   the agent's trigger. It is staged as `/stage/inventory`, which only the preclinical
@@ -126,7 +126,7 @@ regulatory reviewer would decide.
 
 ## Generated faults (regression, not evaluation)
 
-`meridian.preclinical.inventory_faults`: from the complete inventory, a seeded fault per
+`meridian.preclinical.ind_cases` (`make_fault`): from the complete inventory, a seeded fault per
 copy (drop a study, shorten a repeat-dose study below the required duration, move a QA
 audit past the submission date, blank a GLP status), each with the one check it must
 raise. A test runs 40 seeds and requires exactly the expected finding on each, nothing

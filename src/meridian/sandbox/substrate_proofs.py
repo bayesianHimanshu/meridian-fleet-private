@@ -27,7 +27,6 @@ import contextlib
 import datetime as dt
 import hashlib
 import hmac
-import os
 import re
 import shutil
 import subprocess
@@ -326,17 +325,6 @@ def port_forward(
         process.wait(timeout=10)
 
 
-def search_bucket(s3: LocalS3, needle: bytes) -> tuple[SearchReport, list[str]]:
-    report = SearchReport("rustfs bucket " + BUCKET)
-    keys = s3.keys(BUCKET)
-    for key, _size in keys:
-        try:
-            report.scan(key, s3.get(BUCKET, key), needle)
-        except OSError as exc:
-            report.errors.append(f"{key}: {exc}")
-    return report, [k for k, _ in keys]
-
-
 def search_node(needle: bytes, node: str = NODE, roots: Sequence[str] = ("/",)) -> SearchReport:
     """Stream the node's filesystem out with tar and search every regular file."""
     report = SearchReport(f"kind node {node} filesystem")
@@ -452,55 +440,6 @@ def search_pod_logs(
         )
         if done.returncode == 0:
             report.scan("logs" + (" (previous)" if extra else ""), done.stdout, needle)
-    return report
-
-
-def plant_in_pod(
-    kubectl: str, context: str, namespace: str, selector: str, canary: str, path: str
-) -> None:
-    """Positive control for search_pod: write the canary into a file in the pod."""
-    pod = _pod(kubectl, context, namespace, selector)
-    subprocess.run(  # noqa: S603 (argv built from fixed parts)
-        [
-            kubectl,
-            "--context",
-            context,
-            "-n",
-            namespace,
-            "exec",
-            "-i",
-            pod,
-            "--",
-            "sh",
-            "-c",
-            f"cat > {path}",
-        ],
-        input=canary.encode(),
-        check=True,
-        timeout=60,
-    )
-
-
-def remove_in_pod(kubectl: str, context: str, namespace: str, selector: str, path: str) -> None:
-    pod = _pod(kubectl, context, namespace, selector)
-    subprocess.run(  # noqa: S603 (argv built from fixed parts)
-        [kubectl, "--context", context, "-n", namespace, "exec", pod, "--", "rm", "-f", path],
-        check=True,
-        timeout=60,
-    )
-
-
-def search_dir(root: Path, needle: bytes, label: str) -> SearchReport:
-    report = SearchReport(label)
-    for dirpath, _dirs, files in os.walk(root):
-        for name in files:
-            path = Path(dirpath) / name
-            if path.is_symlink() or not path.is_file():
-                continue
-            try:
-                report.scan(path.as_posix(), path.read_bytes(), needle)
-            except OSError as exc:
-                report.errors.append(f"{path}: {exc}")
     return report
 
 
