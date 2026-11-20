@@ -101,6 +101,10 @@ export function SafetySignalsView() {
             reports, than with all other drugs. It is never an incidence and never evidence that the drug causes
             the reaction; the medical monitor decides each one.
           </p>
+          <p className="muted" data-testid="openfda-notice">
+            Adverse event reports and labeling are from openFDA (CC0). No endorsement by the FDA or the
+            manufacturer is implied.
+          </p>
         </div>
       </div>
       {s.isPending ? <Loading what="the safety signals" /> : null}

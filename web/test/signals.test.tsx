@@ -49,6 +49,9 @@ describe("Safety signals", () => {
     renderApp("/safety/signals", "karan.mehta");
     expect((await screen.findByTestId("scan-summary")).textContent).toContain("2767 reports of 21054158 in FAERS");
     expect(screen.getByText(/openFDA data date 2026-10-28/)).toBeTruthy();
+    expect(screen.getByTestId("openfda-notice").textContent).toContain(
+      "Adverse event reports and labeling are from openFDA (CC0). No endorsement by the FDA or the manufacturer is implied.",
+    );
     const nausea = screen.getByTestId("signal-NAUSEA");
     expect(nausea.textContent).toContain("50 of 2767");
     expect(nausea.textContent).toContain("6.10 (5.60 to 6.60)");

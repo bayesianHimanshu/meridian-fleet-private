@@ -2,6 +2,7 @@
   "name": "meridian-command-center",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Meridian Command Center: the web client of the Fleet API (development identity only).",
   "engines": {

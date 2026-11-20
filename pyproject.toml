@@ -3,6 +3,8 @@ name = "meridian-fleet"
 version = "0.1.0"
 description = "Meridian Agent Fleet: clinical-trial oversight agents for Meridian Therapeutics (learning project)."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "pydantic>=2",
