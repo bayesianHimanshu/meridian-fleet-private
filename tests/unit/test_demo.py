@@ -123,6 +123,7 @@ def test_cards_carry_the_credit_and_no_em_dash(tmp_path: Path) -> None:
     paths = cards.write_all(tmp_path / "cards", leak, stats, Path("docs/phase4b-summary.md"))
     texts = {p.name: p.read_text() for p in paths}
     assert "LibriTTS (CC BY 4.0)" in texts["closing.html"]
+    assert "derived from the CDISC SDTM/ADaM Pilot Project data" in texts["closing.html"]
     assert "910 runs in 270 s" in texts["scale.html"]
     assert 'class="control yes"' in texts["leakcheck.html"]
     assert all(EM_DASH not in t for t in texts.values())

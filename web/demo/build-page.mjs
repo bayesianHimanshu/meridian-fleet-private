@@ -5,6 +5,7 @@
 // - docs/demo/index.html, the same page committed (the video is not; see the README).
 // The page makes no request but for the video and captions beside it: no CDN, no font,
 // no API, no model.
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildIndex } from "./search.mjs";
@@ -30,6 +31,10 @@ const CREDIT =
   "Clark, R., Zhang, Y., Weiss, R. J., Jia, Y., Chen, Z. and Wu, Y. (2019). LibriTTS: A Corpus " +
   "Derived from LibriSpeech for Text-to-Speech. Interspeech 2019.";
 
+const CDISC =
+  "Study MRD-201 is derived from the CDISC SDTM/ADaM Pilot Project data (CDISCPILOT01), relabelled and " +
+  "with synthetic additions, used under CDISC's terms of use. It is not a real study, and this project " +
+  "is not affiliated with or endorsed by CDISC.";
 const words = (s) => s.split(/\s+/).filter(Boolean).length;
 
 /** Markdown to plain text for a passage: links keep their text, marks go. */
@@ -128,7 +133,7 @@ function page(index, transcript, searchSource) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src 'self' file:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta http-equiv="Content-Security-Policy" content="__CSP__">
 <title>Meridian Agent Fleet: the demo</title>
 <style>
 :root { color-scheme: light dark; --bg:#f6f7f9; --panel:#fff; --line:#d8dde3; --text:#17202a;
@@ -204,7 +209,9 @@ questions work without it.</p>
 </main>
 <footer>
 <p>${esc(CREDIT)}</p>
-<p>A learning project: fictional company, synthetic and public data, not a validated system.</p>
+<p>${esc(CDISC)}</p>
+<p>Adverse event reports and labeling are from openFDA (CC0). No endorsement by the FDA or the manufacturer is implied.</p>
+<p>A learning project: fictional company, synthetic and public data, not a validated system. Code and documentation: Apache License 2.0.</p>
 </footer>
 <script id="data" type="application/json">${data}</script>
 <script>
@@ -317,7 +324,30 @@ document.getElementById("ask").addEventListener("submit", (e) => {
 </html>
 `;
   if (html.includes(String.fromCodePoint(0x2014))) throw new Error("an em dash in the page");
-  return html;
+  return withCsp(html);
+}
+
+/** The page's Content-Security-Policy: nothing by default; media only from the page's own
+ * origin (and file: for the offline zip); the one inline style and the one inline script
+ * allowed by their sha256, no 'unsafe-inline'. The JSON data block is not executed. */
+export function withCsp(html) {
+  const one = (re) => {
+    const all = [...html.matchAll(re)];
+    if (all.length !== 1) throw new Error(`expected one block for ${String(re)}, found ${String(all.length)}`);
+    return all[0][1];
+  };
+  const hash = (text) => `'sha256-${createHash("sha256").update(text, "utf8").digest("base64")}'`;
+  const style = one(/<style>([\s\S]*?)<\/style>/g);
+  const script = one(/<script>([\s\S]*?)<\/script>/g);
+  const csp = [
+    "default-src 'none'",
+    "media-src 'self' file:",
+    `style-src ${hash(style)}`,
+    `script-src ${hash(script)}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+  return html.replace("__CSP__", csp);
 }
 
 export function build() {
