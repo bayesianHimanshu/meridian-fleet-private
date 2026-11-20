@@ -1500,3 +1500,6 @@ from meridian.cli_signals import signals_app  # noqa: E402 (phase 5 step 3a)
 
 app.add_typer(signals_app, name="signals")
 app.add_typer(portfolio_app, name="portfolio")
+from meridian.cli_stats import stats  # noqa: E402 (wrap-up)
+
+app.command("stats")(stats)
