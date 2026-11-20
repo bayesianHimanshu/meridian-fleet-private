@@ -1,6 +1,6 @@
 # Demo script: Meridian Agent Fleet v1.0
 
-**Status:** draft for review (Part 1). Nothing has been recorded yet.
+**Status:** approved with edits (review of 20 Nov 2026).
 
 **Target:** 7 to 8 minutes. The narration is 1,170 words. That is 7.5 minutes at 155
 words a minute, a typical pace for a local TTS voice, or 8.1 minutes at 145. Each scene's
@@ -49,8 +49,8 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 > first dose in people. It also follows a second compound through a Phase 2 trial. Three
 > principles hold it together. First, agents compute and cite, but people decide: every
 > finding waits for a named person. Second, containment comes from infrastructure, not
-> from instructions. Each agent runs in a sandbox that holds only its own inputs and has
-> no network. Third, there is one append-only ledger. Every agent output and every human
+> from instructions. Each agent runs in a sandbox that reaches only what its zone's policy
+> allows, and most zones reach nothing at all. Third, there is one append-only ledger. Every agent output and every human
 > decision is an event in a hash chain, more than twenty thousand events so far.
 
 **Actions:**
@@ -109,8 +109,8 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 
 **Pages:**
 1. `/rbqm` as asha.rao, cut DC-BASE.
-2. `/findings/<id>` for kri_monitor 2.2.0's site 1008 deviation finding on DC-BASE. The
-   recorder looks up the id from the copy (RBQM-0134 at the wrap-up).
+2. `/findings/RBQM-0134`, kri_monitor's site 1008 deviation finding on DC-BASE, dismissed
+   by Asha Rao (clinical ops lead) at seq 788 on 7 Nov 2026.
 
 **Narration:**
 > Risk-based quality monitoring, or RBQM, watches the trial's sites for signs of trouble.
@@ -118,15 +118,15 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 > reports more protocol deviations than expected. Open it, and the evidence is the measured
 > rate, the expected rate and the test, not a sentence from a model. Below that is the
 > traceability: the agent and version, the image digest it ran in, the hash of its sandbox
-> policy, the hash of its inputs, and the ledger seq. This particular finding is a known
-> false positive: site 1008 really is different. That is exactly why a person decides,
-> and the decision form is here. In this demo it stays unsubmitted.
+> policy, the hash of its inputs, and the ledger seq. No fault was planted at this site,
+> yet it has more deviations than its peers. Whether that matters is a judgement, so a
+> person decided, and the record shows who and why.
 
 **Actions:**
 1. On `/rbqm`, hover the site 1008 row of the heatmap.
 2. Click the finding and scroll to Evidence, then to Traceability.
-3. Show the "Record a decision" form with "Dismissed" chosen and a reason typed in. Do not
-   press the button.
+3. Scroll to "Decision history" and show the recorded dismissal: who (asha.rao, clinical
+   ops lead), when, the reason, and seq 788. No form is touched.
 
 **Highlights:**
 
@@ -138,11 +138,13 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 | "image digest" | Traceability: image digest | Image digest |
 | "hash of its sandbox policy" | Traceability: policy sha256 | Policy hash |
 | "ledger seq" | Traceability: seq | Ledger seq |
-| "the decision form" | `Record a decision` | Shown, not submitted |
+| "a person decided" | `Decision history` | Dismissed by asha.rao, seq 788 |
 
 **Sources:**
-- Site 1008 as a standing false positive: docs/phase1-summary.md, "Known limitations"
-  (z = 3.6).
+- Site 1008, with no fault planted and a deviation z of 3.6: docs/phase1-summary.md,
+  "Known limitations".
+- The dismissal: ledger seq 788 ("DC-BASE is the clean base cut; the deviation excess at
+  1008 is a known natural breach (phase 1 eval)").
 - The traceability fields: docs/phase4a-summary.md, "What moved", traceability.
 
 ## Scene 4: Containment (about 55 s)
@@ -201,8 +203,9 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 > them. When two event terms might name the same event, a local model judges, and here
 > there are two models. The answer is yes or no only when both agree; otherwise a person
 > looks. Both answers are shown. Last, public adverse event reports from the US FDA, through
-> openFDA: seventy-eight signals for a drug similar to ours, sorted into tiers, compared
-> with the drug's label, and only nine left for the medical monitor to review.
+> openFDA: seventy-eight signals for the approved oral combination of the same molecule
+> with trospium, sorted into tiers, compared with its label, and only nine left for the
+> medical monitor to review.
 
 **Actions:**
 1. Show `/safety` on DC-BASE (0 discrepancies), then switch to the evaluation cut and show
@@ -243,8 +246,11 @@ monitor), one panel at a time:
 > tests, and treated deaths and tumours as rules. It raised ninety-eight findings, but not
 > the key number. The NOAEL, the highest dose with no adverse effect, is the toxicologist's
 > call: two milligrams per kilogram per day, with twenty as the lowest dose with an
-> adverse effect. Seventeen decisions were recorded, and fourteen of them were superseded
-> while the form's rules were being fixed, all of them still visible. From the NOAEL, the dose agent follows the FDA's 2005
+> adverse effect. In this demonstration the toxicologist is played by the developer, the
+> assessment was drafted by an assistant from the agent's findings, and the record says
+> so. The fourteen earlier entries were mistaken entries made through an early version of
+> the form. They were superseded by the proper decision and are still visible, because
+> the ledger never deletes. From the NOAEL, the dose agent follows the FDA's 2005
 > method step by step. It converts the rat dose to a human equivalent, divides by a safety
 > factor of ten, and scales to a sixty-kilogram adult: one point nine four milligrams. The
 > medical monitor accepted it. The translational agent then turns the target organs, liver
@@ -253,8 +259,8 @@ monitor), one panel at a time:
 
 **Actions:**
 1. Findings: scroll the per-dose-group table.
-2. NOAEL: show "Current decisions" (M, F, combined, all 2 mg/kg/day), then open "Earlier
-   decisions (14)" and scroll it.
+2. NOAEL: show "Current decisions" (M, F, combined, all 2 mg/kg/day) and the rationale's
+   last sentence, then open "Earlier decisions (14)" and scroll it.
 3. As karan.mehta, Dose translation: step through the working (NOAEL 2, HED 0.323 mg/kg,
    MRSD 0.0323 mg/kg, 1.94 mg).
 4. Translational: show the organs and "Safety margins".
@@ -265,7 +271,8 @@ monitor), one panel at a time:
 |---|---|---|
 | "ninety-eight findings" | the findings count | 98 findings (1.1.0) |
 | "two milligrams" | Current decisions | NOAEL 2 mg/kg/day |
-| "fourteen of them were superseded" | `Earlier decisions` | 14 superseded |
+| "the record says so" | the rationale's last sentence | "Assessment drafted by Claude Code from the agent's findings; recorded as Dr. Leela Nair, played by Himanshu, in this demonstration." |
+| "fourteen earlier entries" | `Earlier decisions` | 14 superseded, still visible |
 | "safety factor of ten" | working step 4 | / 10 |
 | "one point nine four milligrams" | working step 5 | 1.94 mg |
 | "margins of ten and one hundred" | `Safety margins` | 10 x, 100 x |
@@ -275,6 +282,7 @@ monitor), one panel at a time:
 - The tests used: docs/preclinical-eval.md, "Methods (pre-registered)" (Dunnett, Jonckheere-Terpstra), and src/meridian/preclinical/analysis.py (exact Cochran-Armitage for incidences).
 - NOAEL 2 and LOAEL 20, and 17 decisions with 14 superseded: docs/phase5-summary.md,
   "Human decisions".
+- The attribution sentence: the rationale of seq 19941 to 19943, quoted verbatim.
 - The dose working, 6.2 as the rat divisor and 60 kg: config/default.toml
   [agents.dose_translation] and docs/fih-dose-notes.md.
 - Acceptance: seq 19966.
@@ -298,8 +306,8 @@ gates" with the MRD-101 IND gate request.
 > The gate pack checks six criteria. Four come from regulation, each with its citation,
 > and two from company policy. Four were met, one was not met because four IND readiness
 > gaps were still open, and one did not apply. The pack gives no verdict. The portfolio
-> lead decided: a conditional go, with five conditions. One of them, to reconfirm the dose
-> against the dog study, came from the person, not from any agent.
+> lead decided: a conditional go, with five conditions. The conditions are the person's,
+> written into the decision itself.
 
 **Actions:**
 1. Show the outlook cards: MRD-101 at risk, the top risks with seqs, and the open findings
@@ -317,7 +325,7 @@ gates" with the MRD-101 IND gate request.
 | "one was not met" | the ind_gaps_resolved row | 4 gaps open |
 | "no verdict" | the pack summary | No verdict |
 | "a conditional go" | the decision | seq 20158 |
-| "reconfirm the dose" | condition 5 | A person's condition |
+| "the person's" | the conditions list | Written into GateDecision seq 20158 |
 
 **Sources:**
 - Pack 20156 (4 met, 1 not met, 1 not applicable) and decision 20158 (five conditions):
