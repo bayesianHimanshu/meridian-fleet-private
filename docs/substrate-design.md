@@ -409,7 +409,9 @@ restore phases. Its numbers are targets, not measurements: under 500 ms resume
   traceability panel show the placement.
 - **quality.audit_trail_reviewer 1.1.0:** substrate is a sandboxed executor when the
   completion records the image, the template spec hash and the golden snapshot id.
-- **`meridian substrate`** render, deploy, status, verify, conformance, canary, bench and reap;
+- **`meridian substrate`** render, deploy, status, verify, conformance, canary, bench and reap
+  (later: canary became `meridian leakcheck` in phase 4b, placement-check was added, and
+  guard-check was removed at the wrap-up);
   `meridian sandbox conformance --executor substrate`; `meridian agents run --cut --rerun`.
 
 ### Where the build departs from Part 1
@@ -446,7 +448,8 @@ restore phases. Its numbers are targets, not measurements: under 500 ms resume
 
 ### The runner's identity, and why suspend is refused by our client, not by Substrate
 
-- **Own identity.** The runner acts as the ServiceAccount `meridian/meridian-runner`
+- **Own identity** (phase 4a; removed in phase 4b step 3, when the in-cluster dispatcher
+  became the only Substrate identity). The runner acts as the ServiceAccount `meridian/meridian-runner`
   (deploy/substrate/runner.yaml), with a one-hour token minted by `kubectl create token
   --audience api.ate-system.svc` and passed as `kubectl ate --token-file`. Its only grant is
   `editor` on the meridian atespace (deploy/substrate/access-policy.yaml, applied by
@@ -460,7 +463,7 @@ restore phases. Its numbers are targets, not measurements: under 500 ms resume
   no per-actor or per-template grants (`docs/guides/authorization.md`, "Known
   limitations"). The `[user]` direct relation on `can_suspend` is not reachable through any
   API. So any identity that can run an actor can suspend it. Verified: the runner's
-  identity suspends a data-free actor (`meridian substrate guard-check --show-gap`).
+  identity suspends a data-free actor (`meridian substrate guard-check --show-gap` (retired: the runner identity it proves went in phase 4b step 3, the command at the wrap-up)).
 - **What we do instead.** The runner's client carries an allow-list (`RUNNER_VERBS` in
   src/meridian/sandbox/substrate.py: get actor, template and tag; create, resume, proxy and
   delete actor) and refuses every other `kubectl ate` call before running it. It is a

@@ -2,7 +2,7 @@
 
 Phase 5 took the fleet from MRD-201's clinical data to MRD-101's toxicology, its first
 human dose and the portfolio. It ran from ledger seq 19601 (the SEND study loaded) to
-seq 20140. As before, every agent is deterministic and runs sandboxed; people decide,
+seq 20140, and the people's decisions that closed it are at seq 20141 to 20158. As before, every agent is deterministic and runs sandboxed; people decide,
 through the Fleet API, under their own identity.
 
 ## What was built
@@ -20,7 +20,7 @@ through the Fleet API, under their own identity.
 | 3b | Attribution: operator identities, AttributionCorrection, audit reviewer 1.3.0 | correction 20068; QA-0178 |
 | 3b | Signal scout 1.0.1: retry, context, triage | scan 20105, 9 findings |
 | 3b | portfolio.pipeline_intelligence 1.0.0: a PortfolioOutlook event per review | review 20137, outlook 20139 |
-| 3b | portfolio.stage_gate_pack 1.0.0: an evidence pack per gate request; GateDecision by the portfolio lead | none recorded yet |
+| 3b | portfolio.stage_gate_pack 1.0.0: an evidence pack per gate request; GateDecision by the portfolio lead | request 20143, pack 20156, decision 20158 |
 
 New zones: preclinical (SEND, NOAEL extract, inventory; Substrate), portfolio_signal
 (egress to two openFDA paths only; OpenShell) and portfolio (facts built as the portfolio
@@ -58,6 +58,8 @@ conformance. The preclinical leak check passed on kind (20 runs, canary in no st
 |---|---|
 | Dr. Leela Nair (toxicologist) | 17 NoaelDecisions (19927 to 19943) and 3 dismissals of tox findings (19944 to 19946) |
 | Dr. Karan Mehta (medical monitor) | PRE-0232 dose proposal accepted as provisional (19966); PRE-0237 monitoring plan accepted (20067) |
+| Dr. Leela Nair (toxicologist) | The unscheduled deaths PRE-0221 and PRE-0222 accepted (20141, 20142): treatment-related, at 200 mg/kg/day, above the LOAEL |
+| Rahul Iyer (portfolio lead) | MRD-101 IND gate requested (20143); conditional go (20158) on pack 20156, with five conditions |
 
 Of the 17 NOAEL decisions, **14 were superseded**: one sex or combined decided, then
 revised, as the form's rules were found wanting in step 1 (for example "not established"
@@ -72,8 +74,21 @@ append-only). AttributionCorrection seq 20068, by operator:himanshu, records wha
 true. The CLI now records only operator ids. The audit reviewer's new check raised
 QA-0178 on that event, with the correction as evidence.
 
-No gate request or gate decision is recorded: both are the portfolio lead's to make,
-through the Command Center.
+**The IND gate.** The portfolio lead requested MRD-101's IND submission gate through the
+Command Center (seq 20143). portfolio.stage_gate_pack answered in Substrate with pack
+20156: 4 criteria met, 1 not met (the 4 IND readiness gaps, PRE-0233 to 0236) and 1 not
+applicable. The deaths had been accepted by then, so the no-open-high-finding criterion was
+met. The decision at seq 20158 is a conditional go with five conditions:
+- the QA audits of the dog study and dog TK reports (PRE-0233, PRE-0235);
+- GLP status of the respiratory study (PRE-0234);
+- in vitro metabolism data (PRE-0236);
+- the 1.94 mg starting dose reconfirmed against the dog NOAEL.
+
+**The scout's rerun.** The `agents run` before the gate also ran signal scout 1.0.1 on the
+old scan request 19985 (seq 20144 to 20154): a new version counted that request as pending,
+so the scout made live openFDA calls again. Its 9 findings (SIG-0086 to 0094) are
+superseded by scan 20105's, and the queue stayed at 9. Since the wrap-up, the runner
+answers a scan, review or gate request once, whichever version runs it.
 
 ## Gaps
 
@@ -89,8 +104,10 @@ through the Command Center.
 - MRD-101's first-in-human design (single and multiple ascending doses, 14 days) is an
   assumption; nothing records it.
 - The monthly review needs a cron line that the operator installs.
-- The outlook and pack repeat every open finding the portfolio lead sees (about 80 tox
-  findings for MRD-101). They are complete, but long.
+- The outlook listed every open finding the portfolio lead sees (93 for MRD-101).
+  Wrap-up: pipeline_intelligence 1.1.0 keeps the top 5 risks and counts the rest. The API
+  shows outlook 20139 the same way, with doses at 3 significant figures (the event keeps
+  1.93548 mg).
 
 ## Lessons
 

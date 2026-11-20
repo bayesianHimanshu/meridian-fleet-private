@@ -25,7 +25,7 @@ version raised it.
 * No rejections and no refusals. No finding holds a subject id or USUBJID, so the
   de-identification check had nothing to stop; and every reply was valid JSON within the
   limits, naming the site, with only numbers from the input. The rejection paths are
-  therefore exercised only by the unit tests (tests/unit/test_narrator.py), not here.
+  therefore exercised only by the unit tests (tests/unit/test_narrator_v1_0.py and test_narrator_v1_1.py), not here.
 * Budget carry-over worked as designed: the passes narrated 20, 20 and 12 findings (32 and
   then 12 waiting), and a fourth pass found nothing pending.
 

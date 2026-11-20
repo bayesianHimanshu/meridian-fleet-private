@@ -118,3 +118,23 @@ rahul.iyer. The same rules on the same facts:
 | safety_signals_reviewed | policy | not applicable: no scan for MRD-101 | |
 
 Six open items. It is the stress case `like_mrd101_today`, as its ideal.
+
+## Wrap-up: pipeline_intelligence 1.1.0 and the display rules
+
+Written after the results above, not pre-registered. It changes what is shown, not what is
+counted as a risk.
+- **At most 5 risks per asset.** They are ordered by severity, then recency. A risk with no
+  seq (something missing, such as no NOAEL) comes first within its severity, and the rest
+  go newest first. The number left out is `more_risks`.
+- **Open findings are counted, not listed.** Each severity gets one fact, with the newest
+  seq; `open_findings` holds the total. The Command Center links the count to the review
+  queue, filtered to the asset (`/review?study=MRD-101`).
+- **A previous outlook that listed each open finding** is not reported as "Gone" for each
+  of them.
+- **How the API shows a recorded outlook.** The API shows a 1.0.0 outlook (seq 20139) the
+  same way. It also shows the doses of every outlook and gate pack at 3 significant figures
+  (meridian.domain.display), so pack 20156 reads "PRE-0232 (1.94 mg)". The events keep what
+  was recorded.
+- **Requests are answered once.** A review or gate request is answered by whichever version
+  of the agent runs first, so 1.1.0 does not answer review 20137 again. The next review is
+  the first 1.1.0 outlook.

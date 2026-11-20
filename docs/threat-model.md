@@ -91,7 +91,7 @@ source `substrate_log`), and a name outside any policy does not resolve.
 the only snapshot an actor may have is its template's golden snapshot, taken before any data
 (the wakeup probe answers only after a constant warm-up); a run is never suspended; the
 executor reads the actor back before deleting it and fails the run on any other snapshot;
-every actor is deleted. Evidence: `meridian substrate canary` (docs/substrate-eval.md) plants
+every actor is deleted. Evidence: phase 4a's `meridian substrate canary` (docs/substrate-eval.md; `meridian leakcheck` since phase 4b) plants
 a unique string in the staged inputs of 20 runs, then searches the snapshot bucket (decoded),
 the kind node's filesystem and var/: not found; its positive control suspends one canary actor
 and finds the string in that snapshot, so the search would see a leak.
@@ -106,13 +106,13 @@ and finds the string in that snapshot, so the search would see a leak.
   too (cmd/ateapi/internal/authz/model.fga in the release; roles are only owner, editor
   and viewer, cmd/ateapi/internal/apivalidation/access_policy.go; no per-actor grants,
   docs/guides/authorization.md "Known limitations"). `meridian substrate guard-check
-  --show-gap` shows it: the runner's identity without the guard suspends a data-free actor.
+  --show-gap` showed it (retired: the runner identity it proves went in phase 4b step 3, the command at the wrap-up): the runner's identity without the guard suspends a data-free actor.
 * So the runner's client carries a verb allow-list (create, resume, proxy, get and delete
   actor; get template and tag) and refuses suspend, revert and tag before anything is sent.
   This is code in the runner's process, not a server control: a compromised host process
   with the token could still suspend. The per-run snapshot check and the canary proof stay
   as the second layer.
-* Evidence: `meridian substrate guard-check`, ledger seq 4607 to 4613: three PolicyDenied
+* Evidence: `meridian substrate guard-check` (retired: the runner identity it proves went in phase 4b step 3, the command at the wrap-up), ledger seq 4607 to 4613: three PolicyDenied
   with source `runner_guard` (suspend, revert, tag) and four with source `substrate_authz`
   (the server's PermissionDenied text in raw_line); the actor still RUNNING with only its
   golden snapshot afterwards.
@@ -211,7 +211,7 @@ after the drop.
 * **Suspend is refused by our code, not by Substrate** (section 4). Substrate 1.0.0 grants
   `can_suspend`, `can_revert` and `can_create_tag` to `editor`, the least role that can
   create and delete actors, so the runner's identity may suspend as far as the server is
-  concerned (`meridian substrate guard-check --show-gap` shows it). The guard that refuses
+  concerned (`meridian substrate guard-check --show-gap` showed it (retired: the runner identity it proves went in phase 4b step 3, the command at the wrap-up)). The guard that refuses
   it is the verb allow-list in the runner's own process (`RUNNER_VERBS` in
   src/meridian/sandbox/substrate.py). Anything running as the host user with the runner's
   token (var/substrate/runner.token, 0600, short-lived) could suspend a live actor and leave

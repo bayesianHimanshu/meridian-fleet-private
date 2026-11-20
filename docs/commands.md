@@ -15,18 +15,18 @@ with condition truth on all 30 cuts and the detectors raise at most one false po
 on the clean cut, but detector recall is 0.67 against a target of 0.8: AE
 under-reporting is not detectable on this data. The criteria were revised after step 4,
 and the report shows the original ones next to the revised ones. See
-[docs/phase1-summary.md](docs/phase1-summary.md), and
-[docs/eval-phase1.md](docs/eval-phase1.md) for every number.
+[docs/phase1-summary.md](phase1-summary.md), and
+[docs/eval-phase1.md](eval-phase1.md) for every number.
 
 ## Phase 2
 
-Phase 2 is closed: see [docs/phase2-summary.md](docs/phase2-summary.md) for what
+Phase 2 is closed: see [docs/phase2-summary.md](phase2-summary.md) for what
 containment proves, costs, known gaps and lessons.
 
 Step 1: agents run in NVIDIA OpenShell sandboxes, one per run, with no network, no ledger
 and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
-[docs/openshell-notes.md](docs/openshell-notes.md) and
-[docs/threat-model.md](docs/threat-model.md).
+[docs/openshell-notes.md](openshell-notes.md) and
+[docs/threat-model.md](threat-model.md).
 
 ```sh
 uv run meridian image build                  # docker build meridian-agent:<version>, print digest
@@ -51,7 +51,7 @@ clinical operations reader; detection stays deterministic, and a reply is record
 it passes validation against the evidence. It runs in its own sandbox
 (policies/rbqm.narrator.yaml) whose only egress is the Anthropic Messages API, with the
 key supplied by an OpenShell provider the user creates (see docs/openshell-notes.md).
-Results: [docs/narrator-eval.md](docs/narrator-eval.md).
+Results: [docs/narrator-eval.md](narrator-eval.md).
 
 ```sh
 uv run meridian sandbox conformance --policy rbqm.narrator   # first, after any image build
@@ -72,13 +72,13 @@ uv run python scripts/narrator_rerun_table.py       # live 1.1.0 vs 1.0.0
 
 ## Phase 3
 
-Phase 3 is complete: [docs/phase3-summary.md](docs/phase3-summary.md) (what was built, the
+Phase 3 is complete: [docs/phase3-summary.md](phase3-summary.md) (what was built, the
 evidence by ledger seq, the evaluation including the misses, known gaps and lessons).
 
 Step 1: the Fleet API, the read and decision layer for the Command Center. Development
 identity only (headers checked against config/people.toml; not authentication), on
-127.0.0.1. Contract: [openapi/meridian-api.json](openapi/meridian-api.json). Notes:
-[docs/api-notes.md](docs/api-notes.md).
+127.0.0.1. Contract: [openapi/meridian-api.json](../openapi/meridian-api.json). Notes:
+[docs/api-notes.md](api-notes.md).
 
 ```sh
 uv run meridian api serve            # http://127.0.0.1:8765/api/v1 (docs at /api/docs)
@@ -102,10 +102,10 @@ with `npm run gen:api`.
 
 Step 3b: a local model (Ollama on the host, reached only from the safety.local_model
 sandbox) judges whether two event terms are one event and explains safety findings with
-subject ids: [docs/local-model-notes.md](docs/local-model-notes.md). Step 3b2:
+subject ids: [docs/local-model-notes.md](local-model-notes.md). Step 3b2:
 safety.term_adjudicator 1.1.0 asks two models and says "yes" or "no" only when both do,
 safety.local_narrator 1.0.1 has a host-written opening, and the terms fault set runs the
-path end to end: [docs/local-model-eval.md](docs/local-model-eval.md).
+path end to end: [docs/local-model-eval.md](local-model-eval.md).
 
 ```sh
 uv run meridian agents adjudicate [--cut DC-...]      # term adjudicator, both models
@@ -120,7 +120,7 @@ Trial Master File complete and filed on time? It reads a synthetic eTMF index pe
 blinded DM for site milestones. The expected records are config/tmf_expected.toml (TMF
 Reference Model names, no numbers). The Command Center's Quality and audit item shows the
 TMF page; the API serves `GET /api/v1/quality/{cut}/tmf`. Notes:
-[docs/tmf-notes.md](docs/tmf-notes.md); evaluation: [docs/tmf-eval.md](docs/tmf-eval.md).
+[docs/tmf-notes.md](tmf-notes.md); evaluation: [docs/tmf-eval.md](tmf-eval.md).
 
 ```sh
 uv run meridian tmf generate                 # a clean eTMF snapshot for every recorded cut
@@ -134,8 +134,8 @@ uv run python scripts/term_adjudicator_rerun.py    # term adjudicator 1.1.1 on t
 Step 4b: quality.audit_trail_reviewer 1.0.0 reviews the ledger itself from an audit
 extract (identifiers and hashes only, staged as /stage/audit for policies/quality.audit_trail.yaml),
 and the QA auditor raises observations that someone else decides. Nobody decides a finding
-about their own actions. Notes: [docs/audit-notes.md](docs/audit-notes.md); evaluation:
-[docs/audit-eval.md](docs/audit-eval.md).
+about their own actions. Notes: [docs/audit-notes.md](audit-notes.md); evaluation:
+[docs/audit-eval.md](audit-eval.md).
 
 ```sh
 uv run meridian audit review                      # one review of the whole ledger, sandboxed
@@ -147,7 +147,7 @@ PYTHONPATH=. uv run python scripts/audit_stress.py   # the hand-written audit st
 Phase 4a status: complete. The four no-network zones run in Agent Substrate v1.0.0 actors
 (gVisor, one fresh actor per run from a golden snapshot) and the narrator and local model
 stay on OpenShell; runs go in parallel up to the pool's free workers. Summary, proofs and
-open gaps: [docs/phase4a-summary.md](docs/phase4a-summary.md).
+open gaps: [docs/phase4a-summary.md](phase4a-summary.md).
 
 ## Phase 4b
 
@@ -155,30 +155,30 @@ Phase 4b status: complete. The same four zones ran on Agent Substrate in a GKE c
 behind one in-cluster dispatcher, with each pass's inputs held only in its memory: a full
 pass of 910 runs in 270 s, leak checks and conformance passing, the cluster since torn
 down. Summary, measurements against kind, costs and gaps:
-[docs/phase4b-summary.md](docs/phase4b-summary.md).
+[docs/phase4b-summary.md](phase4b-summary.md).
 
 ## Phase 5
 
 Phase 5 status: complete. SEND ingest, tox_study_monitor 1.0 and 1.1, the NOAEL as a
 person's decision, dose translation, IND readiness, the translational bridge, the signal
 scout, pipeline intelligence and the stage-gate pack; summary, evaluations including
-misses, decisions and gaps in [docs/phase5-summary.md](docs/phase5-summary.md).
+misses, decisions and gaps in [docs/phase5-summary.md](phase5-summary.md).
 
 Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
-toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
-[docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
+toxicologist's decision ([docs/preclinical-eval.md](preclinical-eval.md),
+[docs/noael-decision.md](noael-decision.md)). Step 2: the NOAEL form's rules in the
 API; preclinical.dose_translation proposes MRD-101's first-in-human maximum recommended starting dose by
 FDA's 2005 method and the medical monitor decides it; preclinical.ind_readiness checks the
 nonclinical inventory against ICH M3(R2)
-([docs/fih-dose-notes.md](docs/fih-dose-notes.md),
-[docs/ind-readiness-eval.md](docs/ind-readiness-eval.md)).
+([docs/fih-dose-notes.md](fih-dose-notes.md),
+[docs/ind-readiness-eval.md](ind-readiness-eval.md)).
 
 Step 3a: MRD-101's accepted dose is its own first-in-human starting dose (not MRD-110's);
 preclinical.translational_bridge maps the NOAEL's target organs to cited Phase 1
-monitoring with safety margins ([docs/translational-notes.md](docs/translational-notes.md));
+monitoring with safety margins ([docs/translational-notes.md](translational-notes.md));
 portfolio.safety_signal_scout reports signals of disproportionate reporting for MRD-201's
 drug from openFDA in the portfolio_signal zone, and compares them with the US label
-([docs/signal-scout.md](docs/signal-scout.md)).
+([docs/signal-scout.md](signal-scout.md)).
 
 Step 3b: CLI actions are recorded under an operator id (operator:<os user>), never a
 person's; an AttributionCorrection corrects seq 19985; quality.audit_trail_reviewer 1.3.0
@@ -186,7 +186,7 @@ flags a person named outside the API. Signal scout 1.0.1 retries openFDA's throt
 triages its signals: only priority ones reach the review queue. portfolio.pipeline_intelligence
 writes a PortfolioOutlook per review and portfolio.stage_gate_pack an evidence pack per gate
 request, both from facts built as the portfolio lead; the portfolio lead records the
-GateDecision ([docs/stage-gate-notes.md](docs/stage-gate-notes.md)).
+GateDecision ([docs/stage-gate-notes.md](stage-gate-notes.md)).
 
 ```sh
 uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
@@ -261,7 +261,7 @@ uv run pytest -m slow                       # end to end against the real files 
 
 A cut lives in `data/curated/MRD-201/<cut>/` with `blinded/`, `ops/`, `unblinded/` and a
 `manifest.json`. Agents read cuts only through `ParquetStudyReader`, which cannot see
-`unblinded/`. See [docs/data-notes.md](docs/data-notes.md) for what the data contains and
+`unblinded/`. See [docs/data-notes.md](data-notes.md) for what the data contains and
 why the blinding split is what it is.
 
 ## Faults, agents and findings (phase 1, step 3)
@@ -277,8 +277,8 @@ uv run python scripts/calibration_report.py         # writes docs/calibration-st
 The fault injector writes a faulted copy of a cut that carries no trace of the faults;
 what was planted lives only in `data/ground_truth/` (gitignored). Agents run on every
 DataCut through the blinded `StudyReader` and can never import `meridian.faults`. See
-[docs/rbqm-notes.md](docs/rbqm-notes.md) for what each check measures, and
-[docs/calibration-step3.md](docs/calibration-step3.md) for the untuned starting point.
+[docs/rbqm-notes.md](rbqm-notes.md) for what each check measures, and
+[docs/calibration-step3.md](calibration-step3.md) for the untuned starting point.
 
 ## Evaluation (phase 1, step 4)
 
@@ -291,8 +291,8 @@ uv run python scripts/tune_phase1.py   # the tuning loop (dev and null cuts only
 ```
 
 Scorecards are written once to `data/evals/<run_id>.json` (gitignored). The phase 1
-result is in [docs/eval-phase1.md](docs/eval-phase1.md) and the tuning record in
-[docs/tuning-phase1.md](docs/tuning-phase1.md). `meridian.evals` never imports agents.
+result is in [docs/eval-phase1.md](eval-phase1.md) and the tuning record in
+[docs/tuning-phase1.md](tuning-phase1.md). `meridian.evals` never imports agents.
 
 ## Rules, detectors and the AE experiment (phase 1, step 5)
 
@@ -305,7 +305,7 @@ Each check is a rule (a threshold on a measured value) or a detector (a statisti
 test), in `meridian.stats.checks`. Rule findings are scored against condition truth
 computed from the cut; detector findings against planted faults. Cuts made from step 5
 on have opaque ids: `DC-` plus 8 hex characters of the scenario file's sha256. The
-experiment and its decision are in [docs/ae-experiment.md](docs/ae-experiment.md).
+experiment and its decision are in [docs/ae-experiment.md](ae-experiment.md).
 
 ## Configuration
 
