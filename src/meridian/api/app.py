@@ -99,11 +99,14 @@ MODE_HEADER = "X-Meridian-Mode"
 READ_ONLY_MODE = "read-only-demo"
 
 
-def create_app(ctx: ApiContext, read_only_log: Path | None = None) -> FastAPI:
+def create_app(
+    ctx: ApiContext, read_only_log: Path | None = None, log_clock: Clock | None = None
+) -> FastAPI:
     """read_only_log set: the demo's read-only mode (docs/demo/README.md). Every request
     that is not GET, HEAD or OPTIONS is refused with 403 before any route runs, so no
     decision, request or observation can be recorded, and each refusal is appended to
-    read_only_log as a JSON line with its time."""
+    read_only_log as a JSON line with its time, from log_clock (the wall clock when the
+    demo's pages run on a fixed clock), else the context's clock."""
     app = FastAPI(
         title="Meridian Fleet API",
         version=VERSION,
@@ -131,6 +134,7 @@ def create_app(ctx: ApiContext, read_only_log: Path | None = None) -> FastAPI:
 
     if read_only_log is not None:
         log_path = read_only_log
+        stamp = log_clock or ctx.clock
 
         @app.middleware("http")
         async def read_only_demo(
@@ -140,7 +144,7 @@ def create_app(ctx: ApiContext, read_only_log: Path | None = None) -> FastAPI:
                 response = await call_next(request)
             else:
                 refused = {
-                    "at": ctx.clock.now().isoformat(),
+                    "at": stamp.now().isoformat(),
                     "method": request.method,
                     "path": request.url.path,
                     "actor": request.headers.get(ACTOR_HEADER),

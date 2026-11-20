@@ -2,10 +2,9 @@
 
 **Status:** approved with edits (review of 20 Nov 2026).
 
-**Target:** 7 to 8 minutes. The narration is 1,170 words. That is 7.5 minutes at 155
-words a minute, a typical pace for a local TTS voice, or 8.1 minutes at 145. Each scene's
-length follows its measured audio. If the audio runs past 8 minutes, scenes 6 and 3 are
-cut first.
+**Target:** 7 to 8 minutes, measured from the audio: 7 min 30 s (see Timing). Each
+scene's length follows its measured audio. If the audio had run past 8 minutes, scenes 6
+and 3 would have been cut first.
 
 **Viewer:** a technical person who is new to clinical development.
 
@@ -73,14 +72,13 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 **Pages:**
 1. `/review` as asha.rao (clinical ops lead).
 2. `/review` as karan.mehta (medical monitor).
-3. `/unblinded` as asha.rao (refused or empty), then as omar.siddiqui (unblinded
-   statistician).
+3. `/unblinded` as asha.rao, which is refused ("only for the unblinded statistician").
 
 **Narration:**
 > The Command Center is how people work with the fleet. Each person sees what their role
 > allows. One rule in the API decides it, and it is tested as a property. This is the
 > review queue for the clinical operations lead: open findings, newest first. Switch to
-> the medical monitor and the queue changes: safety findings and safety signals. The trial
+> the medical monitor and the queue changes: now it holds the safety signals to review. The trial
 > is blinded. Who received the drug and who received placebo is hidden from everyone but
 > the unblinded statistician, and the clinical lead cannot open that zone at all. A hidden
 > finding is not merely greyed out. For the wrong role it does not exist.
@@ -89,7 +87,6 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 1. Open the queue as asha.rao and scroll its first three items.
 2. Switch the role to karan.mehta and wait for the queue to reload.
 3. Open `/unblinded` as asha.rao and show the refusal.
-4. Switch to omar.siddiqui.
 
 **Highlights:**
 
@@ -97,7 +94,7 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 |---|---|---|
 | "One rule in the API" | the page header | src/meridian/api/visibility.py |
 | "the queue changes" | the queue count | Count per role |
-| "does not exist" | the refusal or empty state | 404, not 403 |
+| "does not exist" | the refusal or empty state | Not shown to this role |
 
 **Sources:**
 - The single module and the property test: docs/phase3-summary.md, "What was built", 1.
@@ -191,8 +188,8 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 ## Scene 5: Safety (about 55 s)
 
 **Pages:**
-1. `/safety` as karan.mehta, on DC-BASE and then on one evaluation cut with planted
-   discrepancies. The recorder picks the first evaluation cut listed and names it on screen.
+1. `/safety` as karan.mehta, on DC-BASE and then on the evaluation cut DC-5833edad, which
+   has 6 planted discrepancies (the most of any cut in the ledger copy).
 2. `/findings/SAF-0475`, the "Same-event assessment" panel.
 3. `/safety/signals`, the Triage panel and "Against the US label".
 
@@ -232,8 +229,9 @@ then a monitoring plan, then an IND gate decision. Containment and review run ar
 
 ## Scene 6: Preclinical, from the rat to the first dose (about 80 s)
 
-**Pages:** `/preclinical` as leela.nair (toxicologist), then as karan.mehta (medical
-monitor), one panel at a time:
+**Pages:** `/preclinical` as leela.nair (toxicologist), one panel at a time. The medical
+monitor's role does not see preclinical studies, so the whole scene is the toxicologist's
+view:
 1. Findings.
 2. NOAEL, with "Current decisions" and "Earlier decisions".
 3. Dose translation, "The working, step by step".
@@ -261,7 +259,7 @@ monitor), one panel at a time:
 1. Findings: scroll the per-dose-group table.
 2. NOAEL: show "Current decisions" (M, F, combined, all 2 mg/kg/day) and the rationale's
    last sentence, then open "Earlier decisions (14)" and scroll it.
-3. As karan.mehta, Dose translation: step through the working (NOAEL 2, HED 0.323 mg/kg,
+3. Dose translation: step through the working (NOAEL 2, HED 0.323 mg/kg,
    MRSD 0.0323 mg/kg, 1.94 mg).
 4. Translational: show the organs and "Safety margins".
 
@@ -436,22 +434,23 @@ gates" with the MRD-101 IND gate request.
 
 ## Timing
 
-| Scene | Target | Words |
-|---|---:|---:|
-| 1 What this is | 45 s | 115 |
-| 2 Command Center | 45 s | 105 |
-| 3 RBQM | 50 s | 116 |
-| 4 Containment | 55 s | 116 |
-| 5 Safety | 55 s | 118 |
-| 6 Preclinical | 80 s | 181 |
-| 7 Portfolio | 55 s | 122 |
-| 8 Audit | 45 s | 96 |
-| 9 Scale | 45 s | 93 |
-| 10 Limits | 50 s | 108 |
-| **Total** | **about 7 min 30 s with pauses** | **1,170** |
+Measured from the audio (Piper en_US-libritts-high, length scale 1.35; docs/demo/README.md).
 
-The real lengths come from the audio, and a scene that runs
-long is cut in the script, not sped up.
+| Scene | Target | Words | Measured |
+|---|---:|---:|---:|
+| 1 What this is | 45 s | 120 | 46.5 s |
+| 2 Command Center | 45 s | 108 | 38.4 s |
+| 3 RBQM | 50 s | 116 | 41.5 s |
+| 4 Containment | 55 s | 116 | 44.2 s |
+| 5 Safety | 55 s | 122 | 44.4 s |
+| 6 Preclinical | 80 s | 216 | 82.1 s |
+| 7 Portfolio | 55 s | 113 | 43.0 s |
+| 8 Audit | 45 s | 96 | 37.0 s |
+| 9 Scale | 45 s | 93 | 32.3 s |
+| 10 Limits | 50 s | 108 | 40.3 s |
+| **Total** | **7 to 8 min** | **1,208** | **449.5 s (7 min 30 s)** |
+
+Within 8 minutes, so nothing was cut.
 
 ## Pronunciation list
 
