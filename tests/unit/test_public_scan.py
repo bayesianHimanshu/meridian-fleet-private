@@ -73,10 +73,13 @@ def test_the_full_scan_refuses_secrets_emails_home_paths_and_large_files(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     key = "sk-ant-" + "x" * 30
+    # Built at run time, so this file itself passes the full scan of an export.
+    email = "someone" + "@" + "realmail.net"
+    home = "/" + "home/someone/x"
     root = _tree(tmp_path, {
         "a.txt": f"key {key}\n",
-        "b.md": "mail someone@realmail.net\nok t@example.invalid and noreply@anthropic.com\n",
-        "c.sh": "cd /home/someone/x\n",
+        "b.md": f"mail {email}\nok t@example.invalid and noreply@anthropic.com\n",
+        "c.sh": f"cd {home}\n",
         "big.bin": b"x" * (5 * 1024 * 1024 + 1),
         "d.py": 'PREFIX = "sk-ant-"  # a prefix check, not a key\n',
     })  # fmt: skip
@@ -88,7 +91,7 @@ def test_the_full_scan_refuses_secrets_emails_home_paths_and_large_files(
     assert "a file over 5 MB: big.bin" in err
     assert err.count("refused:") == 4
     assert key not in err
-    assert "someone@realmail.net" not in err
+    assert email not in err
 
 
 def test_a_clean_tree_passes(tmp_path: Path) -> None:
