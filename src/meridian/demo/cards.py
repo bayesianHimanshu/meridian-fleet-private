@@ -41,6 +41,13 @@ ul.lines li { padding: 12px 18px; border-left: 4px solid var(--line); background
 """
 
 
+CDISC = (
+    "Study MRD-201 is derived from the CDISC SDTM/ADaM Pilot Project data (CDISCPILOT01), "
+    "relabelled and with synthetic additions, used under CDISC's terms of use. It is not a "
+    "real study, and this project is not affiliated with or endorsed by CDISC."
+)
+
+
 class CardError(ValueError):
     pass
 
@@ -159,7 +166,8 @@ def closing_card(limits: Sequence[str], lessons: Sequence[str]) -> str:
         f'<ul class="lines">{items(lessons, "lesson")}</ul></div></div>'
         '<p class="source">README.md, "Honest limits"; docs/lessons.md. The repository holds '
         "the code, every number in this video, and the misses.</p>"
-        f'<p class="credit" data-line="credit">{esc(CREDIT)}</p>',
+        f'<p class="credit" data-line="credit">{esc(CREDIT)}</p>'
+        f'<p class="credit" data-line="cdisc">{esc(CDISC)}</p>',
     )
 
 

@@ -280,12 +280,15 @@ def test_the_gke_overlay_points_substrate_at_the_cluster_by_digest() -> None:
     import tomllib
     from pathlib import Path
 
+    from meridian.platform.config import expand_placeholders
+
     raw = tomllib.loads(Path("deploy/gke/meridian.toml").read_text(encoding="utf-8"))
-    s = SubstrateSettings.model_validate(raw["substrate"])
+    fake = {"PROJECT_ID": "meridian-example", "PROJECT_NUMBER": "000000000000"}
+    expanded = expand_placeholders(raw, fake, "deploy/gke/meridian.toml")
+    assert isinstance(expanded, dict)
+    s = SubstrateSettings.model_validate(expanded["substrate"])
     assert s.target == "gke"
-    assert (
-        s.registry == s.gke.registry == "us-central1-docker.pkg.dev/meridian-fleet-agents/meridian"
-    )
+    assert s.registry == s.gke.registry == "us-central1-docker.pkg.dev/meridian-example/meridian"
     assert s.context == f"gke_{s.gke.project_id}_{s.gke.zone}_{s.gke.cluster}"
     assert s.worker_image.startswith("ghcr.io/agent-substrate/substrate/ateworker-gvisor@sha256:")
     assert s.deploy_dir == Path("deploy/gke/substrate")

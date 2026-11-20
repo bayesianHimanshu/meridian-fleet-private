@@ -5,7 +5,7 @@
 # No secrets belong here: every credential comes from gcloud's own login.
 
 # The project and who pays.
-export PROJECT_ID="meridian-fleet-agents"   # the one project this plan creates resources in
+export PROJECT_ID=""   # the one project this plan creates resources in
 export PROJECT_NUMBER=""                    # gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)'; names the Workload Identity principals
 export BILLING_ACCOUNT=""                   # gcloud billing projects describe "$PROJECT_ID" --format='value(billingAccountName)', without "billingAccounts/"; no free tier credit on it
 export BUDGET_NAME="meridian-gke-2500inr"   # the budget's display name; teardown.sh deletes it unless KEEP_BUDGET=1

@@ -16,6 +16,8 @@ IMAGE_SOURCES = (
     "pyproject.toml",
     "uv.lock",
     "README.md",
+    "LICENSE",
+    "NOTICE",
     "src",
     "config/default.toml",
     "config/sites.toml",

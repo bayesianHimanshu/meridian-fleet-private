@@ -48,6 +48,8 @@ policies_current() {
     && test -z "$(git ls-files --others --exclude-standard -- policies)"
 }
 
+step "identifier guard (no GCP billing or project number; env.sh values locally)" \
+  uv run python scripts/public_scan.py --identifiers
 step "ruff format --check" uv run ruff format --check
 step "ruff check" uv run ruff check
 step "mypy --strict" uv run mypy

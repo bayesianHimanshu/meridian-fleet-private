@@ -9,7 +9,7 @@ workerSelector:
     workload: meridian
 containers:
   - name: worker
-    image: "us-central1-docker.pkg.dev/meridian-fleet-agents/meridian/meridian-agent@sha256:49d1c52593459cb6f96306f679106ade631294fcbde3fb5336143777c160d9d6"
+    image: "us-central1-docker.pkg.dev/${PROJECT_ID}/meridian/meridian-agent@sha256:49d1c52593459cb6f96306f679106ade631294fcbde3fb5336143777c160d9d6"
     command:
       - "/opt/meridian/venv/bin/meridian-worker"
       - probe

@@ -38,8 +38,8 @@ tear down whenever the next session is more than a day or two away.
 
 ```bash
 cd ~/meridian-fleet
-cp deploy/gke/env.example.sh deploy/gke/env.sh   # once; set PROJECT_NUMBER=932415716644
-                                                 # and BILLING_ACCOUNT=01DC09-5AAF08-94EFA4;
+cp deploy/gke/env.example.sh deploy/gke/env.sh   # once; set PROJECT_NUMBER=<PROJECT_NUMBER>
+                                                 # and BILLING_ACCOUNT=<BUCKET>;
                                                  # the scripts refuse while any variable of
                                                  # env.example.sh is unset
 source deploy/gke/env.sh
@@ -98,7 +98,7 @@ gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --project="$PROJ
 gcloud artifacts repositories describe "$AR_REPO" --location="$REGION" \
   --format='value(format,name)'
 ```
-Success: `DOCKER projects/meridian-fleet-agents/locations/us-central1/repositories/meridian`.
+Success: `DOCKER projects/<PROJECT_ID>/locations/us-central1/repositories/meridian`.
 
 ### 5. configure-docker and push the two images (10 min, USD 0)
 
@@ -137,7 +137,7 @@ gcloud container clusters create "$CLUSTER_NAME" --project="$PROJECT_ID" \
 gcloud container clusters describe "$CLUSTER_NAME" --location="$CLUSTER_LOCATION" \
   --format='yaml(currentMasterVersion,workloadIdentityConfig,releaseChannel,networkConfig.datapathProvider)'
 ```
-Success: version 1.37.1-gke.1552000, workload pool `meridian-fleet-agents.svc.id.goog`,
+Success: version 1.37.1-gke.1552000, workload pool `<PROJECT_ID>.svc.id.goog`,
 datapath `ADVANCED_DATAPATH`.
 
 ### 7. The Spot worker pool, 0 to 2 nodes, labelled and tainted (3 min; USD 0.05)
@@ -187,7 +187,7 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$CLUSTER_L
 kubectl config current-context
 kubectl get nodes -o wide
 ```
-Success: the context is `gke_meridian-fleet-agents_us-central1-a_meridian-substrate` (the
+Success: the context is `gke_<PROJECT_ID>_us-central1-a_meridian-substrate` (the
 one deploy/gke/meridian.toml names) and one node is Ready.
 
 ### 10. setup-gcp's cluster validation (5 min; USD 0.11)
@@ -230,7 +230,7 @@ kubectl get pods -n ate-system -o wide
 ls ~/.cache/ate-setup/installs/
 ```
 Success: `10Gi`; every ate-system pod Running on the system node; an install record named
-`gke_meridian-fleet-agents_us-central1-a_meridian-substrate.yaml` (**guess**: ate-setup
+`gke_<PROJECT_ID>_us-central1-a_meridian-substrate.yaml` (**guess**: ate-setup
 names it after the context, as `kind-kind.yaml` on kind; if not, tell me the name and I
 change `install_record` in deploy/gke/meridian.toml). Read ate-setup's run report before
 saying yes; `--ingress-allowed-spiffe-ids` is the only client the router admits.

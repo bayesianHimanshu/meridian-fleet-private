@@ -12,7 +12,7 @@ chi-squared was computed, and no other term was looked at, before this file was 
 
 It reports **signals of disproportionate reporting** in FDA's adverse event reporting
 system (FAERS), through openFDA, for the drug studied in MRD-201: xanomeline, marketed in
-the US with trospium chloride (COBENFY). A signal says a reaction term is reported with
+the US as xanomeline and trospium chloride (brand name in the citations below). A signal says a reaction term is reported with
 the drug more often, relative to all its reports, than with all other drugs. It is never
 an incidence, a rate or a causal claim; every finding carries FAERS's own caveats as
 evidence. The medical monitor decides each one.
@@ -71,7 +71,7 @@ a), d = neither (query 3 minus a, b and c).
 
 ## The label comparison (an evaluation not written by us)
 
-The US label (COBENFY, from the label endpoint) was written by the sponsor and FDA, not by
+The US label of xanomeline and trospium chloride (from the label endpoint; US label for COBENFY, openFDA set id 8f0e73bf-6025-44f6-ab64-0983322de0df, version 6, effective 2026-01-16) was written by the sponsor and FDA, not by
 this project. For each signal, the term is looked for in the label's adverse reactions,
 warnings and precautions and boxed warning text: **listed** when the term, lower-cased,
 appears as a phrase in that text (lower-cased, punctuation as spaces); else **not found**.
@@ -175,7 +175,7 @@ What the 57 signals not found in the label are, as they are: mostly psychiatric 
 (psychotic disorder, auditory and visual hallucinations, delusion, paranoia, mania,
 agitation, aggression, suicidal ideation, catatonia) and terms about use (treatment
 noncompliance, loss of therapeutic response, therapy non-responder, drug screen positive,
-product supply issue, adverse event). COBENFY is used for schizophrenia, so worsening or
+product supply issue, adverse event). Xanomeline and trospium chloride is used for schizophrenia, so worsening or
 unchanged illness is reported with it far more than with the average drug in FAERS:
 reporting that follows the indication, not evidence of harm. MRD-201 studies the drug in
 Alzheimer's disease; these reports come from another population.
@@ -217,12 +217,16 @@ INABILITY TO AFFORD MEDICATION.
 
 ### Context, as evidence on every signal
 
-1. FAERS reports here concern COBENFY: oral xanomeline with trospium chloride. COBENFY
-   label 12.1: "Trospium chloride is a muscarinic antagonist." Label 5.8: "anticholinergic
-   adverse reactions (including dry mouth, constipation, dyspepsia, urinary tract
-   infection, and urinary retention)". Anticholinergic terms (urinary retention, dry mouth,
-   constipation and the like) are likely explained by trospium.
-2. COBENFY is "indicated for the treatment of schizophrenia in adults" (label 1). MRD-201 is
+The agent's recorded context names the product by its brand, as the label does; it is
+part of the agent's output and stays as recorded. In summary, with each quote cited:
+
+1. FAERS reports here concern oral xanomeline and trospium chloride. "Trospium chloride is a
+   muscarinic antagonist." (US label for COBENFY, openFDA set id 8f0e73bf-6025-44f6-ab64-0983322de0df, version 6, effective 2026-01-16, section 12.1.) The
+   label lists "anticholinergic adverse reactions (including dry mouth, constipation,
+   dyspepsia, urinary tract infection, and urinary retention)" (same label, section 5.8).
+   Anticholinergic terms are likely explained by trospium.
+2. The combination is "indicated for the treatment of schizophrenia in adults" (same label,
+   section 1). MRD-201 is
    transdermal xanomeline alone in mild to moderate Alzheimer's disease
    (config/portfolio.toml). Route, combination and population all differ.
 3. On an indication term (below): reported with a drug for schizophrenia, it is confounded
