@@ -223,6 +223,13 @@ while closing the project.
   - *First step:* apply the display rule on the ledger page's payload view too, marked as
     a display.
 
+- **The demo's question box declines too rarely (demo).**
+  - *Why:* 1 of 5 uncovered questions was declined. Words that appear in no passage carry
+    no weight in the coverage rule, so "Azure" or "Okta" cannot lower it
+    (docs/demo/README.md).
+  - *First step:* give unknown words a typical idf in the coverage, and measure it on a new
+    question set written before the change. The committed set has been used.
+
 ## Data
 
 - **The synthetic eTMF index leaves out a lot.**
