@@ -416,16 +416,3 @@ def substrate_placement_check(
         typer.echo(line)
     if not result.passed:
         raise typer.Exit(code=1)
-
-
-@substrate_app.command("guard-check")
-def substrate_guard_check() -> None:
-    """Phase 4a's proof for the laptop's runner identity, which phase 4b step 3 removed.
-    The dispatcher's refusals are tests/unit/test_dispatcher.py and its client's allow-list
-    (DISPATCHER_VERBS); docs/substrate-eval.md keeps the phase 4a results."""
-    typer.echo(
-        "guard-check proved the laptop's runner identity (phase 4a), which no longer exists: "
-        "only the dispatcher may act in the atespace now. See docs/substrate-eval.md.",
-        err=True,
-    )
-    raise typer.Exit(code=2)

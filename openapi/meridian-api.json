@@ -639,6 +639,18 @@
             "title": "Facts",
             "type": "array"
           },
+          "more_risks": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "More Risks",
+            "type": "integer"
+          },
+          "open_findings": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Open Findings",
+            "type": "integer"
+          },
           "risks": {
             "items": {
               "$ref": "#/components/schemas/OutlookRisk"

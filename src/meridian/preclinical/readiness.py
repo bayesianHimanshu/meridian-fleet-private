@@ -17,7 +17,6 @@ MISSING = "required_study_missing"
 DURATION_SHORT = "duration_short"
 REPORT_NOT_READY = "report_not_ready"
 GLP_MISSING = "glp_status_missing"
-PROBLEMS = (DURATION_SHORT, REPORT_NOT_READY, GLP_MISSING)
 INVENTORY_TABLE = "studies"
 
 

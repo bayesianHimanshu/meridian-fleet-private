@@ -482,7 +482,7 @@ class SignalScoutConfig(AgentConfig):
 
 
 class PipelineIntelligenceConfig(AgentConfig):
-    """portfolio.pipeline_intelligence 1.0.0 (docs/stage-gate-notes.md)."""
+    """portfolio.pipeline_intelligence 1.1.0 (docs/stage-gate-notes.md)."""
 
     visible_to: tuple[Role, ...] = (Role.PORTFOLIO_LEAD, Role.QA_AUDITOR)
 

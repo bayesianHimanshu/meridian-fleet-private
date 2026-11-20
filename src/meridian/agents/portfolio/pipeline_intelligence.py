@@ -1,8 +1,10 @@
-"""portfolio.pipeline_intelligence 1.0.0 (phase 5 step 3b; docs/stage-gate-notes.md):
-per asset a status, the top risks with their ledger seqs, and what changed since the
-previous outlook. Deterministic. Its input is the portfolio facts, built by the host as
-the portfolio lead may see them (meridian.api.portfolio_facts), and the previous outlook's
-facts. Its output is a PortfolioOutlook event, not a finding: nobody decides it."""
+"""portfolio.pipeline_intelligence 1.1.0 (phase 5 step 3b; 1.1.0 at the wrap-up: at most
+5 risks per asset by severity then recency, the rest counted, and open findings counted
+by severity instead of listed; meridian.portfolio.outlook): per asset a status, the top
+risks with their ledger seqs, and what changed since the previous outlook.
+Deterministic. Its input is the portfolio facts, built by the host as the portfolio lead
+may see them (meridian.api.portfolio_facts), and the previous outlook's facts. Its output
+is a PortfolioOutlook event, not a finding: nobody decides it."""
 
 from collections.abc import Sequence
 
@@ -16,7 +18,7 @@ from meridian.portfolio.outlook import outlook
 from meridian.portfolio.reports import draft
 
 AGENT_ID = "portfolio.pipeline_intelligence"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 VISIBLE_TO_MAX = frozenset({Role.PORTFOLIO_LEAD, Role.QA_AUDITOR})
 PORTFOLIO_STUDY = "PORTFOLIO"
 

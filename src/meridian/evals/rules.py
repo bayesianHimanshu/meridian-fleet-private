@@ -65,7 +65,6 @@ Outcome = Literal[
     "missing_finding",  # condition met, no finding: an error
     "unsupported_finding",  # finding raised, condition not met: an error
 ]
-ERRORS: frozenset[str] = frozenset({"missing_finding", "unsupported_finding"})
 
 
 class RuleOutcome(BaseModel):

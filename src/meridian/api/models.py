@@ -656,12 +656,6 @@ class Enrollment(BaseModel):
     sites: list[SiteEnrollment]
 
 
-class ErrorBody(BaseModel):
-    model_config = _FROZEN
-
-    detail: str
-
-
 # ---- SAE reconciliation (phase 3 step 3a)
 
 

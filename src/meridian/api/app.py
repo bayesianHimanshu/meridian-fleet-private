@@ -24,7 +24,6 @@ from meridian.platform.clock import Clock
 from meridian.platform.config import Settings
 
 HOST = "127.0.0.1"  # the API binds to the loopback interface only
-DEFAULT_PORT = 8765
 CORS_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")  # the Vite dev server
 VERSION = "1.0.0"
 DESCRIPTION = f"""\

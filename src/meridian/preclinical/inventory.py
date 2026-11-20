@@ -24,7 +24,6 @@ from pathlib import Path
 
 import numpy as np
 
-ASSET = "MRD-101"
 SEED = 20261119
 INVENTORY_FILE = Path("data/inventory/MRD-101/inventory.csv")
 REPORT_STATUSES = ("planned", "ongoing", "draft", "final", "qa_audited")

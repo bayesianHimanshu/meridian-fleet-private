@@ -117,6 +117,7 @@ from meridian.data.study_store import MissingTableError, StudyAccessError, Study
 from meridian.domain import audit
 from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import make_dedup_key, parse_dedup_key
+from meridian.domain.display import sig
 from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
     GATE_PREFIX,
@@ -158,7 +159,8 @@ from meridian.platform.agent_settings import (
 )
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
-from meridian.portfolio.gates import Gates
+from meridian.portfolio.gates import Gates, pack_for_display
+from meridian.portfolio.outlook import for_display
 from meridian.preclinical import readiness
 from meridian.preclinical.readiness import INVENTORY_TABLE
 from meridian.sandbox.policies import (
@@ -2048,8 +2050,8 @@ class Repository:
             return r.finding.title
         weight = start.threshold if start.threshold is not None else start.value / mrsd.value
         return (
-            f"Proposed first-in-human starting dose for {asset}: {start.value:.3g} mg for a "
-            f"{weight:g} kg adult (MRSD {mrsd.value:.3g} mg/kg)"
+            f"Proposed first-in-human starting dose for {asset}: {sig(start.value)} mg for a "
+            f"{weight:g} kg adult (MRSD {sig(mrsd.value)} mg/kg)"
         )
 
     def _proposal_view(self, r: _Raised) -> ProposalView:
@@ -2339,7 +2341,7 @@ class Repository:
         basis = noael.get(view.basis_decision_id or "")
         if basis is not None:
             dose = (
-                f"NOAEL {basis.noael_dose:g} {basis.dose_unit}"
+                f"NOAEL {sig(basis.noael_dose)} {basis.dose_unit}"
                 if basis.noael_dose is not None
                 else "NOAEL not established"
             )
@@ -2782,7 +2784,7 @@ class Repository:
             status="outlook",
             seq=last.seq,
             recorded_at=last.recorded_at,
-            outlook=last.payload,
+            outlook=for_display(last.payload),
             pending_reviews=pending,
         )
 
@@ -2809,7 +2811,7 @@ class Repository:
                     recorded_at=e.recorded_at,
                     request=e.payload,
                     pack_seq=None if pack is None else pack[0],
-                    pack=None if pack is None else pack[1],
+                    pack=None if pack is None else pack_for_display(pack[1]),
                     decision=decisions.get(e.seq),
                 )
             )

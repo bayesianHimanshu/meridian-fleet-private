@@ -16,7 +16,6 @@ from meridian.faults.catalog import REGISTRY, STUDY_TARGET, FaultSpec
 from meridian.faults.reader import FullCut
 
 RBQM_CORE_SEED = 20261107
-RBQM_CORE_BASE_CUT = "DC-BASE"
 RBQM_CORE_OUT_CUT = "DC-RBQM-CORE"
 MIN_TARGET_TREATED = 10
 DISCONTINUATION_UPLIFT = 0.10
@@ -528,7 +527,6 @@ def ensure_ae_holdouts(directory: Path, base: FullCut) -> list[Path]:
 
 # Phase 2 step 1: a fresh copy of rbqm_core for the sandbox run.
 
-CORE_SANDBOX_FILE = "rbqm_core_sandbox.toml"
 CORE_SANDBOX_SEED = 20261112
 CORE_SANDBOX_LABEL = "rbqm_core_sandbox"
 

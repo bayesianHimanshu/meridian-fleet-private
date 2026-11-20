@@ -17,7 +17,6 @@ from typing import Literal
 OPERATOR_PREFIX = "operator:"
 ActorKind = Literal["person", "operator", "agent", "system"]
 _OPERATOR = re.compile(r"^operator:[a-z_][a-z0-9_.-]{0,62}$")
-SYSTEM_PREFIXES = ("system.", "meridian.", "cli.", "human.observation")
 
 
 class NotAnOperatorError(ValueError):

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from meridian.api.repository import FindingFilters, Repository
 from meridian.data.stage_layout import PORTFOLIO
+from meridian.domain.display import sig
 from meridian.domain.enums import FindingKind, Role
 from meridian.domain.events import ActorSuspended, Event, PortfolioOutlook
 from meridian.portfolio import facts as fx
@@ -67,7 +68,11 @@ def _preclinical(repo: Repository, a: str, study: str, items: Sequence, by_id: d
     out: list[Fact] = []
     for v in repo.noael_views(study):
         if v.current:
-            value = f"{v.noael_dose:g} {v.dose_unit}" if v.established else "not established"
+            value = (
+                f"{sig(v.noael_dose)} {v.dose_unit}"
+                if v.established and v.noael_dose is not None
+                else "not established"
+            )
             status = "established" if v.established else "not_established"
             out.append(Fact(a, "noael", f"noael:{v.sex}", f"NOAEL ({v.sex})", value, status,
                             seq=v.seq))  # fmt: skip
@@ -78,7 +83,7 @@ def _preclinical(repo: Repository, a: str, study: str, items: Sequence, by_id: d
         link = decision or proposal
         out.append(
             Fact(a, "starting_dose", "starting_dose", "Planned first-in-human starting dose",
-                 f"{sd.dose_mg:g} mg" if sd.dose_mg is not None else sd.why,
+                 f"{sig(sd.dose_mg)} mg" if sd.dose_mg is not None else sd.why,
                  DOSE_STATUS[sd.status], seq=None if link is None else link.seq,
                  finding_id=None if proposal is None else proposal.ref)
         )  # fmt: skip

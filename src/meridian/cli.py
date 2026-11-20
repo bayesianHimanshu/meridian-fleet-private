@@ -20,7 +20,7 @@ from meridian.data.ingest import IngestError
 from meridian.data.sites import SiteMappingError, load_site_map
 from meridian.data.study_store import StudyAccessError, StudyReader
 from meridian.domain.dedup import parse_dedup_key
-from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
+from meridian.domain.enums import EventType, Role
 from meridian.domain.events import (
     DataCut,
     Event,
@@ -30,7 +30,6 @@ from meridian.domain.events import (
     FindingRaised,
     RedactedEvent,
 )
-from meridian.domain.findings import Evidence, Finding
 from meridian.evals.matching import VersionFilter
 from meridian.evals.rules import condition_truth
 from meridian.evals.scorecard import (
@@ -91,11 +90,6 @@ audit_app = typer.Typer(
 )
 app.add_typer(audit_app, name="audit")
 
-DEMO_STUDY = "MER-101"
-DEMO_SITE = "SITE-007"
-DEMO_ACTOR = "cli.append_demo"
-DEMO_AGENT = "unblinded.efficacy_watch"
-
 
 def _configure_logging(clock: Clock) -> structlog.typing.FilteringBoundLogger:
     def add_timestamp(
@@ -131,71 +125,6 @@ def ledger_init() -> None:
         typer.echo(f"ledger initialized at {c.ledger.path}")
 
 
-@ledger_app.command("append-demo")
-def ledger_append_demo() -> None:
-    """Append a DataCut and one FindingRaised, for manual testing."""
-    with _container() as c:
-        log = _configure_logging(c.clock)
-        try:
-            next_seq = len(c.ledger.read(viewer_role=Role.UNBLINDED_STATISTICIAN)) + 1
-            cut = c.ledger.append(
-                EventDraft(
-                    occurred_at=c.clock.now(),
-                    actor=DEMO_ACTOR,
-                    study_id=DEMO_STUDY,
-                    visibility=Visibility.BLINDED,
-                    payload=DataCut(
-                        cut_id=f"CUT-{next_seq:04d}",
-                        study_id=DEMO_STUDY,
-                        path=f"data/cuts/{DEMO_STUDY}/cut-{next_seq:04d}.parquet",
-                    ),
-                )
-            )
-            finding = Finding(
-                kind=FindingKind.QTL_BREACH,
-                agent_id=DEMO_AGENT,
-                agent_version="0.1.0",
-                study_id=DEMO_STUDY,
-                site_id=DEMO_SITE,
-                severity=Severity.HIGH,
-                title="Arm-level dropout above QTL",
-                summary="Demo finding: unblinded dropout rate in one arm exceeds its QTL.",
-                evidence=(
-                    Evidence(
-                        source=f"data_cut:{cut.seq}",
-                        selector="arm=B",
-                        statistic="dropout_rate",
-                        value=0.21,
-                        threshold=0.15,
-                    ),
-                ),
-                visibility=Visibility.RESTRICTED,
-                visible_to=frozenset({Role.UNBLINDED_STATISTICIAN}),
-                score=0.87,
-            )
-            raised = c.ledger.append(
-                EventDraft(
-                    occurred_at=c.clock.now(),
-                    actor=DEMO_AGENT,
-                    study_id=DEMO_STUDY,
-                    visibility=Visibility.RESTRICTED,
-                    payload=FindingRaised(
-                        finding=finding,
-                        dedup_key=f"{DEMO_AGENT}:qtl_breach:{DEMO_STUDY}:cut-{cut.seq}",
-                    ),
-                )
-            )
-        except LedgerError as exc:
-            typer.echo(f"error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        assert isinstance(raised.payload, FindingRaised)
-        log.info("ledger.demo_appended", seqs=[cut.seq, raised.seq])
-        typer.echo(
-            f"appended seq {cut.seq} (data_cut) and seq {raised.seq} "
-            f"(finding_raised {raised.payload.finding.finding_id})"
-        )
-
-
 @ledger_app.command("show")
 def ledger_show(
     since: Annotated[int, typer.Option("--since", min=0, help="Show events after this seq.")] = 0,
@@ -224,7 +153,7 @@ def ledger_correct_attribution(
 ) -> None:
     """Append an AttributionCorrection (phase 5 step 3b): the event stays as recorded; the
     correction names what it recorded, what is true and the operator who corrects it."""
-    from meridian.domain.events import AttributionCorrection, EventDraft
+    from meridian.domain.events import AttributionCorrection
     from meridian.domain.identity import operator_id, people_ids
 
     with _container() as c:
@@ -517,7 +446,6 @@ def agents_run(
 ) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
     from meridian.data.datacut import data_cut_events
-    from meridian.domain.events import DataCut
 
     settings = Settings()
     if executor is not None:
@@ -1271,7 +1199,6 @@ def _set_name(name: str) -> Literal["dev", "holdout", "clean", "terms"]:
 def safety_generate() -> None:
     """A clean safety database snapshot for every recorded cut that has none yet."""
     from meridian.data.datacut import data_cut_events
-    from meridian.domain.events import DataCut
     from meridian.faults.reader import FullCutReader
     from meridian.safetydb.generate import ensure_clean_snapshot
 
@@ -1407,7 +1334,6 @@ def _tmf_set(name: str) -> Literal["dev", "holdout", "clean"]:
 def tmf_generate() -> None:
     """A clean eTMF snapshot for every recorded cut that has none yet (DC-BASE included)."""
     from meridian.data.datacut import data_cut_events
-    from meridian.domain.events import DataCut
     from meridian.faults.reader import FullCutReader
     from meridian.tmf.generate import ensure_clean_snapshot
 

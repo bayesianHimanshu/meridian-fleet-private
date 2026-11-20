@@ -123,6 +123,12 @@ class AgentExecutor(Protocol):
         ...
 
 
+# Requests answered once, by whichever version of the agent ran first (wrap-up): a new
+# version does not answer an old signal scan again (live openFDA calls), nor an old
+# portfolio review or a gate request that may already be decided. --rerun leaves them out.
+ONE_SHOT = frozenset(
+    {EventType.SIGNAL_SCAN_REQUESTED, EventType.PORTFOLIO_REVIEW_REQUESTED, EventType.GATE_REQUEST}
+)
 AUDIT_ACTOR = "meridian.audit"  # the host component that requests an audit review
 
 
@@ -470,6 +476,7 @@ class AgentRunner:
             for kind, events in by_type.items()
         }
         done = self._completed()
+        answered = {(agent_id, seq) for agent_id, _version, seq in done}
         pending = [
             (registered, trigger)
             for registered in self._registry.enabled()
@@ -477,8 +484,12 @@ class AgentRunner:
             for kind in by_type
             if kind in registered.agent.subscribes_to
             for trigger in triggers[kind]
-            if rerun
-            or (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
+            if (
+                (registered.agent.agent_id, trigger.seq) not in answered
+                if kind in ONE_SHOT
+                else rerun
+                or (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
+            )
         ]
         pending.sort(key=lambda pair: (pair[1].seq, pair[0].agent.agent_id))
         self._require_sandbox(pending)

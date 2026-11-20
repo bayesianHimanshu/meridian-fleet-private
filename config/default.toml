@@ -413,7 +413,7 @@ indication_caveat = "Reported with a drug for schizophrenia, this term is confou
 visible_to = ["medical_monitor", "portfolio_lead"]
 
 [agents.pipeline_intelligence]
-# portfolio.pipeline_intelligence 1.0.0 (phase 5 step 3b; docs/stage-gate-notes.md):
+# portfolio.pipeline_intelligence 1.1.0 (phase 5 step 3b, 1.1.0 at the wrap-up; docs/stage-gate-notes.md):
 # a PortfolioOutlook event per review, from the facts the portfolio lead may see.
 visible_to = ["portfolio_lead", "qa_auditor"]
 

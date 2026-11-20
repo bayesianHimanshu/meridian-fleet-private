@@ -16,10 +16,11 @@ const OUTLOOK: Schemas["OutlookView"] = {
         facts: [{ key: "noael:combined", group: "noael", label: "NOAEL (combined)", value: "2 mg/kg/day",
                   status: "established", seq: 19943, static: false }],
         risks: [{ text: "High-severity finding PRE-0155: Myocardial inflammation (open)", severity: "high", seqs: [155] }],
+        more_risks: 2, open_findings: 93,
         changes: ["First outlook: nothing to compare with."] },
       { asset_id: "MRD-110", status: "static", static: true, status_text: "On track",
         facts: [{ key: "static:stage", group: "static", label: "Stage", value: "phase_1", status: "static", seq: null, static: true }],
-        risks: [], changes: ["First outlook: nothing to compare with."] },
+        risks: [], more_risks: 0, open_findings: 0, changes: ["First outlook: nothing to compare with."] },
     ],
   },
 };
@@ -70,6 +71,12 @@ describe("Portfolio outlook and gates", () => {
     expect(mrd101.textContent).toContain("PRE-0155");
     expect(mrd101.textContent).toContain("seq 155");
     expect(screen.getByTestId("outlook-MRD-110").textContent).toContain("static: On track");
+    // Wrap-up: the rest of the risks and the open findings are counted, with a link.
+    expect(screen.getByTestId("more-risks-MRD-101").textContent).toContain("and 2 more risks");
+    const open = screen.getByTestId("open-findings-MRD-101");
+    expect(open.textContent).toContain("93 open findings");
+    expect(within(open).getByRole("link").getAttribute("href")).toBe("/review?study=MRD-101");
+    expect(screen.queryByTestId("more-risks-MRD-110")).toBeNull();
     const met = screen.getByTestId("criterion-noael_decided");
     expect(met.textContent).toContain("21 CFR 312.23");
     expect(met.textContent).toContain("met");

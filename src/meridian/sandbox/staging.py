@@ -23,14 +23,13 @@ from meridian.data.cut_writer import BLINDED_AREA, OPS_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, write_manifest
 from meridian.domain.events import Event
 from meridian.ledger.hashing import canonical_json
-from meridian.sandbox.policies import AUDIT, META, SEND, STAGE_ROOT, TMF, stage_path
+from meridian.sandbox.policies import AUDIT, META, STAGE_ROOT, TMF, stage_path
 
 STAGE_NAME = "cut"
 TRIGGER_FILE = "trigger.json"
 CUT_AREAS = (BLINDED_AREA, OPS_AREA)
 SANDBOX_CUT_DIR = STAGE_ROOT
 SANDBOX_TRIGGER = f"{stage_path(META)}/{TRIGGER_FILE}"
-SANDBOX_MANIFEST = f"{stage_path(META)}/{MANIFEST_FILE}"
 
 
 class StagingError(Exception):
@@ -104,22 +103,6 @@ def stage_audit(extract_dir: Path, trigger: Event, dest_root: Path) -> Path:
     (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
     write_manifest(stage, at=stage / META / MANIFEST_FILE)
     assert_clean_stage(stage, (AUDIT,))
-    return stage
-
-
-def stage_send(send_dir: Path, trigger: Event, dest_root: Path) -> Path:
-    """Stage a SEND study: meta/ (the trigger and the inputs manifest) and send/ (the
-    study's domains), nothing of any clinical cut (phase 5 step 1, preclinical zone)."""
-    if send_dir.name != SEND:
-        raise StagingError(f"only a SEND cut's {SEND}/ area may be staged, not {send_dir}")
-    stage = dest_root / STAGE_NAME
-    stage.mkdir(parents=True, exist_ok=False)
-    (stage / SEND).mkdir()
-    _copy_area(send_dir, stage / SEND, SEND)
-    (stage / META).mkdir()
-    (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
-    write_manifest(stage, at=stage / META / MANIFEST_FILE)
-    assert_clean_stage(stage, (SEND,))
     return stage
 
 

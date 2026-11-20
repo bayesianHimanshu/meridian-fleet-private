@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type SyntheticEvent } from "react";
+import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, Time, isStatus } from "../components/common";
 import { useIdentity } from "../identity";
@@ -69,6 +70,15 @@ function AssetCard({ asset }: { asset: AssetOutlook }) {
               </li>
             ))}
           </ul>
+          {asset.more_risks ? (
+            <p className="muted" data-testid={`more-risks-${asset.asset_id}`}>
+              and {String(asset.more_risks)} more{" "}
+              {asset.more_risks === 1 ? "risk" : "risks"}:{" "}
+              <Link to={`/review?study=${encodeURIComponent(asset.asset_id)}`}>
+                see the review queue for {asset.asset_id}
+              </Link>
+            </p>
+          ) : null}
         </>
       ) : (
         <p className="muted">
@@ -77,6 +87,15 @@ function AssetCard({ asset }: { asset: AssetOutlook }) {
             : "No risk found by the outlook's rules."}
         </p>
       )}
+      {asset.open_findings ? (
+        <p data-testid={`open-findings-${asset.asset_id}`}>
+          <span className="fig">{String(asset.open_findings)}</span> open{" "}
+          {asset.open_findings === 1 ? "finding" : "findings"}, counted in the facts:{" "}
+          <Link to={`/review?study=${encodeURIComponent(asset.asset_id)}`}>
+            open them in the review queue
+          </Link>
+        </p>
+      ) : null}
       <h4>Changes since the previous outlook</h4>
       <ul aria-label={`Changes of ${asset.asset_id}`}>
         {asset.changes.map((c) => (
