@@ -14,7 +14,23 @@ from meridian.sandbox import dispatcher_deploy as dd
 from meridian.sandbox import substrate_deploy as d
 from meridian.sandbox.substrate_templates import PoolSpec, render_pool
 
-AR = "us-central1-docker.pkg.dev/meridian-fleet-agents/meridian"
+AR = "us-central1-docker.pkg.dev/meridian-example/meridian"
+# Obviously fake identifiers: the real ones live only in the git-ignored deploy/gke/env.sh.
+FAKE_ENV = {
+    "PROJECT_ID": "meridian-example",
+    "PROJECT_NUMBER": "000000000000",
+    "BILLING_ACCOUNT": "000000-000000-000000",
+    "BUCKET_NAME": "meridian-example-snapshots",
+}
+
+
+@pytest.fixture
+def fake_gke_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    for k, v in FAKE_ENV.items():
+        monkeypatch.setenv(k, v)
+    return FAKE_ENV
+
+
 DIGEST = "sha256:" + "a" * 64
 
 
@@ -148,11 +164,16 @@ def test_the_dispatcher_knows_its_own_address() -> None:
     assert env == [{"name": "POD_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}]
 
 
-def test_the_overlay_merges_over_the_default_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_overlay_merges_over_the_default_config(
+    monkeypatch: pytest.MonkeyPatch, fake_gke_env: dict[str, str]
+) -> None:
     monkeypatch.setenv(CONFIG_OVERLAY_ENV, "deploy/gke/meridian.toml")
     s = Settings()
     assert s.substrate.target == "gke"
     assert s.substrate.registry == AR
+    assert s.substrate.gke.project_number == "000000000000"
+    assert s.substrate.gke.bucket == "meridian-example-ate-snapshots"
+    assert s.substrate.context == "gke_meridian-example_us-central1-a_meridian-substrate"
     # Tables merge key by key: what the overlay leaves out comes from config/default.toml.
     assert s.substrate.worker_memory_mib == 512
     assert s.substrate.atespace == "meridian"
@@ -241,3 +262,42 @@ def test_the_dispatcher_starts_with_core_dumps_off() -> None:
     assert container["command"] == ["/usr/bin/sh", "-c", dd.NO_CORE, dd.ENTRYPOINT]
     assert dd.NO_CORE.startswith("ulimit -c 0 && exec ")
     assert container["args"][0] == "serve"
+
+
+def test_the_overlay_needs_its_project_and_names_what_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No project id, number or bucket is committed: without them (no env.sh, no
+    environment) the GKE overlay fails with a message naming the variable."""
+    from meridian.platform import config
+
+    monkeypatch.setattr(config, "GKE_ENV_FILE", tmp_path / "env.sh")  # absent
+    for k in FAKE_ENV:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv(CONFIG_OVERLAY_ENV, "deploy/gke/meridian.toml")
+    with pytest.raises(config.MissingPlaceholderError, match=r"needs \$\{PROJECT_ID\}"):
+        Settings()
+
+
+def test_env_sh_fills_the_placeholders_when_the_environment_does_not(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from meridian.platform import config
+
+    env = tmp_path / "env.sh"
+    env.write_text(
+        'export PROJECT_ID="meridian-example"   # a comment\nexport PROJECT_NUMBER="000000000000"\n'
+    )
+    monkeypatch.setattr(config, "GKE_ENV_FILE", env)
+    for k in FAKE_ENV:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv(CONFIG_OVERLAY_ENV, "deploy/gke/meridian.toml")
+    s = Settings()
+    assert s.substrate.gke.project_id == "meridian-example"
+    assert s.substrate.gke.project_number == "000000000000"
+
+
+def test_target_gke_without_a_project_is_refused() -> None:
+    with pytest.raises(ValueError, match="target gke needs PROJECT_ID, PROJECT_NUMBER"):
+        SubstrateSettings(target="gke")
+    assert SubstrateSettings().gke.project_id == ""  # kind needs none

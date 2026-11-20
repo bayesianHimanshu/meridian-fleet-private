@@ -65,6 +65,61 @@ def config_file_path() -> Path:
     return Path(os.environ.get(CONFIG_FILE_ENV, str(DEFAULT_CONFIG_FILE)))
 
 
+GKE_ENV_FILE = Path("deploy/gke/env.sh")
+_PLACEHOLDER = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
+
+
+class MissingPlaceholderError(ValueError):
+    pass
+
+
+def env_file_values(path: Path) -> dict[str, str]:
+    """KEY=value lines of a shell env file (export allowed, quotes stripped), non-empty only."""
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(
+            r"""^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)=["']?([^"'#]*?)["']?\s*(?:#.*)?$""", line
+        )
+        if m and m.group(2).strip():
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def expand_placeholders(value: object, lookup: dict[str, str], source: str) -> object:
+    """${NAME} in every string of a TOML document, from lookup; a missing name is an error
+    that names it (and never shows a value)."""
+    if isinstance(value, dict):
+        return {k: expand_placeholders(v, lookup, source) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_placeholders(v, lookup, source) for v in value]
+    if isinstance(value, str):
+
+        def one(m: re.Match[str]) -> str:
+            name = m.group(1)
+            if name not in lookup:
+                raise MissingPlaceholderError(
+                    f"{source} needs ${{{name}}}: set {name} in {GKE_ENV_FILE} (copied from "
+                    "deploy/gke/env.example.sh) or in the environment"
+                )
+            return lookup[name]
+
+        return _PLACEHOLDER.sub(one, value)
+    return value
+
+
+class OverlayTomlSource(TomlConfigSettingsSource):
+    """The overlay, with ${NAME} filled from the environment, else deploy/gke/env.sh."""
+
+    def _read_file(self, file_path: Path) -> dict[str, object]:  # type: ignore[override]
+        data = super()._read_file(file_path)
+        lookup = {**env_file_values(GKE_ENV_FILE), **os.environ}
+        expanded = expand_placeholders(data, lookup, str(file_path))
+        assert isinstance(expanded, dict)
+        return expanded
+
+
 def config_overlay_path() -> Path | None:
     value = os.environ.get(CONFIG_OVERLAY_ENV)
     return Path(value) if value else None
@@ -271,12 +326,15 @@ class GkeSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    project_id: str = "meridian-fleet-agents"
-    project_number: str = "932415716644"
+    # No defaults: the project's identifiers are never committed. deploy/gke/meridian.toml
+    # fills them from ${PROJECT_ID} and ${PROJECT_NUMBER} (deploy/gke/env.sh or the
+    # environment), and SubstrateSettings refuses target "gke" without them.
+    project_id: str = ""
+    project_number: str = ""
     region: str = "us-central1"
     zone: str = "us-central1-a"
     cluster: str = "meridian-substrate"
-    bucket: str = "meridian-fleet-agents-ate-snapshots"
+    bucket: str = ""
     ar_repo: str = "meridian"
     gcloud: str = "gcloud"
 
@@ -366,6 +424,25 @@ class SubstrateSettings(BaseModel):
     # A run is retried once on a new actor when its worker was lost (Spot preemption).
     worker_lost_retries: int = Field(1, ge=0, le=1)
 
+    @model_validator(mode="after")
+    def _gke_needs_its_project(self) -> SubstrateSettings:
+        if self.target == "gke":
+            missing = [
+                name
+                for name, value in (
+                    ("PROJECT_ID", self.gke.project_id),
+                    ("PROJECT_NUMBER", self.gke.project_number),
+                    ("the snapshot bucket", self.gke.bucket),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "target gke needs " + ", ".join(missing) + ": set them in deploy/gke/env.sh "
+                    "(copied from deploy/gke/env.example.sh) or in the environment"
+                )
+        return self
+
     @property
     def node_selector(self) -> dict[str, str]:
         key, value = self.worker_node_label.split("=", 1)
@@ -443,5 +520,5 @@ class Settings(BaseSettings):
             raise FileNotFoundError(f"{CONFIG_OVERLAY_ENV} names {overlay}, which does not exist")
         files = [TomlConfigSettingsSource(settings_cls, toml_file=config_file_path())]
         if overlay is not None:  # earlier sources win; tables are merged key by key
-            files.insert(0, TomlConfigSettingsSource(settings_cls, toml_file=overlay))
+            files.insert(0, OverlayTomlSource(settings_cls, toml_file=overlay))
         return (init_settings, env_settings, *files)

@@ -27,9 +27,9 @@ Read-only commands, 13 Nov 2026, gcloud 539.0.0, configuration `bayesianhimanshu
 
 | Check | Result |
 |---|---|
-| `gcloud projects describe meridian-fleet-agents` | ACTIVE, number 932415716644, created 2026-11-07 |
-| `gcloud billing projects describe` | billing enabled, account `billingAccounts/01DC09-5AAF08-94EFA4` ("bayesianHimanshuBillingAccount", open); a second account, "My Billing Account", is closed |
-| Projects on that billing account | `meridian-fleet-agents` and one other project. I did not read the other one (outside this brief), so whether a GKE cluster there uses the free tier credit is **your answer** (open question 1) |
+| `gcloud projects describe <PROJECT_ID>` | ACTIVE, number <PROJECT_NUMBER>, created 2026-11-07 |
+| `gcloud billing projects describe` | billing enabled, account `billingAccounts/<BUCKET>` ("<BILLING_ACCOUNT_NAME>", open); a second account, "My Billing Account", is closed |
+| Projects on that billing account | `<PROJECT_ID>` and one other project. I did not read the other one (outside this brief), so whether a GKE cluster there uses the free tier credit is **your answer** (open question 1) |
 | Enabled APIs before the plan | `container`, `compute`, `logging`, `monitoring`, `cloudtrace`, `telemetry`, `storage` (and storage-api, storage-component), `serviceusage`, `servicemanagement`, the BigQuery family, `datastore`, `dataplex`, `dataform`, `analyticshub`, `apptopology`, `cloudapis`, `sql-component`. Not yet: `artifactregistry`, `iam`, `iamcredentials`, `cloudresourcemanager`, `networkconnectivity`, `billingbudgets` (6.1 and 6.2) |
 | `gcloud container get-server-config --location=us-central1` | Regular: default **1.36.4-gke.2377000**, valid **1.37.1-gke.1552000**. Rapid: default 1.37.1-gke.2097000, also 1.37.2-gke.1042000. Stable: no 1.37. Extended: 1.37.1-gke.1552000 (not usable). Valid node versions include 1.37.1-gke.1552000 |
 | Google's release schedule | 1.37 in Regular since 2026-10-22, in Stable estimated 2027-01 (https://docs.cloud.google.com/kubernetes-engine/docs/release-schedule) |
@@ -528,7 +528,7 @@ gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
 gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
   --filter="displayName=$BUDGET_NAME" --format='yaml(displayName,amount,thresholdRules)'
 ```
-`BILLING_ACCOUNT` is `01DC09-5AAF08-94EFA4`, the project's billing account (section 1);
+`BILLING_ACCOUNT` is `<BUCKET>`, the project's billing account (section 1);
 confirm it is the one you meant. Success: the listing shows USD 30 and three thresholds
 0.5, 0.9, 1.0. Alerts go by email
 to the billing account's administrators. A budget never stops spending.
@@ -854,7 +854,7 @@ Decided by you after step 1:
 
 Decided after step 2:
 
-- **Billing account:** `01DC09-5AAF08-94EFA4`. **No free tier credit**: the management fee
+- **Billing account:** `<BUCKET>`. **No free tier credit**: the management fee
   of USD 0.10 an hour bills whenever the cluster exists, parked included (about USD 2.43 a
   parked day, about 74 a parked month, more than the USD 30 budget). docs/gke-session.md
   has the corrected session costs; section 5's "free tier" lines no longer apply.

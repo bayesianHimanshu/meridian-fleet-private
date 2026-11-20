@@ -51,6 +51,9 @@ jobs:
           echo "${dir}/bin" >> "${GITHUB_PATH}"
           "${dir}/bin/openshell-prover" --version
 
+      - name: Identifier guard (no GCP billing account or project number in deploy/, docs/, src/)
+        run: uv run python scripts/public_scan.py --identifiers
+
       - name: ruff format --check
         run: uv run ruff format --check
 

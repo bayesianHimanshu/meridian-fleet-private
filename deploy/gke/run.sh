@@ -6,7 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 export MERIDIAN_CONFIG_OVERLAY=deploy/gke/meridian.toml
-context="$(sed -n 's/^context = "\(.*\)"$/\1/p' deploy/gke/meridian.toml)"
+# The context names the project, which is never committed: meridian.toml has
+# ${PROJECT_ID}, filled from deploy/gke/env.sh or the environment by the settings loader.
+context="$(uv run --quiet python -c 'from meridian.platform.config import Settings; print(Settings().substrate.context)')"
 if ! kubectl config get-contexts -o name | grep -qx "${context}"; then
   echo "no kubectl context ${context}: run gcloud container clusters get-credentials" \
     "(docs/gke-session.md, step 9)" >&2
