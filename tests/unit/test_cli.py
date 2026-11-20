@@ -222,3 +222,32 @@ def test_a_rerun_of_every_cut_must_be_asked_for_explicitly(
     assert again.exit_code == 0, again.output
     assert len(substrate.runs) == 2 * first
     assert "runs per executor: substrate" in again.output
+
+
+# ---- api serve --fixed-now (the demo): refused without --demo-read-only
+
+
+def test_fixed_now_is_refused_without_the_read_only_demo_mode(
+    ledger_env: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import uvicorn
+
+    from meridian.platform.clock import FixedClock
+
+    started: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: started.append(app))
+    assert runner.invoke(app, ["ledger", "init"]).exit_code == 0
+    alone = runner.invoke(app, ["api", "serve", "--fixed-now", "2026-11-20T12:00:00+00:00"])
+    assert alone.exit_code == 2
+    assert "--fixed-now is for the read-only demo mode only" in alone.output
+    assert started == []  # nothing served
+    both = runner.invoke(
+        app,
+        ["api", "serve", "--demo-read-only", str(tmp_path / "r.jsonl"),
+         "--fixed-now", "2026-11-20T12:00:00+00:00"],
+    )  # fmt: skip
+    assert both.exit_code == 0, both.output
+    (served,) = started
+    clock = served.state.context.clock  # type: ignore[attr-defined]
+    assert isinstance(clock, FixedClock)
+    assert clock.now().isoformat() == "2026-11-20T12:00:00+00:00"

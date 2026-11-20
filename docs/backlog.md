@@ -223,6 +223,15 @@ while closing the project.
   - *First step:* apply the display rule on the ledger page's payload view too, marked as
     a display.
 
+- **The demo's question box: decline rule (demo).**
+  - *Status:* run 2 fixed the flaw found in run 1. A word in no passage now counts towards
+    a decline, and 10 of 10 held-out uncovered questions were declined. The price is false
+    declines: 6 of the original 25 answerable questions and 1 of the 10 held-out ones
+    (docs/demo/README.md).
+  - *First step:* fold common words (calculate, compare, recorded) to a shared stem, or
+    weigh unseen words by a general English frequency list. Measure on a third set,
+    written before the change.
+
 ## Data
 
 - **The synthetic eTMF index leaves out a lot.**

@@ -1135,13 +1135,18 @@ def sandbox_conformance(
         raise typer.Exit(code=1)
 
 
-def _api(settings: Settings, clock: Clock) -> FastAPI:
+def _api(
+    settings: Settings,
+    clock: Clock,
+    read_only_log: Path | None = None,
+    log_clock: Clock | None = None,
+) -> FastAPI:
     from meridian.api.app import context_from_settings, create_app
 
     ctx = context_from_settings(
         settings, clock, settings.api.people_file, settings.api.portfolio_file
     )
-    return create_app(ctx)
+    return create_app(ctx, read_only_log=read_only_log, log_clock=log_clock)
 
 
 def openapi_text(settings: Settings) -> str:
@@ -1157,6 +1162,23 @@ def openapi_text(settings: Settings) -> str:
 @api_app.command("serve")
 def api_serve(
     port: Annotated[int | None, typer.Option("--port", help="Default: [api] port.")] = None,
+    demo_read_only: Annotated[
+        Path | None,
+        typer.Option(
+            "--demo-read-only",
+            help="Read-only demo mode: every write is refused with 403 and logged to this "
+            "JSON-lines file (docs/demo/README.md).",
+        ),
+    ] = None,
+    fixed_now: Annotated[
+        str | None,
+        typer.Option(
+            "--fixed-now",
+            help="With --demo-read-only only: the API's clock stands still at this ISO time, "
+            "so the demo's pages (runs in the last 7 days, ages) do not change between "
+            "recordings.",
+        ),
+    ] = None,
 ) -> None:
     """Run the Fleet API with uvicorn on 127.0.0.1 (never another interface)."""
     import uvicorn
@@ -1164,15 +1186,28 @@ def api_serve(
     from meridian.api.app import HOST
     from meridian.platform.clock import SystemClock
 
+    if fixed_now is not None and demo_read_only is None:
+        typer.echo("error: --fixed-now is for the read-only demo mode only", err=True)
+        raise typer.Exit(code=2)
     settings = Settings()
     if not settings.ledger_path.exists():
         typer.echo(f"error: no ledger at {settings.ledger_path}", err=True)
         raise typer.Exit(code=1)
+    mode = f", read-only demo mode, refusals to {demo_read_only}" if demo_read_only else ""
     typer.echo(
         f"Fleet API on http://{HOST}:{port or settings.api.port}/api/v1 "
-        "(development identity, not authentication)"
+        f"(development identity, not authentication{mode})"
     )
-    uvicorn.run(_api(settings, SystemClock()), host=HOST, port=port or settings.api.port)
+    import datetime as dt
+
+    from meridian.platform.clock import FixedClock
+
+    clock: Clock = FixedClock(dt.datetime.fromisoformat(fixed_now)) if fixed_now else SystemClock()
+    uvicorn.run(
+        _api(settings, clock, read_only_log=demo_read_only, log_clock=SystemClock()),
+        host=HOST,
+        port=port or settings.api.port,
+    )
 
 
 @api_app.command("openapi")
@@ -1503,3 +1538,6 @@ app.add_typer(portfolio_app, name="portfolio")
 from meridian.cli_stats import stats  # noqa: E402 (wrap-up)
 
 app.command("stats")(stats)
+from meridian.cli_demo import demo_app  # noqa: E402 (the demo)
+
+app.add_typer(demo_app, name="demo")

@@ -15,6 +15,7 @@ pre-registered targets, and the misses are recorded as plainly as the passes.
 - [Quickstart: a laptop with kind](#quickstart-a-laptop-with-kind)
 - [Running the checks](#running-the-checks)
 - [Project status](#project-status)
+- [The demo](#the-demo)
 - [Documentation](#documentation)
 - [Honest limits](#honest-limits)
 - [Configuration, conventions and layout](#configuration-conventions-and-layout)
@@ -270,6 +271,16 @@ IND gate (seq 20158), with five conditions. Details are in
 **Wrap-up:** the numbers are in [docs/project-stats.md](docs/project-stats.md) (ledger seq
 20158, verified). The one-page summary is [docs/project-summary.md](docs/project-summary.md),
 and the open items are in [docs/backlog.md](docs/backlog.md).
+
+## The demo
+
+A narrated video of the Command Center (7 min 30 s, 10 chapters) and a page where you
+watch it and ask questions, answered by retrieval from the transcript and these documents.
+It was recorded against a verified copy of the ledger, through the API in a read-only mode
+that refuses every write; one write attempt during the recording was refused with 403.
+The video is not committed: [docs/demo/README.md](docs/demo/README.md) says how to record
+it, which versions and voice were used, and how the question box was evaluated. Script:
+[docs/demo/script.md](docs/demo/script.md).
 
 ## Documentation
 
