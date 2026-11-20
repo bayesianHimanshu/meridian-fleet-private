@@ -197,15 +197,60 @@ the code changed. Both sets were run once:
 - **One uncovered question still answered.** u04 ("Which patients received the placebo?")
   is not declined: scene 2's narration uses its words without answering it.
 
-## Publishing (a suggestion; nothing is published)
+## Publishing
 
-demo.mp4 is 13,518,582 bytes (12.9 MiB), too large to commit comfortably but well within
-a GitHub release asset's limit. The page expects demo.mp4 next to it and makes no other
-request. One way, for the project lead to decide:
-1. Attach demo.mp4 to a GitHub release on a docs commit, with captions.vtt and
-   transcript.json beside it.
-2. Serve docs/demo/index.html from GitHub Pages, with demo.mp4 next to it in the Pages
-   folder (copied from the release; Pages cannot embed a release asset across origins
-   without CORS).
-3. Alternatively, attach a zip of var/demo/index.html with demo.mp4 to the release. That
-   page works offline once unzipped.
+The project was developed in a private repository, which stays private. The public
+repository, bayesianHimanshu/meridian-fleet, is created fresh from a clean export, as a
+single commit tagged v1.1.0. The video is never committed. It is a release asset, and the
+Pages workflow (.github/workflows/pages.yml) is the only place the site is assembled:
+
+- the page (docs/demo/index.html, as index.html);
+- the three assets downloaded from the release and checked against
+  docs/demo/assets.sha256;
+- .nojekyll.
+
+The project owner runs every step, in this order:
+
+1. **Merge the release-pages PR** in the private repository.
+2. **Rename the private repository** to meridian-fleet-private (Settings > General), and
+   update the local remote:
+   `git remote set-url origin https://github.com/bayesianHimanshu/meridian-fleet-private.git`.
+3. **Export.** In the private clone, on an up-to-date main:
+   `scripts/export-public.sh v1.1.0`. It exports main with git archive into a new empty
+   directory, scans it, and stops on any match. The scan covers:
+   - the GCP identifiers, by exact match against deploy/gke/env.sh;
+   - secret shapes, real email addresses and home paths;
+   - files over 5 MB.
+
+   It then runs uv sync, the full checks and the web build in a throwaway copy, and prints
+   the commands for step 4.
+4. **Create and push the public repository and its tag** with the printed commands:
+   - `git init`, and your noreply address as the local user.email;
+   - one commit, "Meridian Agent Fleet v1.1.0";
+   - `gh repo create bayesianHimanshu/meridian-fleet --public`, the push, then `git tag
+     v1.1.0` and `git push origin v1.1.0`.
+5. **Set Pages to GitHub Actions** on the public repository: Settings > Pages > Source:
+   GitHub Actions.
+6. **Publish the release.** In the public clone, on main at v1.1.0:
+   `scripts/publish-demo-release.sh v1.1.0 <private clone>/var/demo`.
+   - It checks the clean main, the tag on origin and the three files against the
+     manifest.
+   - It shows what it will upload and asks for "yes".
+   - Then it runs `gh release create v1.1.0 --verify-tag` with docs/releases/v1.1.0.md as
+     the notes. The uploads are demo.mp4, captions.vtt, transcript.json and
+     meridian-demo-v1.1.0.zip.
+7. **Check the run and open the page.** The release, created with your gh login, starts
+   the Pages workflow; a release created with GITHUB_TOKEN would not. Check the run with
+   `gh run list --repo bayesianHimanshu/meridian-fleet --workflow pages.yml`, then open
+   https://bayesianhimanshu.github.io/meridian-fleet/.
+
+   If the workflow did not start, run it by hand: Actions > Pages > Run workflow, with tag
+   v1.1.0.
+
+**Sizes:** demo.mp4 is 13,582,594 bytes, and the offline zip about 12.7 MB. Both are well
+within a release asset's limit. The page itself is about 300 KB.
+
+**Offline:** meridian-demo-v1.1.0.zip holds index.html and demo.mp4 side by side. Unzip it
+and open index.html. Its Content-Security-Policy allows media from the page's own origin and
+from file:, and the page's one inline style and one inline script by their sha256. It allows
+nothing else, and no 'unsafe-inline'.

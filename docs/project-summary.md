@@ -1,5 +1,7 @@
 # Meridian Agent Fleet: the project on one page
 
+The project was developed in a private repository; this summary and the phase summaries
+stand for that history in the public repository, which starts at v1.1.0 as a single commit.
 The numbers come from [project-stats.md](project-stats.md), computed from the ledger at seq
 20158 (it verifies), and from the phase summaries, which give each number's own seqs.
 

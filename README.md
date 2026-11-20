@@ -17,6 +17,7 @@ pre-registered targets, and the misses are recorded as plainly as the passes.
 - [Project status](#project-status)
 - [The demo](#the-demo)
 - [Documentation](#documentation)
+- [License](#license)
 - [Honest limits](#honest-limits)
 - [Configuration, conventions and layout](#configuration-conventions-and-layout)
 
@@ -274,13 +275,26 @@ and the open items are in [docs/backlog.md](docs/backlog.md).
 
 ## The demo
 
-A narrated video of the Command Center (7 min 30 s, 10 chapters) and a page where you
-watch it and ask questions, answered by retrieval from the transcript and these documents.
-It was recorded against a verified copy of the ledger, through the API in a read-only mode
-that refuses every write; one write attempt during the recording was refused with 403.
-The video is not committed: [docs/demo/README.md](docs/demo/README.md) says how to record
-it, which versions and voice were used, and how the question box was evaluated. Script:
-[docs/demo/script.md](docs/demo/script.md).
+**Watch it:** https://bayesianhimanshu.github.io/meridian-fleet/
+
+- **What it is.** A narrated video of the Command Center (7 min 30 s, 10 chapters), on a
+  page where you watch it and ask questions. Answers come by retrieval from the transcript
+  and these documents.
+- **How it was recorded.** Against a verified copy of the ledger, through the API in a
+  read-only mode that refuses every write. One write attempt during the recording, as an
+  operator, was refused with 403.
+- **Where the video lives.** It is never committed. It is an asset of the GitHub release
+  v1.1.0 (https://github.com/bayesianHimanshu/meridian-fleet/releases/tag/v1.1.0), with its
+  captions, the transcript and an offline zip. The Pages workflow
+  (.github/workflows/pages.yml) assembles the site from that release.
+- **More.** How to record it, the versions and voice used, how the question box was
+  evaluated, and how it is published: [docs/demo/README.md](docs/demo/README.md). Script:
+  [docs/demo/script.md](docs/demo/script.md).
+
+**This repository.** The project was developed in a private repository. This public one
+starts at v1.1.0 as a single commit. The development history (phases 1 to 5, the wrap-up and
+the demo) is summarised in [docs/project-summary.md](docs/project-summary.md) and the phase
+summaries, with ledger seqs for every number.
 
 ## Documentation
 
@@ -366,3 +380,15 @@ deploy/       Substrate templates and WorkerPool, the dispatcher, GKE scripts
 scripts/      evaluations, stress sets, project stats (nothing in src imports them)
 tests/        unit, property, contract, api, slow, openshell and substrate tests
 ```
+
+## License
+
+Apache License 2.0: [LICENSE](LICENSE), with attributions in [NOTICE](NOTICE) and
+[docs/third-party.md](docs/third-party.md).
+
+The Apache License 2.0 covers this project's code and documentation. It does not cover the
+CDISC pilot data or values derived from it, which remain under CDISC's terms; meridian data
+fetch downloads the data from CDISC's repository. Study MRD-201 is derived from the CDISC
+SDTM/ADaM Pilot Project data (CDISCPILOT01), relabelled and with synthetic additions, used
+under CDISC's terms of use. It is not a real study, and this project is not affiliated with
+or endorsed by CDISC.
