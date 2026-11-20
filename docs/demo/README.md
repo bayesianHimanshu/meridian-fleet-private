@@ -52,12 +52,19 @@ answered by retrieval from the transcript and the project's documents.
   - tests/api/test_demo_read_only.py covers every write endpoint, and checks that the
     ledger file is unchanged.
 - **The proof, during the recording.** In scene 3 the recorder makes a real decision
-  request: `POST /api/v1/findings/RBQM-0134/decisions` as asha.rao.
+  request: `POST /api/v1/findings/RBQM-0134/decisions`, as the operator
+  `operator:demo-recorder` (made by `operator_id`, like every operator id, never a person),
+  with no role.
+  - The gate does not depend on who asks. tests/api/test_demo_read_only.py gets 403 for
+    that operator, for a person and with no identity at all.
+  - The first recordings sent it as asha.rao. That was wrong: a tool must never call the
+    API as a person, even against a copy and even when refused. It was changed, and the
+    video is byte-identical, because no frame shows the request.
   - It must be refused with 403, or the recording stops.
   - The response and its time go to var/demo/frames/proof.json, and the API logs the same
     refusal.
   - Afterwards the copy's last seq and hash are checked again; they have not changed.
-  - In the final recording, the attempt was refused with 403 at 2026-11-20T11:02:49Z (wall
+  - In the final recording, the attempt was refused with 403 at 2026-11-20T11:40:35Z (wall
     clock), at 1:55.9 in the video's time.
 - **People.** Each scene is shown as the person whose role sees the page (the role
   switcher is development identity). No form is ever submitted. Where the narration
@@ -150,23 +157,55 @@ Corpus Derived from LibriSpeech for Text-to-Speech. Interspeech 2019.
 - **Captions** are built in the page from the transcript, because a page opened from disk
   may not load captions.vtt.
 
-Results: [qa-results.md](qa-results.md). They are reported as they came out, not tuned.
+Results are reported as they came out, never tuned.
 
-| Set | Questions | Top-1 | Top-3 | Declined |
-|---|---:|---:|---:|---:|
-| Answerable from one source | 20 | 11 | 14 | 3 wrongly |
-| Needing two sources (top-3: both present) | 5 | 3 | 1 | 1 wrongly |
-| Not covered | 5 | | | 1 correctly |
+**Run 1** used the original decline rule, on the 30 questions in qa-questions.json:
+[qa-results-run1.md](qa-results-run1.md). In that rule, a word in no passage weighed
+nothing, so "Azure" could not lower the coverage, and only 1 of the 5 uncovered questions
+was declined.
 
-**Two runs.**
-- **Run 1** used the index built at the recording (147 passages).
-- **Run 2** used the final index. That index has 148 passages, because the README gained
-  its demo section afterwards; nothing else changed.
-- Every question's outcome was the same in both runs.
+**Run 2** fixed the rule on principle. A word in no passage now weighs BM25's idf for
+df = 0, the rarest weight there is, and no passage can cover it. The threshold stayed 0.5,
+set before the run. The held-out set (qa-heldout.json) was written and committed before
+the code changed. Both sets were run once:
+[qa-results.md](qa-results.md) (the 30) and [qa-heldout-results.md](qa-heldout-results.md)
+(the 20).
 
-**A flaw the run exposed, left unfixed.** The decline rule weighs only words that appear
-in some passage. A question about something the project never mentions ("Azure", "Okta",
-"price") keeps its known words, so the best passage can cover all of its known weight. u02
-scored 1.00 and was not declined. A rule that counts unknown words, at a typical idf, would
-decline more often. Changing it after the run would be tuning on these questions, so it is
-not done here (docs/backlog.md).
+**How hits are counted:**
+- **One-source question:** top-1 = the first passage is from an expected source; top-3 =
+  any of the top 3 is.
+- **Two-source question:** top-1 = the first passage is from either expected source; top-3
+  = both expected sources are in the top 3. Top-3 is the stricter measure, so it can be
+  lower than top-1.
+- **Declines:** a declined answerable question is no hit, and counts as a false decline.
+
+| Set | Run | Questions | Top-1 hits | Top-3 hits | False declines | Correct declines |
+|---|---|---:|---:|---:|---:|---:|
+| Original, one source | 1 | 20 | 11 | 14 | 3 | |
+| Original, one source | 2 | 20 | 10 | 13 | 4 | |
+| Original, two sources | 1 | 5 | 3 (first from either) | 1 (both in top 3) | 1 | |
+| Original, two sources | 2 | 5 | 2 (first from either) | 1 (both in top 3) | 2 | |
+| Original, not covered | 1 | 5 | | | | 1 |
+| Original, not covered | 2 | 5 | | | | 4 |
+| Held-out, answerable | 2 | 10 | 7 | 9 | 1 | |
+| Held-out, not covered | 2 | 10 | | | | 10 |
+
+**What run 2 costs.**
+- **New false declines.** A question's ordinary words that the documents never use now
+  count against it: a03 ("calculated"), t02 ("compare") and b02 were declined although the
+  answer is there.
+- **One uncovered question still answered.** u04 ("Which patients received the placebo?")
+  is not declined: scene 2's narration uses its words without answering it.
+
+## Publishing (a suggestion; nothing is published)
+
+demo.mp4 is 13,518,582 bytes (12.9 MiB), too large to commit comfortably but well within
+a GitHub release asset's limit. The page expects demo.mp4 next to it and makes no other
+request. One way, for the project lead to decide:
+1. Attach demo.mp4 to a GitHub release on a docs commit, with captions.vtt and
+   transcript.json beside it.
+2. Serve docs/demo/index.html from GitHub Pages, with demo.mp4 next to it in the Pages
+   folder (copied from the release; Pages cannot embed a release asset across origins
+   without CORS).
+3. Alternatively, attach a zip of var/demo/index.html with demo.mp4 to the release. That
+   page works offline once unzipped.

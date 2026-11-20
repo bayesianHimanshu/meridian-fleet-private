@@ -1186,6 +1186,9 @@ def api_serve(
     from meridian.api.app import HOST
     from meridian.platform.clock import SystemClock
 
+    if fixed_now is not None and demo_read_only is None:
+        typer.echo("error: --fixed-now is for the read-only demo mode only", err=True)
+        raise typer.Exit(code=2)
     settings = Settings()
     if not settings.ledger_path.exists():
         typer.echo(f"error: no ledger at {settings.ledger_path}", err=True)
@@ -1195,9 +1198,6 @@ def api_serve(
         f"Fleet API on http://{HOST}:{port or settings.api.port}/api/v1 "
         f"(development identity, not authentication{mode})"
     )
-    if fixed_now is not None and demo_read_only is None:
-        typer.echo("error: --fixed-now is for the read-only demo mode only", err=True)
-        raise typer.Exit(code=2)
     import datetime as dt
 
     from meridian.platform.clock import FixedClock

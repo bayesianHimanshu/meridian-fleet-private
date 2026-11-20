@@ -1,6 +1,14 @@
-// Run the 30 committed questions (docs/demo/qa-questions.json) against the built index, once,
-// with the page's own search code. Writes docs/demo/qa-results.md and var/demo/qa-results.json.
-// The questions were committed before the index existed; nothing here may be tuned on them.
+// Run a committed question set against the built index, once, with the page's own search
+// code: node eval-qa.mjs <questions.json> <results.md> "<title>". Run 2 ran the original 30
+// (docs/demo/qa-questions.json, results docs/demo/qa-results.md) and the held-out 20
+// (docs/demo/qa-heldout.json, results docs/demo/qa-heldout-results.md). Both sets were
+// committed before the code they evaluate; nothing here may be tuned on them.
+//
+// Hits. One-source question: top-1 = the first passage is from an expected source; top-3 =
+// any of the top 3 is. Two-source question: top-1 = the first passage is from either of the
+// two expected sources; top-3 = BOTH expected sources are among the top 3 (stricter, so it
+// can be lower than top-1). A declined question is no hit. Not covered: correct when
+// declined.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DECLINE_BELOW, search } from "./search.mjs";
@@ -8,7 +16,9 @@ import { DECLINE_BELOW, search } from "./search.mjs";
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const index = JSON.parse(readFileSync(resolve(ROOT, "var/demo/index.json"), "utf-8"));
 const transcript = JSON.parse(readFileSync(resolve(ROOT, "var/demo/transcript.json"), "utf-8"));
-const { questions } = JSON.parse(readFileSync(resolve(ROOT, "docs/demo/qa-questions.json"), "utf-8"));
+const [qFile, outFile, title] = process.argv.slice(2);
+if (!qFile || !outFile || !title) throw new Error("usage: eval-qa.mjs <questions.json> <results.md> <title>");
+const { questions } = JSON.parse(readFileSync(resolve(ROOT, qFile), "utf-8"));
 
 const inGroup = (source, group) => group.includes(source);
 const fmt = (t) => `${String(Math.floor(t / 60))}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -56,23 +66,34 @@ const summary = {
   passages: index.docs.length,
   video_duration: transcript.duration,
 };
-writeFileSync(resolve(ROOT, "var/demo/qa-results.json"), JSON.stringify({ summary, rows }, null, 2) + "\n");
+writeFileSync(resolve(ROOT, outFile.replace(/^docs\/demo\//, "var/demo/").replace(/\.md$/, ".json")), JSON.stringify({ summary, rows }, null, 2) + "\n");
 
 const yn = (v) => (v === null ? "" : v ? "yes" : "no");
+const falseDeclines = rows.filter((x) => x.kind !== "uncovered" && x.declined);
 const md = [
-  "# Demo Q&A: evaluation results",
+  `# ${title}`,
   "",
-  "The 30 questions in [qa-questions.json](qa-questions.json) were committed before the index",
-  "was built. They were run once, on the index the recording built, with the page's own search",
-  "(web/demo/search.mjs, BM25, declining when the best passage covers less than",
-  `${String(DECLINE_BELOW)} of the question's idf weight). Nothing was tuned on them. This file is`,
-  "written by `node web/demo/eval-qa.mjs`.",
+  `Questions: [${qFile.replace(/^docs\/demo\//, "")}](${qFile.replace(/^docs\/demo\//, "")}), committed before the code`,
+  "they evaluate, run once with the page's own search (web/demo/search.mjs: BM25; it declines",
+  `when the best passage covers less than ${String(DECLINE_BELOW)} of the question's idf weight, a word in`,
+  "no passage weighing as BM25's idf for df = 0). Nothing was tuned on them. Written by",
+  "`node web/demo/eval-qa.mjs`.",
   "",
-  "| Set | Questions | Top-1 hit | Top-3 hit | Declined |",
-  "|---|---:|---:|---:|---:|",
-  `| Answerable from one source | ${String(summary.answerable.n)} | ${String(summary.answerable.top1)} | ${String(summary.answerable.top3)} | ${String(rows.filter((x) => x.kind === "answerable" && x.declined).length)} |`,
-  `| Needing two sources (top-3: both present) | ${String(summary.two_source.n)} | ${String(summary.two_source.top1)} | ${String(summary.two_source.top3_both)} | ${String(rows.filter((x) => x.kind === "two_source" && x.declined).length)} |`,
-  `| Not covered (should be declined) | ${String(summary.uncovered.n)} | | | ${String(summary.uncovered.declined)} correctly declined |`,
+  "Hits. One-source: top-1 = the first passage is from an expected source; top-3 = any of the",
+  "top 3 is. Two-source: top-1 = the first passage is from either expected source; top-3 =",
+  "both expected sources are in the top 3 (stricter). A declined question is no hit.",
+  "",
+  "| Set | Questions | Top-1 hits | Top-3 hits | False declines | Correct declines |",
+  "|---|---:|---:|---:|---:|---:|",
+  ...(summary.answerable.n
+    ? [`| Answerable from one source | ${String(summary.answerable.n)} | ${String(summary.answerable.top1)} | ${String(summary.answerable.top3)} | ${String(rows.filter((x) => x.kind === "answerable" && x.declined).length)} | |`]
+    : []),
+  ...(summary.two_source.n
+    ? [`| Needing two sources | ${String(summary.two_source.n)} | ${String(summary.two_source.top1)} (first from either) | ${String(summary.two_source.top3_both)} (both in top 3) | ${String(rows.filter((x) => x.kind === "two_source" && x.declined).length)} | |`]
+    : []),
+  `| Not covered | ${String(summary.uncovered.n)} | | | | ${String(summary.uncovered.declined)} |`,
+  "",
+  `False declines (answerable, but declined): ${falseDeclines.map((x) => x.id).join(", ") || "none"}.`,
   "",
   `The index holds ${String(summary.passages)} passages (transcript segments and document sections).`,
   "",
@@ -88,5 +109,5 @@ const md = [
 ];
 const text = md.join("\n");
 if (text.includes(String.fromCodePoint(0x2014))) throw new Error("an em dash in the results");
-writeFileSync(resolve(ROOT, "docs/demo/qa-results.md"), text);
+writeFileSync(resolve(ROOT, outFile), text);
 process.stdout.write(JSON.stringify(summary, null, 2) + "\n");

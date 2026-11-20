@@ -34,6 +34,7 @@ export const DECLINE_BELOW: number;
 export const TOP: number;
 export function tokens(text: string): string[];
 export function buildIndex(passages: Passage[]): Index;
+export function unseenIdf(index: Index): number;
 export function coverage(index: Index, doc: Indexed, query: string[]): number;
 export function search(
   index: Index,

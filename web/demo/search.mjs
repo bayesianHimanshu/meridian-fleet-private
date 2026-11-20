@@ -1,10 +1,16 @@
 // The demo page's question box: retrieval, not generation (docs/demo/README.md). Passages
 // are transcript segments (with their times) and sections of the project's documents. A
 // question is scored with BM25 over the passages. The page declines when the best passage
-// covers less than half of the question's weight (each word weighted by how rare it is in
-// the passages). The threshold, 0.5, was fixed before the evaluation questions were run,
-// and was not changed after. This one file is used by the page (inlined), by the index
-// builder and by the evaluation, so all three use the same code.
+// covers less than half of the question's weight, each word weighted by how rare it is in
+// the passages (its BM25 idf).
+//
+// Run 2 (the decline rule fixed on principle): a word that appears in no passage counts
+// too, at the idf BM25 gives a word with no passage (df = 0), the rarest weight there is. A
+// question about something the project never mentions ("Snowflake", "half-life") now
+// carries weight that no passage can cover. Run 1 gave such words no weight, so "Azure"
+// could not lower the coverage. The threshold stays 0.5, set before run 2 and not changed
+// after. This one file is used by the page (inlined), by the index builder and by the
+// evaluation, so all three use the same code.
 
 export const K1 = 1.2;
 export const B = 0.75;
@@ -62,10 +68,18 @@ function score(index, doc, query) {
   return s;
 }
 
-/** The weight of the question's words that a passage contains, out of all its weight. */
+/** The idf of a word in no passage: BM25's idf with df = 0. */
+export function unseenIdf(index) {
+  const n = index.docs.length;
+  return Math.log(1 + (n + 0.5) / 0.5);
+}
+
+/** The weight of the question's words that a passage contains, out of all its weight;
+ * a word in no passage weighs unseenIdf and can never be covered. */
 export function coverage(index, doc, query) {
   const unique = [...new Set(query)];
-  const total = unique.reduce((s, w) => s + (index.idf[w] ?? 0), 0);
+  const unseen = unseenIdf(index);
+  const total = unique.reduce((s, w) => s + (index.idf[w] ?? unseen), 0);
   if (total === 0) return 0;
   return unique.reduce((s, w) => s + (doc.tf[w] ? (index.idf[w] ?? 0) : 0), 0) / total;
 }

@@ -18,12 +18,14 @@ from typing import Any
 
 from meridian.demo import cards, tts
 from meridian.demo.script import EM_DASH, Scene, as_json, load
+from meridian.domain.identity import operator_id
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
 from meridian.platform.clock import SystemClock
 from meridian.platform.config import DEFAULT_FINDING_ID_PREFIXES
 
 OUT = Path("var/demo")
+RECORDER = operator_id("demo-recorder")
 LEAK_FILE = Path("var/leakcheck/kind-20261119T202520Z.json")
 PHASE4B = Path("docs/phase4b-summary.md")
 FPS = 30
@@ -187,6 +189,9 @@ def prepare(
     plan["script"] = as_json(scenes)
     plan["ledger_copy"] = asdict(report)
     plan["voice"] = tts.settings_key(voice_sha)
+    # The identity of the recorder's one write attempt (refused): an operator, made like
+    # every other operator id, never a person (meridian.domain.identity).
+    plan["recorder_identity"] = RECORDER
     (out / "plan.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     (out / "captions.vtt").write_text(captions(plan), encoding="utf-8")
     (out / "transcript.json").write_text(

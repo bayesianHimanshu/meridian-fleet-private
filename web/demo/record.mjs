@@ -5,8 +5,8 @@
 // ledger copy and script give the same frames, whatever the machine's speed.
 //
 // It never writes: the API it reads runs with --demo-read-only against a copy of the
-// ledger, and once, during scene 3, the recorder makes a real decision request that must
-// be refused with 403. The time and the response go to var/demo/frames/proof.json. Forms
+// ledger, and once, during scene 3, the recorder makes a real decision request, as the
+// operator operator:demo-recorder (never a person), that must be refused with 403. The time and the response go to var/demo/frames/proof.json. Forms
 // are never submitted.
 import { chromium } from "@playwright/test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -156,14 +156,18 @@ const h = {
   },
   /** The proof of the read-only mode: a real decision request, refused with 403. */
   async proveReadOnly(sceneStart) {
+    // As an operator (plan.recorder_identity, operator:demo-recorder), never as a person:
+    // a tool never calls the API under a person's name, even when the call is refused.
+    const actor = plan.recorder_identity;
+    if (!actor?.startsWith("operator:")) throw new Error(`not an operator identity: ${String(actor)}`);
     const response = await page.request.post(`${BASE}/api/v1/findings/RBQM-0134/decisions`, {
-      headers: { "X-Meridian-Actor": "asha.rao", "X-Meridian-Role": "clinical_ops_lead" },
+      headers: { "X-Meridian-Actor": actor },
       data: { action: "accepted" },
     });
     const proof = {
       attempted_at: new Date().toISOString(),
       video_time: sceneStart,
-      request: "POST /api/v1/findings/RBQM-0134/decisions as asha.rao (clinical_ops_lead)",
+      request: `POST /api/v1/findings/RBQM-0134/decisions as ${actor} (no role)`,
       status: response.status(),
       mode: response.headers()["x-meridian-mode"] ?? null,
       body: await response.json(),

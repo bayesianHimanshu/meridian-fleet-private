@@ -65,3 +65,35 @@ def test_without_the_flag_a_write_is_not_refused_by_the_mode(fx: Fixture) -> Non
     r = fx.client().post(WRITES[0][0], json=WRITES[0][1], headers=headers(Role.CLINICAL_OPS_LEAD))
     assert r.status_code == 201
     assert MODE_HEADER not in r.headers
+
+
+@pytest.mark.parametrize(
+    "who",
+    [
+        {"X-Meridian-Actor": "operator:demo-recorder"},
+        headers(Role.CLINICAL_OPS_LEAD),
+        {},
+    ],
+    ids=["operator", "person", "no identity"],
+)
+def test_the_gate_refuses_whoever_asks(fx: Fixture, tmp_path: Path, who: dict[str, str]) -> None:
+    """The demo's proof write does not depend on who sends it: the gate runs before
+    identity is checked, so an operator, a person and no identity at all all get 403."""
+    log = tmp_path / "r.jsonl"
+    client = TestClient(create_app(fx.context(), read_only_log=log))
+    before = _sha(fx.context().ledger_path)
+    r = client.post(WRITES[0][0], json=WRITES[0][1], headers=who)
+    assert r.status_code == 403
+    assert r.json()["detail"] == "read-only demo mode: nothing can be recorded"
+    assert _sha(fx.context().ledger_path) == before
+    (row,) = [json.loads(line) for line in log.read_text().splitlines()]
+    assert row["actor"] == who.get("X-Meridian-Actor")
+
+
+def test_the_recorder_identity_is_an_operator_not_a_person() -> None:
+    from meridian.demo.pipeline import RECORDER
+    from meridian.domain.identity import is_operator, operator_id, people_ids
+
+    assert RECORDER == operator_id("demo-recorder") == "operator:demo-recorder"
+    assert is_operator(RECORDER)
+    assert RECORDER not in people_ids(Path("config/people.toml"))

@@ -223,12 +223,14 @@ while closing the project.
   - *First step:* apply the display rule on the ledger page's payload view too, marked as
     a display.
 
-- **The demo's question box declines too rarely (demo).**
-  - *Why:* 1 of 5 uncovered questions was declined. Words that appear in no passage carry
-    no weight in the coverage rule, so "Azure" or "Okta" cannot lower it
+- **The demo's question box: decline rule (demo).**
+  - *Status:* run 2 fixed the flaw found in run 1. A word in no passage now counts towards
+    a decline, and 10 of 10 held-out uncovered questions were declined. The price is false
+    declines: 6 of the original 25 answerable questions and 1 of the 10 held-out ones
     (docs/demo/README.md).
-  - *First step:* give unknown words a typical idf in the coverage, and measure it on a new
-    question set written before the change. The committed set has been used.
+  - *First step:* fold common words (calculate, compare, recorded) to a shared stem, or
+    weigh unseen words by a general English frequency list. Measure on a third set,
+    written before the change.
 
 ## Data
 
