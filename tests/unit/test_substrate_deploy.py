@@ -23,3 +23,17 @@ def test_wait_pool_waits_for_the_controller_to_create_the_deployment() -> None:
         "get",
         "rollout",
     ]
+
+
+def test_a_deploy_without_a_labelled_node_says_how_to_label_one() -> None:
+    import pytest
+
+    from meridian.sandbox.substrate_deploy import DeployError, require_worker_node
+
+    label = "meridian.dev/pool=substrate"
+    with pytest.raises(DeployError, match=r"label node kind-control-plane meridian\.dev/pool"):
+        require_worker_node("kubectl", "kind-kind", label, run=lambda argv: "")
+    found = require_worker_node(
+        "kubectl", "kind-kind", label, run=lambda argv: "node/kind-control-plane\n"
+    )
+    assert found == "node/kind-control-plane"

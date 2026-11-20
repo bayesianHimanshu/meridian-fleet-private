@@ -200,6 +200,23 @@ def apply_pool(kubectl: str, context: str, pool_file: Path) -> None:
     _run([kubectl, "--context", context, "apply", "-f", str(pool_file)])
 
 
+def require_worker_node(
+    kubectl: str, context: str, label: str, run: Callable[..., str] | None = None
+) -> str:
+    """The WorkerPool's nodeSelector is the worker label (config [substrate]
+    worker_node_label): with no node carrying it, no worker is ever scheduled and the
+    rollout waits in vain (the fresh-clone check of the wrap-up: a new kind install has no
+    such label)."""
+    out = (run or _run)([kubectl, "--context", context, "get", "nodes", "-l", label, "-o", "name"])
+    nodes = [line for line in out.splitlines() if line.strip()]
+    if not nodes:
+        raise DeployError(
+            f"no node carries the worker label {label}; on kind: kubectl --context {context} "
+            f"label node kind-control-plane {label}"
+        )
+    return nodes[0]
+
+
 def wait_pool(
     kubectl: str,
     context: str,

@@ -128,6 +128,8 @@ def substrate_deploy(
     with Container.build(settings) as c:
         try:
             c.check_substrate_release()
+            if s.target == "kind":  # GKE's Spot pool scales from zero nodes
+                d.require_worker_node(s.kubectl, s.context, s.worker_node_label)
             commit = d.require_clean_source(image.inspect(c.image_ref()))
             typer.echo(f"{c.image_ref()} was built from {commit} (clean)")
             if s.target == "kind":

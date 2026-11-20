@@ -160,10 +160,12 @@ uv run meridian safety generate              # the synthetic safety database for
 uv run meridian tmf generate                 # the synthetic eTMF index for each cut
 ```
 
-**4. The agent image and the deployment.**
+**4. The agent image and the deployment.** Workers run only on a node with the label
+`meridian.dev/pool=substrate`, which a new kind install lacks:
 
 ```sh
 uv run meridian image build                  # docker build from a clean tree; prints the digest
+kubectl --context kind-kind label node kind-control-plane meridian.dev/pool=substrate --overwrite
 uv run meridian dispatcher token             # the shared token: ~/.config/meridian/dispatcher.token (0600)
 uv run meridian substrate deploy             # image to the kind registry, WorkerPool, atespace, templates
 uv run meridian dispatcher deploy            # the dispatcher, the only member of the atespace
