@@ -41,6 +41,10 @@ class FindingKind(StrEnum):
     MONITORING_RECOMMENDATION = "monitoring_recommendation"
     # Phase 5 step 3a: a signal of disproportionate reporting in public FAERS data.
     REPORTING_SIGNAL = "reporting_signal"
+    # Phase 5 step 3b: report kinds. An agent returns them as drafts; the runner records
+    # a PortfolioOutlook or GatePack event, never a finding.
+    PORTFOLIO_OUTLOOK = "portfolio_outlook"
+    GATE_PACK = "gate_pack"
 
 
 class EventType(StrEnum):
@@ -60,6 +64,13 @@ class EventType(StrEnum):
     NOAEL_DECISION = "noael_decision"
     INVENTORY_LOADED = "inventory_loaded"
     SIGNAL_SCAN_REQUESTED = "signal_scan_requested"
+    # Phase 5 step 3b.
+    ATTRIBUTION_CORRECTION = "attribution_correction"
+    PORTFOLIO_REVIEW_REQUESTED = "portfolio_review_requested"
+    PORTFOLIO_OUTLOOK = "portfolio_outlook"
+    GATE_REQUEST = "gate_request"
+    GATE_PACK = "gate_pack"
+    GATE_DECISION = "gate_decision"
 
 
 class DecisionAction(StrEnum):

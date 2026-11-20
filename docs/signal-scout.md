@@ -189,3 +189,125 @@ SignalScanRequested (seq 19985) records the medical monitor as having asked for 
 not: Claude Code started it while building this step. The default, `meridian.signals`,
 was the right value. The ledger is append-only, so the event stays as it is; this note is
 the correction. No decision was recorded on any signal.
+
+## 1.0.1, pre-registered before its code and before it is run (phase 5 step 3b)
+
+Written on 20 Nov 2026, after 1.0.0's 76 signals were seen (the table above): the lists
+below were chosen knowing which terms 1.0.0 called signals, and that is said plainly
+here. Nothing in the statistics or the signal rule changes.
+
+### Retry
+
+openFDA answers throttling either as HTTP 429 or, as it did four times in 1.0.0, as HTTP
+500 with `"error": {"code": "SERVER_ERROR", "details": "Too Many Requests"}`. 1.0.1 retries
+both, and nothing else, after 2, 4, 8 and 16 seconds (four retries, then the term is
+reported as not answered, as before). Every attempt counts toward max_requests (900). Every
+attempt's response is kept, so a replay sees the same answers.
+
+### Rerunning on recorded responses
+
+A scan may name an earlier scan whose responses it reuses (`reuses_responses_of` on
+SignalScanRequested). The worker then requests only the queries of the plan that the
+earlier scan has no 200 answer for, with the retry above, and runs on the earlier
+answers plus the new ones. Every new answer must carry the earlier scan's data date
+(`meta.last_updated`); if openFDA's data has moved on, the run fails and a full scan is
+needed. The 1.0.1 rerun reuses scan seq 19985 (data date 2026-10-28; still openFDA's date
+on 20 Nov 2026) and asks again for DRUG INTERACTION, HICCUPS, HYPERSEXUALITY and
+INABILITY TO AFFORD MEDICATION.
+
+### Context, as evidence on every signal
+
+1. FAERS reports here concern COBENFY: oral xanomeline with trospium chloride. COBENFY
+   label 12.1: "Trospium chloride is a muscarinic antagonist." Label 5.8: "anticholinergic
+   adverse reactions (including dry mouth, constipation, dyspepsia, urinary tract
+   infection, and urinary retention)". Anticholinergic terms (urinary retention, dry mouth,
+   constipation and the like) are likely explained by trospium.
+2. COBENFY is "indicated for the treatment of schizophrenia in adults" (label 1). MRD-201 is
+   transdermal xanomeline alone in mild to moderate Alzheimer's disease
+   (config/portfolio.toml). Route, combination and population all differ.
+3. On an indication term (below): reported with a drug for schizophrenia, it is confounded
+   by indication, the illness being treated rather than an effect of the drug.
+
+### Triage (our choice)
+
+Every signal by the unchanged rule gets one tier, the first that applies:
+
+| Tier | Rule | In the review queue |
+|---|---|---|
+| listed | named in the label text (exact phrase, after the spelling rules below) | no |
+| indication | an indication term | no |
+| use | a term about use, effect or supply, not a clinical event | no |
+| weak | lower 95% confidence limit of the PRR at most 2, or fewer than 10 reports | no |
+| priority | everything else: lower limit above 2, at least 10 reports | **yes, as a finding** |
+
+Only priority signals become findings (kind reporting_signal, decided by the medical
+monitor). The other tiers stay on the Safety signals view, with their tier.
+
+**Indication terms** (schizophrenia, its spectrum, and DSM-5 criterion A symptoms:
+delusions, hallucinations, disorganized speech or thinking, disorganized or catatonic
+behaviour, negative symptoms), as MedDRA preferred terms: SCHIZOPHRENIA, SCHIZOAFFECTIVE
+DISORDER, PSYCHOTIC DISORDER, PSYCHIATRIC DECOMPENSATION, PSYCHIATRIC SYMPTOM, DELUSION,
+PARANOIA, HALLUCINATION, HALLUCINATION, AUDITORY, HALLUCINATION, VISUAL, THINKING
+ABNORMAL, TACHYPHRENIA, SOLILOQUY, CATATONIA, BLUNTED AFFECT, INAPPROPRIATE AFFECT, APATHY,
+NEGATIVE THOUGHTS, INTRUSIVE THOUGHTS. Source for the symptom domains: American
+Psychiatric Association, DSM-5 (2013), Schizophrenia, criterion A. The label also names
+hallucinations among trospium's anticholinergic CNS effects (5.9); these terms stay visible
+as indication-tier, not hidden.
+
+**Use terms** (our choice): TREATMENT NONCOMPLIANCE, LOSS OF THERAPEUTIC RESPONSE, THERAPY
+NON-RESPONDER, DRUG INEFFECTIVE, ADVERSE EVENT, DRUG SCREEN POSITIVE, PRODUCT SUPPLY ISSUE,
+INABILITY TO AFFORD MEDICATION, DRUG INTERACTION.
+
+**Spelling rules for the label comparison** (MedDRA uses British spelling, the label
+American): "oesophag" as "esophag", "haem" as "hem", "oedema" as "edema", "diarrhoea" as
+"diarrhea", "behaviour" as "behavior"; and one synonym the label itself uses in 6.1:
+GASTROOESOPHAGEAL REFLUX DISEASE as "gastrointestinal reflux disease".
+
+### Expected
+
+From 1.0.0's table, with these rules and before the rerun: priority are VOMITING
+PROJECTILE, MANIA, HYPERHIDROSIS, GASTROINTESTINAL DISORDER, SEDATION, ANGER, HYPERSOMNIA,
+BRAIN FOG and COLD SWEAT (9), plus any of the four retried terms that qualify. 1.0.0's 76
+findings leave the queue by the existing per-scan rule: superseded where 1.0.1 raises the
+same term on the new scan, retired otherwise.
+
+## 1.0.1, as it came out (20 Nov 2026)
+
+Image from `1ac4bb8` (clean). portfolio_signal conformance passed (twice; the second run
+was started by mistake). `meridian signals scan --reuse 19985`: SignalScanRequested seq
+20105, scan SCAN-20261119T223555Z (the host clock's UTC), requested by operator:himanshu,
+in the OpenShell sandbox.
+
+- 4 queries asked again (DRUG INTERACTION, HICCUPS, HYPERSEXUALITY, INABILITY TO AFFORD
+  MEDICATION): each answered 200 on the first try, data date 2026-10-28. The retry was
+  not needed live; it is tested only on a fake.
+- 258 responses (254 reused, 4 new); **250 terms tested, none unanswered; 78 signals**
+  (76 as before, plus HICCUPS, a = 4, PRR 3.71, and HYPERSEXUALITY, a = 4, PRR 16.7, both
+  weak). DRUG INTERACTION (PRR 0.38) and INABILITY TO AFFORD MEDICATION (chi-squared 3.7)
+  are not signals.
+- Tiers: listed 20 (GASTROOESOPHAGEAL REFLUX DISEASE now matches the label's
+  "gastrointestinal reflux disease"), indication 18, use 6, weak 25, **priority 9**:
+  exactly the 9 pre-registered.
+
+| Priority signal | a | PRR (95% CI) | ROR | Chi-squared |
+|---|---:|---|---:|---:|
+| vomiting projectile | 10 | 26.37 (14.19 to 49.01) | 26.46 | 218.6 |
+| mania | 23 | 10.64 (7.08 to 15.99) | 10.72 | 191.3 |
+| brain fog | 12 | 5.82 (3.31 to 10.24) | 5.84 | 43.2 |
+| sedation | 20 | 5.81 (3.75 to 8.99) | 5.84 | 74.9 |
+| hyperhidrosis | 97 | 5.73 (4.71 to 6.96) | 5.90 | 375.8 |
+| gastrointestinal disorder | 62 | 5.26 (4.12 to 6.73) | 5.36 | 210.7 |
+| cold sweat | 12 | 5.18 (2.94 to 9.11) | 5.19 | 36.4 |
+| anger | 18 | 4.05 (2.55 to 6.42) | 4.07 | 38.4 |
+| hypersomnia | 15 | 3.98 (2.40 to 6.59) | 4.00 | 30.6 |
+
+- `meridian signals replay --trigger 20105`: 9 drafts, sha256 `93f697211ed77615`,
+  identical.
+- 1.0.0's 76 findings: 9 superseded by 1.0.1's on the new scan, 67 retired. The medical
+  monitor's review queue: **76 before, 9 after** (all reporting signals). The portfolio
+  lead's: 175 before, 108 after.
+
+Not every priority signal is new to a reader of the label. Sedation is close to the
+label's somnolence, and vomiting projectile to vomiting. The exact-phrase rule (with
+spellings and one synonym) does not equate them; the medical monitor will see both side
+by side.

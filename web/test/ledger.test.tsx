@@ -55,3 +55,30 @@ describe("ledger names", () => {
     expect(screen.getByText("by system.ingest")).toBeTruthy();
   });
 });
+
+describe("ledger corrections", () => {
+  it("shows an attribution correction with the event it corrects", async () => {
+    const scan: Schemas["Event"] = {
+      seq: 11, event_id: "01a1b4f9-eca2-7056-afce-1ce6e01e9117", occurred_at: "2026-11-19T21:16:57Z",
+      recorded_at: "2026-11-19T21:16:57Z", actor: "meridian.signals", study_id: "MRD-201", visibility: "blinded",
+      payload: { type: "signal_scan_requested", study_id: "MRD-201", scan_id: "SCAN-20261119T211657Z",
+                 requested_by: "karan.mehta", reuses_responses_of: null },
+      prev_hash: "a".repeat(64), hash: "b".repeat(64),
+    };
+    const correction: Schemas["CorrectionView"] = {
+      seq: 12, corrects_seq: 11, field: "requested_by", recorded_value: "karan.mehta",
+      true_value: "operator:himanshu", explanation: "Started from the CLI by the coding agent.",
+      corrected_by: "operator:himanshu", recorded_at: "2026-11-20T10:00:00Z",
+    };
+    server.use(
+      http.get(`${BASE}/ledger`, () =>
+        HttpResponse.json({ ...ledgerPage, entries: [scan, ...ledgerPage.entries], corrections: { "11": [correction] } }),
+      ),
+    );
+    renderApp("/ledger", "karan.mehta");
+    expect(await screen.findByText(/Signal scan SCAN-20261119T211657Z for MRD-201, requested by karan.mehta/)).toBeTruthy();
+    const note = screen.getByTestId("correction-note");
+    expect(note.textContent).toContain("Attribution corrected at seq 12");
+    expect(note.textContent).toContain("records requested_by as karan.mehta; in fact operator:himanshu");
+  });
+});

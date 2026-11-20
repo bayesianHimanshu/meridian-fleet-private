@@ -540,11 +540,196 @@ class SignalScanRequested(BaseModel):
     study_id: StudyId
     scan_id: Annotated[str, Field(pattern=r"^SCAN-[0-9]{8}T[0-9]{6}Z$")]
     requested_by: ActorId
+    # Phase 5 step 3b: the seq of an earlier scan whose recorded responses this one reuses;
+    # only the queries it has no 200 answer for are asked again (docs/signal-scout.md).
+    reuses_responses_of: PositiveInt | None = None
 
 
 # A scan's cut id is its scan_id: the live public data at that time, never an evaluation
 # copy, so operational wherever cuts are scoped.
 SCAN_CUT_PREFIX = "SCAN-"
+
+
+class AttributionCorrection(BaseModel):
+    """A correction of who an earlier event says acted (phase 5 step 3b). The ledger is
+    append-only: the corrected event stays as recorded, and this says what it recorded,
+    what is true, who corrects it and why. corrected_by is an operator, never a person
+    acting outside the API."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.ATTRIBUTION_CORRECTION] = EventType.ATTRIBUTION_CORRECTION
+    corrects_seq: PositiveInt
+    field: Annotated[str, Field(min_length=1, max_length=64)]  # for example requested_by
+    recorded_value: Annotated[str, Field(min_length=1, max_length=128)]
+    true_value: Annotated[str, Field(min_length=1, max_length=128)]
+    explanation: Annotated[str, Field(min_length=20, max_length=2000)]
+    corrected_by: ActorId
+
+
+_STAMP = r"[0-9]{8}T[0-9]{6}Z$"
+REVIEW_PREFIX = "REVIEW-"  # a portfolio review's cut id (operational)
+GATE_PREFIX = "GATE-"  # a gate request's cut id (operational)
+
+
+class PortfolioReviewRequested(BaseModel):
+    """The trigger of portfolio.pipeline_intelligence (phase 5 step 3b): asked for by the
+    portfolio lead through the API (reason requested), or monthly (reason scheduled,
+    requested_by system.schedule, period YYYY-MM). review_id names the review's cut."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.PORTFOLIO_REVIEW_REQUESTED] = EventType.PORTFOLIO_REVIEW_REQUESTED
+    review_id: Annotated[str, Field(pattern=r"^REVIEW-" + _STAMP)]
+    requested_by: ActorId
+    reason: Literal["requested", "scheduled"]
+    period: Annotated[str, Field(pattern=r"^[0-9]{4}-[0-9]{2}$")] | None = None
+    note: Annotated[str, Field(max_length=500)] | None = None
+
+
+def portfolio_study(trigger: Event) -> str:
+    """The study id of a portfolio run: PORTFOLIO for a review, the asset for a gate."""
+    p = trigger.payload
+    if isinstance(p, GateRequest):
+        return p.asset_id
+    return "PORTFOLIO"
+
+
+class GateRequest(BaseModel):
+    """The trigger of portfolio.stage_gate_pack (phase 5 step 3b): the portfolio lead asks
+    for the evidence pack of one gate of one asset (config/gates.toml)."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.GATE_REQUEST] = EventType.GATE_REQUEST
+    gate_request_id: Annotated[str, Field(pattern=r"^GATE-" + _STAMP)]
+    asset_id: Annotated[str, Field(min_length=1, max_length=32)]
+    gate: Annotated[str, Field(pattern=r"^[a-z_]{1,64}$")]
+    requested_by: ActorId
+    note: Annotated[str, Field(max_length=500)] | None = None
+
+
+class OutlookFact(BaseModel):
+    model_config = _FROZEN
+
+    key: Annotated[str, Field(min_length=1)]
+    group: Annotated[str, Field(min_length=1)]
+    label: Annotated[str, Field(min_length=1)]
+    value: str
+    status: str
+    seq: PositiveInt | None  # None only for a static fact
+    static: bool = False
+
+
+class OutlookRisk(BaseModel):
+    model_config = _FROZEN
+
+    text: Annotated[str, Field(min_length=1)]
+    severity: Severity
+    seqs: tuple[PositiveInt, ...]
+
+
+class AssetOutlook(BaseModel):
+    model_config = _FROZEN
+
+    asset_id: Annotated[str, Field(min_length=1)]
+    status: Literal["on_track", "attention", "at_risk", "static"]
+    static: bool
+    status_text: str
+    facts: tuple[OutlookFact, ...]
+    risks: tuple[OutlookRisk, ...]  # the top risks, most severe first
+    changes: tuple[str, ...]
+
+
+class PortfolioOutlook(BaseModel):
+    """What portfolio.pipeline_intelligence reports (phase 5 step 3b): an event, not a
+    finding. Nothing here is decided by anyone; it is information for the portfolio lead.
+    narrated is never set by this version (no narrator)."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.PORTFOLIO_OUTLOOK] = EventType.PORTFOLIO_OUTLOOK
+    agent_id: str
+    agent_version: str
+    trigger_seq: PositiveInt
+    review_id: str
+    dedup_key: str
+    summary: str
+    previous_outlook_seq: PositiveInt | None
+    assets: tuple[AssetOutlook, ...]
+
+
+class CriterionResult(BaseModel):
+    model_config = _FROZEN
+
+    id: str
+    title: str
+    basis: Literal["regulation", "policy"]
+    source: str | None = None
+    section: str | None = None
+    quote: str | None = None
+    evidence: str
+    status: Literal["met", "not_met", "not_applicable"]
+    explanation: str
+    seqs: tuple[PositiveInt, ...]
+
+
+class OpenItem(BaseModel):
+    model_config = _FROZEN
+
+    criterion_id: str
+    text: str
+    seq: PositiveInt | None = None
+    finding_id: str | None = None
+
+
+class GatePack(BaseModel):
+    """portfolio.stage_gate_pack's evidence pack (phase 5 step 3b): each criterion met, not
+    met or not applicable, with the ledger seqs behind it, and the open items. No verdict:
+    the portfolio lead records a GateDecision."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.GATE_PACK] = EventType.GATE_PACK
+    agent_id: str
+    agent_version: str
+    trigger_seq: PositiveInt
+    gate_request_id: str
+    dedup_key: str
+    asset_id: str
+    gate: str
+    gate_title: str
+    summary: str
+    criteria: tuple[CriterionResult, ...]
+    open_items: tuple[OpenItem, ...]
+
+
+GATE_RATIONALE_MIN = 20
+
+
+class GateDecision(BaseModel):
+    """The portfolio lead's decision on a gate (phase 5 step 3b), through the API only:
+    go, conditional go (with its conditions) or no-go, on a given evidence pack."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.GATE_DECISION] = EventType.GATE_DECISION
+    gate_request_seq: PositiveInt
+    pack_seq: PositiveInt
+    asset_id: str
+    gate: str
+    decision: Literal["go", "conditional_go", "no_go"]
+    conditions: tuple[Annotated[str, Field(min_length=3, max_length=500)], ...] = ()
+    rationale: Annotated[str, Field(min_length=GATE_RATIONALE_MIN, max_length=4000)]
+    decided_by: ActorId
+
+    @model_validator(mode="after")
+    def _conditions(self) -> Self:
+        if self.decision == "conditional_go" and not self.conditions:
+            raise ValueError("a conditional go needs at least one condition")
+        if self.decision != "conditional_go" and self.conditions:
+            raise ValueError("only a conditional go has conditions")
+        return self
 
 
 NOAEL_SEXES = ("M", "F", "combined")
@@ -613,7 +798,13 @@ EventPayload = Annotated[
     | SendStudyLoaded
     | NoaelDecision
     | InventoryLoaded
-    | SignalScanRequested,
+    | SignalScanRequested
+    | AttributionCorrection
+    | PortfolioReviewRequested
+    | GateRequest
+    | PortfolioOutlook
+    | GatePack
+    | GateDecision,
     Field(discriminator="type"),
 ]
 

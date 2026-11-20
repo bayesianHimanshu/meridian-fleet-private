@@ -14,6 +14,7 @@ The extract is written once per review under <audit_root>/<trigger seq>/ and sta
 /stage/audit; the inputs manifest of the run hashes it.
 """
 
+import json
 import re
 from collections.abc import Collection, Sequence
 from pathlib import Path
@@ -28,6 +29,7 @@ from meridian.domain.enums import Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    AttributionCorrection,
     AuditReviewRequested,
     DataCut,
     Event,
@@ -40,6 +42,7 @@ from meridian.domain.events import (
     QualityObservation,
     RedactedEvent,
 )
+from meridian.domain.identity import kind_of
 from meridian.ledger.hashing import format_utc
 
 SUBJECT = re.compile(r"\b\d{3}-\d{4}-\d{3}\b")
@@ -77,15 +80,37 @@ def _about(e: Event) -> tuple[str, ...]:
     return ()
 
 
+ATTRIBUTION_FIELDS = ("requested_by", "decided_by", "raised_by", "corrected_by")
+
+
+def named_actors(p: object) -> list[tuple[str, str]]:
+    """Every payload field that records someone as acting (phase 5 step 3b), in a fixed
+    order: the top-level attribution fields, a decision's actor and a finding's raised_by.
+    Never actor_under_review, which names who is reviewed, not who acted."""
+    out: list[tuple[str, str]] = []
+    for name in ATTRIBUTION_FIELDS:
+        value = getattr(p, name, None)
+        if isinstance(value, str) and value:
+            out.append((name, value))
+    if isinstance(p, HumanDecision):
+        out.append(("decision.actor", p.decision.actor))
+    if isinstance(p, FindingRaised) and p.finding.raised_by:
+        out.append(("finding.raised_by", p.finding.raised_by))
+    return out
+
+
 def extract_rows(
     entries: Sequence[LedgerEntry],
     *,
     from_seq: int,
     through_seq: int,
     operational_cuts: Collection[str],
+    people: Collection[str] = (),
+    agents: Collection[str] = (),
 ) -> list[dict[str, Any]]:
     """The extract of seq from_seq through through_seq. entries: the ledger read with full
-    access (restricted events unredacted), in seq order."""
+    access (restricted events unredacted), in seq order. people and agents: the person and
+    agent ids, for each actor's kind (phase 5 step 3b)."""
     operational = set(operational_cuts)
     restricted_findings = {
         e.payload.finding.finding_id
@@ -124,6 +149,12 @@ def extract_rows(
             continue
         p = e.payload
         row[a.ACTOR] = e.actor
+        row[a.ENVELOPE_ACTOR] = e.actor
+        row[a.ENVELOPE_KIND] = kind_of(e.actor, people, agents)
+        named = [[k, v, kind_of(v, people, agents)] for k, v in named_actors(p)]
+        row[a.NAMED] = json.dumps(named) if named else None
+        if isinstance(p, AttributionCorrection):
+            row[a.CORRECTS_SEQ] = p.corrects_seq
         if isinstance(p, DataCut):
             row[a.CUT_ID] = p.cut_id
             row[a.CUT_SCOPE] = scope(p.cut_id)

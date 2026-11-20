@@ -14,7 +14,7 @@ import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -43,6 +43,7 @@ from meridian.api.models import (
     CheckCount,
     ContainmentCheckView,
     ContainmentView,
+    CorrectionView,
     CutKind,
     CutScope,
     CutSummary,
@@ -58,6 +59,13 @@ from meridian.api.models import (
     FindingSummary,
     Fleet,
     FleetAgent,
+    GateCriterionDef,
+    GateDecisionBody,
+    GateDecisionView,
+    GateDef,
+    GateRequestBody,
+    GateRequestView,
+    GatesView,
     IndReadinessView,
     LabelReaction,
     LatestNarrative,
@@ -75,6 +83,7 @@ from meridian.api.models import (
     ObservationItem,
     ObservationRequest,
     ObservationResponse,
+    OutlookView,
     Portfolio,
     PortfolioAsset,
     PreclinicalEndpoints,
@@ -84,11 +93,14 @@ from meridian.api.models import (
     RbqmSites,
     RecommendationView,
     Reconciliation,
+    Recorded,
     RequirementView,
     ReviewQueue,
+    ReviewRequest,
     RunEvent,
     RunTrace,
     SafetySignalsView,
+    ScanSummary,
     SignalRow,
     SiteFlag,
     StartingDose,
@@ -107,10 +119,13 @@ from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import make_dedup_key, parse_dedup_key
 from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
+    GATE_PREFIX,
     INVENTORY_CUT_PREFIX,
+    REVIEW_PREFIX,
     SCAN_CUT_PREFIX,
     ActorSuspended,
     ActorWoke,
+    AttributionCorrection,
     ContainmentCheckCompleted,
     DataCut,
     Event,
@@ -118,10 +133,15 @@ from meridian.domain.events import (
     FindingAssessment,
     FindingNarrative,
     FindingRaised,
+    GateDecision,
+    GatePack,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     LedgerEntry,
     NoaelDecision,
+    PortfolioOutlook,
+    PortfolioReviewRequested,
     QualityObservation,
     SendStudyLoaded,
     SignalScanRequested,
@@ -138,6 +158,7 @@ from meridian.platform.agent_settings import (
 )
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
+from meridian.portfolio.gates import Gates
 from meridian.preclinical import readiness
 from meridian.preclinical.readiness import INVENTORY_TABLE
 from meridian.sandbox.policies import (
@@ -189,6 +210,21 @@ class _Raised:
     dedup_key: str
 
 
+def correction_view(e: Event) -> CorrectionView:
+    p = e.payload
+    assert isinstance(p, AttributionCorrection)
+    return CorrectionView(
+        seq=e.seq,
+        corrects_seq=p.corrects_seq,
+        field=p.field,
+        recorded_value=p.recorded_value,
+        true_value=p.true_value,
+        explanation=p.explanation,
+        corrected_by=p.corrected_by,
+        recorded_at=e.recorded_at,
+    )
+
+
 @dataclass(slots=True)
 class Snapshot:
     """The ledger as one role sees it, indexed."""
@@ -202,6 +238,9 @@ class Snapshot:
     inventory_loads: dict[int, tuple[str, str]] = field(default_factory=dict)
     # Signal scans (phase 5 step 3a): trigger seq -> scan id.
     scans: dict[int, str] = field(default_factory=dict)
+    scan_events: dict[int, SignalScanRequested] = field(default_factory=dict)
+    # Phase 5 step 3b: AttributionCorrections by the seq they correct.
+    corrections: dict[int, list[Event]] = field(default_factory=lambda: defaultdict(list))
     cut_events: dict[int, Event] = field(default_factory=dict)
     raised: dict[str, _Raised] = field(default_factory=dict)
     narratives: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
@@ -243,6 +282,9 @@ class Snapshot:
                 snap.inventory_loads[shown.seq] = (p.asset_id, p.cut_id)
             elif isinstance(p, SignalScanRequested):
                 snap.scans[shown.seq] = p.scan_id
+                snap.scan_events[shown.seq] = p
+            elif isinstance(p, AttributionCorrection):
+                snap.corrections[p.corrects_seq].append(shown)
             elif isinstance(p, FindingRaised):
                 if p.finding.finding_id is not None and visibility.can_see_finding(role, p.finding):
                     parts = parse_dedup_key(p.dedup_key)
@@ -718,7 +760,10 @@ class Repository:
         ind_config: IndReadinessConfig | None = None,
         signal_responses: Callable[[int], pl.DataFrame | None] | None = None,
         signal_config: SignalScoutConfig | None = None,
+        gates: Gates | None = None,
     ) -> None:
+        # Phase 5 step 3b: the stage gates (config/gates.toml), for gate requests.
+        self._gates = gates
         # Phase 5 step 3a: a scan's kept openFDA responses, and the scout's config.
         self._signal_responses = signal_responses
         self._signal_config = signal_config
@@ -750,11 +795,26 @@ class Repository:
     def scope(self, cut_id: str) -> CutScope:
         """A data cut's scope. Findings about the ledger itself (audit findings, QA
         observations; cut "LEDGER") are about the live study: operational."""
-        if cut_id == LEDGER_SCOPE or cut_id.startswith((INVENTORY_CUT_PREFIX, SCAN_CUT_PREFIX)):
+        if cut_id == LEDGER_SCOPE or cut_id.startswith(
+            (INVENTORY_CUT_PREFIX, SCAN_CUT_PREFIX, REVIEW_PREFIX, GATE_PREFIX)
+        ):
             return "operational"
         return "operational" if cut_id in self._operational else "evaluation"
 
     # ---- reading
+
+    @property
+    def study_id(self) -> str:
+        return self._study_id
+
+    def preclinical_assets(self) -> Mapping[str, str]:
+        """Preclinical asset id to its SEND study id."""
+        return dict(self._preclinical_assets)
+
+    def noael_views(self, study_id: str) -> list[NoaelDecisionView]:
+        """A study's NOAEL decisions as this role sees them (preclinical roles only)."""
+        self._require_preclinical()
+        return self._noael_views(study_id)
 
     def snapshot(self) -> Snapshot:
         if self._snapshot is None:
@@ -1049,11 +1109,27 @@ class Repository:
                 entries=page_desc,
                 next_since=None,
                 next_before=page_desc[-1].seq if more_older and page_desc else None,
+                corrections=self._corrections_of(page_desc, snap),
             )
         shown = [shown_as(e) for e in entries[: limit + 1]]
         more = len(shown) > limit
         page = shown[:limit]
-        return LedgerPage(entries=page, next_since=page[-1].seq if more and page else None)
+        return LedgerPage(
+            entries=page,
+            next_since=page[-1].seq if more and page else None,
+            corrections=self._corrections_of(page, snap),
+        )
+
+    @staticmethod
+    def _corrections_of(
+        page: Sequence[LedgerEntry], snap: Snapshot
+    ) -> dict[int, list[CorrectionView]]:
+        """The corrections of the events shown in full on a page (phase 5 step 3b)."""
+        return {
+            e.seq: [correction_view(c) for c in snap.corrections[e.seq]]
+            for e in page
+            if isinstance(e, Event) and snap.corrections.get(e.seq)
+        }
 
     def verify(self) -> VerifyReport:
         report = verify(self._ledger)
@@ -2424,7 +2500,12 @@ class Repository:
         """The latest completed scan of openFDA for the study's drug: every tested term,
         the signals with their findings, and the label comparison. Shown to the scout's
         roles (the medical monitor and the portfolio lead)."""
-        from meridian.agents.portfolio.safety_signal_scout import AGENT_ID, analyse, responses_from
+        from meridian.agents.portfolio.safety_signal_scout import (
+            AGENT_ID,
+            TIERS,
+            analyse,
+            responses_from,
+        )
         from meridian.portfolio import openfda as o
 
         cfg = self._signal_config
@@ -2470,6 +2551,43 @@ class Repository:
             caveats_source=cfg.caveats_source,
             requests=0,
         )
+        version = {
+            e.payload.trigger_seq: e.payload.agent_version
+            for e in snap.suspended
+            if isinstance(e.payload, ActorSuspended) and e.payload.agent_id == AGENT_ID
+        }
+
+        def summary(d: int) -> ScanSummary:
+            mine = [
+                r
+                for r in snap.raised.values()
+                if r.finding.agent_id == AGENT_ID and r.cut_id == snap.scans[d]
+            ]
+            req = snap.scan_events[d]
+            return ScanSummary(
+                scan_seq=d,
+                scan_id=snap.scans[d],
+                agent_version=version.get(d),
+                requested_by=req.requested_by,
+                reuses_responses_of=req.reuses_responses_of,
+                findings=len(mine),
+                # In the queue: no closing decision, not superseded, not retired.
+                open=sum(
+                    1
+                    for r in mine
+                    if snap.status(r.finding_id) == "open"
+                    and r.finding_id not in snap.superseded_by
+                ),
+                corrections=[correction_view(c) for c in snap.corrections.get(d, [])],
+            )
+
+        summaries = {d: summary(d) for d in done}
+        triage = (
+            "Only priority signals are findings: lower 95% limit of the PRR above "
+            f"{cfg.priority_prr_low_above:g}, at least {cfg.priority_min_reports} reports, not "
+            "an indication term, not a use term, not in the label. The others stay here with "
+            "their tier (docs/signal-scout.md, 1.0.1)."
+        )
         if not done:
             return empty
         seq = done[-1]
@@ -2477,7 +2595,12 @@ class Repository:
         frame = None if self._signal_responses is None else self._signal_responses(seq)
         if frame is None:
             return empty.model_copy(
-                update={"status": "responses_missing", "scan_id": scan_id, "scan_seq": seq}
+                update={
+                    "status": "responses_missing",
+                    "scan_id": scan_id,
+                    "scan_seq": seq,
+                    "scan": summaries[seq],
+                }
             )
         scan = analyse(responses_from(frame), cfg)
         by_term = {
@@ -2507,10 +2630,12 @@ class Repository:
                 label_listed=t.listed,
                 finding_id=None if raised is None else raised.finding_id,
                 status=None if raised is None else snap.status(raised.finding_id),
+                tier=t.tier,
             )
 
         signals = [row(t) for t in scan.tested if t.signal]
         signals.sort(key=lambda r: -(r.prr or 0.0))
+        tiers: dict[str, int] = {t: sum(1 for r in signals if r.tier == t) for t in TIERS}
         common = [
             LabelReaction(
                 reaction=reaction,
@@ -2544,7 +2669,207 @@ class Repository:
             caveats=list(cfg.caveats),
             caveats_source=cfg.caveats_source,
             requests=frame.height,
+            scan=summaries[seq],
+            earlier_scans=[summaries[d] for d in reversed(done[:-1])],
+            tiers=tiers,
+            triage=triage,
+            context=list(cfg.context),
         )
+
+    # ---- the portfolio's reviews and gates (phase 5 step 3b)
+
+    def _require_lead(self, what: str) -> None:
+        if self.role is not Role.PORTFOLIO_LEAD:
+            raise ForbiddenError(f"only the portfolio lead {what}")
+
+    def _require_portfolio_reader(self) -> None:
+        if self.role not in visibility.PORTFOLIO_ROLES:
+            raise ForbiddenError(
+                f"{self.role.value} does not see the portfolio's reviews and gates"
+            )
+
+    def request_review(self, body: ReviewRequest) -> Recorded:
+        """The portfolio lead asks for an outlook (PortfolioReviewRequested, reason requested)."""
+        self._require_lead("asks for a portfolio review")
+        now = self._clock.now()
+        review_id = REVIEW_PREFIX + _stamp(now)
+        if any(
+            isinstance(e.payload, PortfolioReviewRequested) and e.payload.review_id == review_id
+            for e in self._portfolio_events()
+        ):
+            raise ConflictError(f"{review_id} is already recorded: ask again in a second")
+        event = self._ledger.append(
+            EventDraft(
+                occurred_at=now,
+                actor=self.person.actor,
+                visibility=Visibility.BLINDED,
+                payload=PortfolioReviewRequested(
+                    review_id=review_id,
+                    requested_by=self.person.actor,
+                    reason="requested",
+                    note=body.note.strip() if body.note else None,
+                ),
+            )
+        )
+        self._snapshot = None
+        return Recorded(seq=event.seq, id=review_id)
+
+    def request_gate(self, body: GateRequestBody) -> Recorded:
+        """The portfolio lead asks for the evidence pack of a gate of config/gates.toml."""
+        self._require_lead("asks for a gate's evidence pack")
+        if self._gates is None or self._gates.get(body.asset_id, body.gate) is None:
+            raise InvalidDecisionError(
+                f"no gate {body.gate} for {body.asset_id} in config/gates.toml"
+            )
+        now = self._clock.now()
+        request_id = GATE_PREFIX + _stamp(now)
+        if any(
+            isinstance(e.payload, GateRequest) and e.payload.gate_request_id == request_id
+            for e in self._portfolio_events()
+        ):
+            raise ConflictError(f"{request_id} is already recorded: ask again in a second")
+        event = self._ledger.append(
+            EventDraft(
+                occurred_at=now,
+                actor=self.person.actor,
+                study_id=body.asset_id,
+                visibility=Visibility.BLINDED,
+                payload=GateRequest(
+                    gate_request_id=request_id,
+                    asset_id=body.asset_id,
+                    gate=body.gate,
+                    requested_by=self.person.actor,
+                    note=body.note.strip() if body.note else None,
+                ),
+            )
+        )
+        self._snapshot = None
+        return Recorded(seq=event.seq, id=request_id)
+
+    def _portfolio_events(self) -> list[Event]:
+        return [
+            e
+            for e in self._ledger.read(
+                event_types=[
+                    EventType.PORTFOLIO_REVIEW_REQUESTED,
+                    EventType.PORTFOLIO_OUTLOOK,
+                    EventType.GATE_REQUEST,
+                    EventType.GATE_PACK,
+                    EventType.GATE_DECISION,
+                ],
+                viewer_role=visibility.ledger_viewer(self.role),
+            )
+            if isinstance(e, Event)
+        ]
+
+    def outlook(self) -> OutlookView:
+        self._require_portfolio_reader()
+        events = self._portfolio_events()
+        outlooks = [e for e in events if isinstance(e.payload, PortfolioOutlook)]
+        answered = {
+            e.payload.trigger_seq for e in outlooks if isinstance(e.payload, PortfolioOutlook)
+        }
+        pending = [
+            e.seq
+            for e in events
+            if isinstance(e.payload, PortfolioReviewRequested) and e.seq not in answered
+        ]
+        if not outlooks:
+            return OutlookView(status="none", pending_reviews=pending)
+        last = outlooks[-1]
+        assert isinstance(last.payload, PortfolioOutlook)
+        return OutlookView(
+            status="outlook",
+            seq=last.seq,
+            recorded_at=last.recorded_at,
+            outlook=last.payload,
+            pending_reviews=pending,
+        )
+
+    def gates(self) -> GatesView:
+        self._require_portfolio_reader()
+        events = self._portfolio_events()
+        packs: dict[int, tuple[int, GatePack]] = {}
+        decisions: dict[int, GateDecisionView] = {}
+        for e in events:
+            if isinstance(e.payload, GatePack):
+                packs[e.payload.trigger_seq] = (e.seq, e.payload)
+            elif isinstance(e.payload, GateDecision):
+                decisions[e.payload.gate_request_seq] = GateDecisionView(
+                    seq=e.seq, recorded_at=e.recorded_at, decision=e.payload
+                )
+        requests = []
+        for e in reversed(events):
+            if not isinstance(e.payload, GateRequest):
+                continue
+            pack = packs.get(e.seq)
+            requests.append(
+                GateRequestView(
+                    seq=e.seq,
+                    recorded_at=e.recorded_at,
+                    request=e.payload,
+                    pack_seq=None if pack is None else pack[0],
+                    pack=None if pack is None else pack[1],
+                    decision=decisions.get(e.seq),
+                )
+            )
+        defs = [
+            GateDef(
+                asset_id=g.asset_id,
+                gate=g.id,
+                title=g.title,
+                criteria=[
+                    GateCriterionDef(
+                        id=c.id, title=c.title, basis=c.basis, source=c.source, section=c.section
+                    )
+                    for c in g.criteria
+                ],
+            )
+            for g in (self._gates.gates if self._gates else ())
+        ]
+        return GatesView(
+            gates=defs, requests=requests, can_request=self.role is Role.PORTFOLIO_LEAD
+        )
+
+    def decide_gate(self, request_seq: int, body: GateDecisionBody) -> GateDecisionView:
+        """The portfolio lead's gate decision (GateDecision) on the newest evidence pack of a
+        gate request. Once per request: a new decision needs a new request and pack."""
+        self._require_lead("records a gate decision")
+        view = next((r for r in self.gates().requests if r.seq == request_seq), None)
+        if view is None:
+            raise NotFoundError(f"no gate request at seq {request_seq}")
+        if view.pack_seq is None:
+            raise ConflictError("the gate request has no evidence pack yet: run the agents first")
+        if body.pack_seq != view.pack_seq:
+            raise ConflictError(f"the evidence pack of this request is seq {view.pack_seq}")
+        if view.decision is not None:
+            raise ConflictError(f"the gate request is already decided (seq {view.decision.seq})")
+        try:
+            payload = GateDecision(
+                gate_request_seq=request_seq,
+                pack_seq=view.pack_seq,
+                asset_id=view.request.asset_id,
+                gate=view.request.gate,
+                decision=body.decision,
+                conditions=tuple(c.strip() for c in body.conditions if c.strip()),
+                rationale=body.rationale.strip(),
+                decided_by=self.person.actor,
+            )
+        except ValidationError as exc:
+            raise InvalidDecisionError(
+                "; ".join(str(e["msg"]).removeprefix("Value error, ") for e in exc.errors())
+            ) from exc
+        event = self._ledger.append(
+            EventDraft(
+                occurred_at=self._clock.now(),
+                actor=self.person.actor,
+                study_id=view.request.asset_id,
+                visibility=Visibility.BLINDED,
+                payload=payload,
+            )
+        )
+        self._snapshot = None
+        return GateDecisionView(seq=event.seq, recorded_at=event.recorded_at, decision=payload)
 
     # ---- deciding
 
@@ -2643,3 +2968,7 @@ def _file_sha256(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return ""
+
+
+def _stamp(clock_now: datetime) -> str:
+    return clock_now.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

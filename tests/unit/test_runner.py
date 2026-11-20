@@ -451,6 +451,7 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
         "quality": "substrate",
         "quality.audit_trail": "substrate",
         "preclinical": "substrate",
+        "portfolio": "substrate",
     }
     with Container.build(settings, FixedClock(T0)) as c:
         c.ledger.initialize()

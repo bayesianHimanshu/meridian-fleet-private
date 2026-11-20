@@ -25,6 +25,8 @@ const TYPES: EventType[] = [
   "document_filed",
   "send_study_loaded",
   "noael_decision",
+  "signal_scan_requested",
+  "attribution_correction",
 ];
 
 function typesText(types: EventType[]): string {
@@ -100,7 +102,36 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
       return `NOAEL for ${p.study_id} (${p.sex}): ${
         p.established ? `${String(p.noael_dose)} ${p.dose_unit}` : "not established"
       }, by ${p.decided_by}${p.supersedes ? `, revising ${p.supersedes}` : ""}`;
+    case "signal_scan_requested":
+      return `Signal scan ${p.scan_id} for ${p.study_id}, requested by ${p.requested_by}${
+        p.reuses_responses_of
+          ? `, on the responses of seq ${String(p.reuses_responses_of)}`
+          : ""
+      }`;
+    case "attribution_correction":
+      return `Correction of seq ${String(p.corrects_seq)}: its ${p.field} says ${
+        p.recorded_value
+      }; in fact ${p.true_value}. ${p.explanation} (by ${p.corrected_by})`;
   }
+}
+
+type Correction = Schemas["CorrectionView"];
+
+/** The attribution corrections of one event (phase 5 step 3b): the event stays as
+ * recorded, and what is true is shown with it. */
+export function CorrectionNote({ corrections }: { corrections: Correction[] }) {
+  if (corrections.length === 0) return null;
+  return (
+    <div className="message warning" data-testid="correction-note" role="note">
+      {corrections.map((c) => (
+        <p key={c.seq}>
+          <strong>Attribution corrected</strong> at seq {c.seq}: this event
+          records {c.field} as {c.recorded_value}; in fact {c.true_value}.{" "}
+          {c.explanation} Corrected by {c.corrected_by}.
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function VerifyPanel() {
@@ -173,6 +204,10 @@ export function LedgerView() {
     getNextPageParam: (last) => last.next_before ?? undefined,
   });
   const entries = pages.data?.pages.flatMap((p) => p.entries) ?? [];
+  const corrections: Record<string, Correction[]> = Object.assign(
+    {},
+    ...(pages.data?.pages.map((p) => p.corrections ?? {}) ?? []),
+  ) as Record<string, Correction[]>;
 
   return (
     <section aria-labelledby="ledger-title" className="stack">
@@ -264,6 +299,9 @@ export function LedgerView() {
                       <td>{e.payload.type.replaceAll("_", " ")}</td>
                       <td>
                         {describe(e, people)}
+                        <CorrectionNote
+                          corrections={corrections[String(e.seq)] ?? []}
+                        />
                         {e.payload.type === "human_decision" ? null : (
                           <>
                             <br />

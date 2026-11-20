@@ -199,6 +199,22 @@ class SignalStageReader(_AreaReader):
         return reader
 
 
+class PortfolioStageReader(_AreaReader):
+    """The portfolio facts under <dir>/portfolio (phase 5 step 3b): built by the host as the
+    portfolio lead sees them, the only input of the portfolio zone's report agents. Its cut
+    id is the review's or the gate request's id."""
+
+    _areas = ("portfolio",)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> PortfolioStageReader:
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
+
+
 # Zones whose agents read a SEND study (staged as /stage/send) and nothing of a clinical cut.
 SEND_ZONES = frozenset({"preclinical"})
 # Zones whose agents also read the cut's safety database snapshot (its blinded area).

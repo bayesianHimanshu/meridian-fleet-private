@@ -23,6 +23,7 @@ IMAGE_SOURCES = (
     "config/tmf_expected.toml",
     "config/ind_requirements.toml",
     "config/translational_monitoring.toml",
+    "config/gates.toml",
     "docker/agent.Dockerfile",
     ".dockerignore",
 )

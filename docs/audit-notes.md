@@ -54,3 +54,34 @@ finding, keeps only seq, hashes, type and time.
   historical. There is no rule date in the check.
 - A run whose text has an empty version reads "rbqm.csm  on DC-BASE" (two spaces): a
   cosmetic flaw left in 1.0.0 because the agent was frozen after the stress run.
+
+## 1.3.0: a person named outside the Fleet API (phase 5 step 3b)
+
+A person acts only through the Fleet API, with their own identity. CLI commands and the
+runner record a non-person actor: an operator (`operator:<os user>`,
+meridian.domain.identity), an agent, or a system component. `--by` takes only operator ids.
+
+The host's audit extract now gives every row ENVELOPE_ACTOR and ENVELOPE_KIND (person,
+operator, agent or system: config/people.toml and the registry), NAMED (a JSON list of
+[field, value, kind] for requested_by, decided_by, raised_by, corrected_by, a decision's
+actor and a finding's raised_by) and CORRECTS_SEQ. The reviewer, sandboxed, never reads
+people.toml.
+
+`audit_person_attribution_outside_api` (high): a row naming a person whose type is not one
+the API records for a person (human_decision, noael_decision, quality_observation, a QA
+observation's finding_raised, and from step 3b portfolio_review_requested, gate_request
+and gate_decision), or whose event actor is not that person. "Came through the API" is
+judged from the record, since the ledger has no channel field: only the API writes those
+types with a person as the event's actor. An AttributionCorrection of the event is shown
+as evidence; the finding is still raised, because the event stays as it was recorded.
+Not judged: redacted rows, and extracts written before 1.3.0 (no kind columns).
+
+Stress set: two new cases (19, 20), written after the check's code, 20 of 20 as ideal.
+
+**On the real ledger** (AuditReviewRequested seq 20117, through seq 20116, in a Substrate
+actor): one finding, QA-0178 (seq 20126), for seq 19985, the signal scan of step 3a whose
+requested_by says karan.mehta, with the AttributionCorrection at seq 20068 as evidence.
+Nothing else: the 7 human decisions and 17 NOAEL decisions on the ledger all have the
+deciding person as the event's actor. The run also raised again, under 1.3.0, the 7
+phase 1 runs without a sandbox record (QA-0171 to QA-0177), which supersede their 1.2.0
+findings.

@@ -111,6 +111,7 @@ rbqm = "substrate"
 quality = "substrate"
 "quality.audit_trail" = "substrate"
 preclinical = "substrate"  # phase 5 step 1: the SEND study, no network
+portfolio = "substrate"  # phase 5 step 3b: the portfolio facts, no network
 
 # Agent Substrate on the local kind cluster (phase 4a). version and commit pin the release
 # ate-system was deployed from; the install record must name the same version.
@@ -207,6 +208,8 @@ enabled = [
     "preclinical.ind_readiness",
     "preclinical.translational_bridge",
     "portfolio.safety_signal_scout",
+    "portfolio.pipeline_intelligence",
+    "portfolio.stage_gate_pack",
 ]
 
 [agents.kri_monitor]
@@ -266,8 +269,9 @@ last_subject_field = "RFENDTC"
 visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
 
 [agents.audit_trail_reviewer]
-# quality.audit_trail_reviewer 1.2.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is a
-# sandboxed executor; 1.2.0: a run starts at ActorWoke's started_at), deterministic. It reads the audit
+# quality.audit_trail_reviewer 1.3.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is
+# a sandboxed executor; 1.2.0: a run starts at ActorWoke's started_at; 1.3.0 phase 5 step
+# 3b: a person named outside the Fleet API), deterministic. It reads the audit
 # extract of the ledger (no evidence, narratives or subject ids), staged only for
 # policies/quality.audit_trail.yaml. Thresholds (docs/audit-notes.md):
 rapid_decisions = 10        # 10 or more decisions by one person ...
@@ -381,4 +385,39 @@ prr_min = 2.0
 chi2_min = 4.0
 request_interval_seconds = 0.3
 max_requests = 900
+# 1.0.1 (phase 5 step 3b; docs/signal-scout.md "1.0.1"): retry openFDA's throttling (429,
+# or 500 with details "Too Many Requests") after these waits; then triage the signals.
+retry_backoff_seconds = [2.0, 4.0, 8.0, 16.0]
+priority_prr_low_above = 2.0
+priority_min_reports = 10
+indication_terms = [
+    "SCHIZOPHRENIA", "SCHIZOAFFECTIVE DISORDER", "PSYCHOTIC DISORDER",
+    "PSYCHIATRIC DECOMPENSATION", "PSYCHIATRIC SYMPTOM", "DELUSION", "PARANOIA",
+    "HALLUCINATION", "HALLUCINATION, AUDITORY", "HALLUCINATION, VISUAL", "THINKING ABNORMAL",
+    "TACHYPHRENIA", "SOLILOQUY", "CATATONIA", "BLUNTED AFFECT", "INAPPROPRIATE AFFECT",
+    "APATHY", "NEGATIVE THOUGHTS", "INTRUSIVE THOUGHTS",
+]
+indication_source = "American Psychiatric Association, DSM-5 (2013), Schizophrenia, criterion A"
+use_terms = [
+    "TREATMENT NONCOMPLIANCE", "LOSS OF THERAPEUTIC RESPONSE", "THERAPY NON-RESPONDER",
+    "DRUG INEFFECTIVE", "ADVERSE EVENT", "DRUG SCREEN POSITIVE", "PRODUCT SUPPLY ISSUE",
+    "INABILITY TO AFFORD MEDICATION", "DRUG INTERACTION",
+]
+label_spellings = [["oesophag", "esophag"], ["haem", "hem"], ["oedema", "edema"], ["diarrhoea", "diarrhea"], ["behaviour", "behavior"]]
+label_synonyms = { "GASTROOESOPHAGEAL REFLUX DISEASE" = ["gastrointestinal reflux disease"] }
+context = [
+    "FAERS reports here concern COBENFY: oral xanomeline with trospium chloride. COBENFY label 12.1: \"Trospium chloride is a muscarinic antagonist.\" Label 5.8 names \"anticholinergic adverse reactions (including dry mouth, constipation, dyspepsia, urinary tract infection, and urinary retention)\": anticholinergic terms such as urinary retention and dry mouth are likely explained by trospium.",
+    "COBENFY is \"indicated for the treatment of schizophrenia in adults\" (label 1). MRD-201 is transdermal xanomeline alone in mild to moderate Alzheimer's disease: route, combination and population all differ.",
+]
+indication_caveat = "Reported with a drug for schizophrenia, this term is confounded by indication: the illness being treated, not necessarily an effect of the drug."
 visible_to = ["medical_monitor", "portfolio_lead"]
+
+[agents.pipeline_intelligence]
+# portfolio.pipeline_intelligence 1.0.0 (phase 5 step 3b; docs/stage-gate-notes.md):
+# a PortfolioOutlook event per review, from the facts the portfolio lead may see.
+visible_to = ["portfolio_lead", "qa_auditor"]
+
+[agents.stage_gate_pack]
+# portfolio.stage_gate_pack 1.0.0 (phase 5 step 3b): the evidence pack of a gate request,
+# from config/gates.toml. Never go or no-go; the portfolio lead records a GateDecision.
+visible_to = ["portfolio_lead", "qa_auditor"]

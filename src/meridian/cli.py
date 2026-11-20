@@ -215,6 +215,56 @@ def ledger_show(
             typer.echo(entry.model_dump_json())
 
 
+@ledger_app.command("correct-attribution")
+def ledger_correct_attribution(
+    seq: Annotated[int, typer.Option("--seq", help="The event whose attribution is wrong.")],
+    field: Annotated[str, typer.Option("--field", help="The payload field, e.g. requested_by.")],
+    true_value: Annotated[str, typer.Option("--true", help="Who actually acted (not a person).")],
+    explanation: Annotated[str, typer.Option("--explanation", help="What happened.")],
+) -> None:
+    """Append an AttributionCorrection (phase 5 step 3b): the event stays as recorded; the
+    correction names what it recorded, what is true and the operator who corrects it."""
+    from meridian.domain.events import AttributionCorrection, EventDraft
+    from meridian.domain.identity import operator_id, people_ids
+
+    with _container() as c:
+        people = people_ids(c.settings.api.people_file)
+        entry = next((e for e in c.ledger.read() if e.seq == seq), None)
+        if not isinstance(entry, Event):
+            typer.echo(f"error: seq {seq} is not a readable event", err=True)
+            raise typer.Exit(code=1)
+        recorded = entry.payload.model_dump(mode="json").get(field)
+        if field == "actor":
+            recorded = entry.actor
+        if not isinstance(recorded, str):
+            typer.echo(f"error: seq {seq} has no field {field}", err=True)
+            raise typer.Exit(code=1)
+        if true_value in people:
+            typer.echo(f"error: {true_value} is a person; name who acted outside the API", err=True)
+            raise typer.Exit(code=1)
+        me = operator_id()
+        event = c.ledger.append(
+            EventDraft(
+                occurred_at=c.clock.now(),
+                actor=me,
+                study_id=entry.study_id,
+                visibility=entry.visibility,
+                payload=AttributionCorrection(
+                    corrects_seq=seq,
+                    field=field,
+                    recorded_value=recorded,
+                    true_value=true_value,
+                    explanation=explanation,
+                    corrected_by=me,
+                ),
+            )
+        )
+        typer.echo(
+            f"AttributionCorrection of seq {seq} ({field}: {recorded} -> {true_value}) at "
+            f"ledger seq {event.seq}, by {me}"
+        )
+
+
 @ledger_app.command("verify")
 def ledger_verify() -> None:
     """Verify the hash chain. Exit code 0 when ok, 1 when broken."""
@@ -1519,6 +1569,8 @@ app.add_typer(dispatcher_app, name="dispatcher")
 from meridian.cli_leakcheck import leakcheck  # noqa: E402 (registered last, like substrate)
 
 app.command("leakcheck")(leakcheck)
+from meridian.cli_portfolio import portfolio_app  # noqa: E402 (phase 5 step 3a)
 from meridian.cli_signals import signals_app  # noqa: E402 (phase 5 step 3a)
 
 app.add_typer(signals_app, name="signals")
+app.add_typer(portfolio_app, name="portfolio")

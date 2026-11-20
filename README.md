@@ -155,6 +155,11 @@ down. Summary, measurements against kind, costs and gaps:
 
 ## Phase 5 status (preclinical)
 
+Phase 5 status: complete. SEND ingest, tox_study_monitor 1.0 and 1.1, the NOAEL as a
+person's decision, dose translation, IND readiness, the translational bridge, the signal
+scout, pipeline intelligence and the stage-gate pack; summary, evaluations including
+misses, decisions and gaps in [docs/phase5-summary.md](docs/phase5-summary.md).
+
 Step 1: preclinical.tox_study_monitor on MRD-101's GLP rat study; the NOAEL is the
 toxicologist's decision ([docs/preclinical-eval.md](docs/preclinical-eval.md),
 [docs/noael-decision.md](docs/noael-decision.md)). Step 2: the NOAEL form's rules in the
@@ -171,10 +176,22 @@ portfolio.safety_signal_scout reports signals of disproportionate reporting for 
 drug from openFDA in the portfolio_signal zone, and compares them with the US label
 ([docs/signal-scout.md](docs/signal-scout.md)).
 
+Step 3b: CLI actions are recorded under an operator id (operator:<os user>), never a
+person's; an AttributionCorrection corrects seq 19985; quality.audit_trail_reviewer 1.3.0
+flags a person named outside the API. Signal scout 1.0.1 retries openFDA's throttling and
+triages its signals: only priority ones reach the review queue. portfolio.pipeline_intelligence
+writes a PortfolioOutlook per review and portfolio.stage_gate_pack an evidence pack per gate
+request, both from facts built as the portfolio lead; the portfolio lead records the
+GateDecision ([docs/stage-gate-notes.md](docs/stage-gate-notes.md)).
+
 ```sh
 uv run meridian preclinical inventory-load   # data/inventory/MRD-101/inventory.csv as a cut
 uv run meridian signals scan                 # one openFDA scan, in its OpenShell sandbox
 uv run meridian signals replay --trigger SEQ # the same scan on its kept responses
+uv run meridian signals scan --reuse SEQ     # rerun on a scan's responses, asking only what it lacks
+uv run meridian ledger correct-attribution --seq N --field F --true operator:x --explanation "..."
+uv run meridian portfolio review-due         # the month's scheduled portfolio review (for cron)
+uv run python scripts/gate_stress.py         # the stage-gate stress set (run once)
 uv run python scripts/ind_stress.py          # the IND readiness stress set (run once)
 ```
 

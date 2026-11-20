@@ -70,6 +70,7 @@ def test_zone_policy_lists_only_allowed_paths_and_no_network(zone: str) -> None:
     allowed |= {"/stage/tmf"} if zone == "quality" else set()
     preclinical = {"/stage/send", "/stage/noael", "/stage/inventory"}
     allowed |= preclinical if zone == "preclinical" else set()
+    allowed |= {"/stage/portfolio"} if zone == "portfolio" else set()
     assert listed <= allowed, listed - allowed
     if zone != "unblinded":
         assert "/unblinded" not in text

@@ -179,6 +179,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/gates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Gates
+         * @description The gates of config/gates.toml and every gate request with its evidence pack and
+         *     decision. The pack never says go or no-go. The portfolio lead and the QA auditor.
+         */
+        get: operations["portfolio_gates_api_v1_portfolio_gates_get"];
+        put?: never;
+        /**
+         * Portfolio Request Gate
+         * @description Portfolio lead only: ask for a gate's evidence pack (GateRequest).
+         */
+        post: operations["portfolio_request_gate_api_v1_portfolio_gates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/gates/{request_seq}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Portfolio Decide Gate
+         * @description Portfolio lead only: go, conditional go (with conditions) or no-go on the request's
+         *     evidence pack, with a rationale (GateDecision). Once per request (409 after).
+         */
+        post: operations["portfolio_decide_gate_api_v1_portfolio_gates__request_seq__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/outlook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Outlook
+         * @description The latest PortfolioOutlook (portfolio.pipeline_intelligence): per asset a status,
+         *     the top risks with their ledger seqs, the facts and the changes since the previous
+         *     outlook. Information only. The portfolio lead and the QA auditor.
+         */
+        get: operations["portfolio_outlook_api_v1_portfolio_outlook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Portfolio Request Review
+         * @description Portfolio lead only: ask for an outlook (PortfolioReviewRequested). The agents answer
+         *     it on their next run.
+         */
+        post: operations["portfolio_request_review_api_v1_portfolio_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/preclinical/assets/{asset}/ind-readiness": {
         parameters: {
             query?: never;
@@ -723,6 +812,26 @@ export interface components {
             open_findings: number;
             starting_dose?: components["schemas"]["StartingDose"] | null;
         };
+        /** AssetOutlook */
+        AssetOutlook: {
+            /** Asset Id */
+            asset_id: string;
+            /** Changes */
+            changes: string[];
+            /** Facts */
+            facts: components["schemas"]["OutlookFact"][];
+            /** Risks */
+            risks: components["schemas"]["OutlookRisk"][];
+            /** Static */
+            static: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "on_track" | "attention" | "at_risk" | "static";
+            /** Status Text */
+            status_text: string;
+        };
         /**
          * AssetStatic
          * @description Served as written in config/portfolio.toml; nothing here is computed.
@@ -758,6 +867,32 @@ export interface components {
             level: "good" | "warning" | "critical" | "info";
             /** Text */
             text: string;
+        };
+        /**
+         * AttributionCorrection
+         * @description A correction of who an earlier event says acted (phase 5 step 3b). The ledger is
+         *     append-only: the corrected event stays as recorded, and this says what it recorded,
+         *     what is true, who corrects it and why. corrected_by is an operator, never a person
+         *     acting outside the API.
+         */
+        AttributionCorrection: {
+            /** Corrected By */
+            corrected_by: string;
+            /** Corrects Seq */
+            corrects_seq: number;
+            /** Explanation */
+            explanation: string;
+            /** Field */
+            field: string;
+            /** Recorded Value */
+            recorded_value: string;
+            /** True Value */
+            true_value: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "attribution_correction";
         };
         /** AuditFindingItem */
         AuditFindingItem: {
@@ -1005,6 +1140,61 @@ export interface components {
             substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Zone */
             zone: string;
+        };
+        /**
+         * CorrectionView
+         * @description An AttributionCorrection of an event (phase 5 step 3b): the event stays as recorded;
+         *     this says what it recorded, what is true and who corrected it.
+         */
+        CorrectionView: {
+            /** Corrected By */
+            corrected_by: string;
+            /** Corrects Seq */
+            corrects_seq: number;
+            /** Explanation */
+            explanation: string;
+            /** Field */
+            field: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Recorded Value */
+            recorded_value: string;
+            /** Seq */
+            seq: number;
+            /** True Value */
+            true_value: string;
+        };
+        /** CriterionResult */
+        CriterionResult: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "regulation" | "policy";
+            /** Evidence */
+            evidence: string;
+            /** Explanation */
+            explanation: string;
+            /** Id */
+            id: string;
+            /** Quote */
+            quote?: string | null;
+            /** Section */
+            section?: string | null;
+            /** Seqs */
+            seqs: number[];
+            /** Source */
+            source?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "met" | "not_met" | "not_applicable";
+            /** Title */
+            title: string;
         };
         /** CutSummary */
         CutSummary: {
@@ -1283,7 +1473,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"] | components["schemas"]["SignalScanRequested"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"] | components["schemas"]["SendStudyLoaded"] | components["schemas"]["NoaelDecision"] | components["schemas"]["InventoryLoaded"] | components["schemas"]["SignalScanRequested"] | components["schemas"]["AttributionCorrection"] | components["schemas"]["PortfolioReviewRequested"] | components["schemas"]["GateRequest"] | components["schemas"]["PortfolioOutlook"] | components["schemas"]["GatePack"] | components["schemas"]["GateDecision"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -1301,7 +1491,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded" | "signal_scan_requested";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation" | "send_study_loaded" | "noael_decision" | "inventory_loaded" | "signal_scan_requested" | "attribution_correction" | "portfolio_review_requested" | "portfolio_outlook" | "gate_request" | "gate_pack" | "gate_decision";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -1513,7 +1703,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness" | "monitoring_recommendation" | "reporting_signal";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation" | "tox_signal" | "dose_proposal" | "ind_readiness" | "monitoring_recommendation" | "reporting_signal" | "portfolio_outlook" | "gate_pack";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1719,6 +1909,186 @@ export interface components {
             /** Zone */
             zone: string;
         };
+        /** GateCriterionDef */
+        GateCriterionDef: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "regulation" | "policy";
+            /** Id */
+            id: string;
+            /** Section */
+            section: string | null;
+            /** Source */
+            source: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * GateDecision
+         * @description The portfolio lead's decision on a gate (phase 5 step 3b), through the API only:
+         *     go, conditional go (with its conditions) or no-go, on a given evidence pack.
+         */
+        GateDecision: {
+            /** Asset Id */
+            asset_id: string;
+            /**
+             * Conditions
+             * @default []
+             */
+            conditions: string[];
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "go" | "conditional_go" | "no_go";
+            /** Gate */
+            gate: string;
+            /** Gate Request Seq */
+            gate_request_seq: number;
+            /** Pack Seq */
+            pack_seq: number;
+            /** Rationale */
+            rationale: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gate_decision";
+        };
+        /** GateDecisionBody */
+        GateDecisionBody: {
+            /** Conditions */
+            conditions?: string[];
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "go" | "conditional_go" | "no_go";
+            /** Pack Seq */
+            pack_seq: number;
+            /** Rationale */
+            rationale: string;
+        };
+        /** GateDecisionView */
+        GateDecisionView: {
+            decision: components["schemas"]["GateDecision"];
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Seq */
+            seq: number;
+        };
+        /** GateDef */
+        GateDef: {
+            /** Asset Id */
+            asset_id: string;
+            /** Criteria */
+            criteria: components["schemas"]["GateCriterionDef"][];
+            /** Gate */
+            gate: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * GatePack
+         * @description portfolio.stage_gate_pack's evidence pack (phase 5 step 3b): each criterion met, not
+         *     met or not applicable, with the ledger seqs behind it, and the open items. No verdict:
+         *     the portfolio lead records a GateDecision.
+         */
+        GatePack: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string;
+            /** Asset Id */
+            asset_id: string;
+            /** Criteria */
+            criteria: components["schemas"]["CriterionResult"][];
+            /** Dedup Key */
+            dedup_key: string;
+            /** Gate */
+            gate: string;
+            /** Gate Request Id */
+            gate_request_id: string;
+            /** Gate Title */
+            gate_title: string;
+            /** Open Items */
+            open_items: components["schemas"]["OpenItem"][];
+            /** Summary */
+            summary: string;
+            /** Trigger Seq */
+            trigger_seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gate_pack";
+        };
+        /**
+         * GateRequest
+         * @description The trigger of portfolio.stage_gate_pack (phase 5 step 3b): the portfolio lead asks
+         *     for the evidence pack of one gate of one asset (config/gates.toml).
+         */
+        GateRequest: {
+            /** Asset Id */
+            asset_id: string;
+            /** Gate */
+            gate: string;
+            /** Gate Request Id */
+            gate_request_id: string;
+            /** Note */
+            note?: string | null;
+            /** Requested By */
+            requested_by: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gate_request";
+        };
+        /** GateRequestBody */
+        GateRequestBody: {
+            /** Asset Id */
+            asset_id: string;
+            /** Gate */
+            gate: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** GateRequestView */
+        GateRequestView: {
+            decision: components["schemas"]["GateDecisionView"] | null;
+            pack: components["schemas"]["GatePack"] | null;
+            /** Pack Seq */
+            pack_seq: number | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            request: components["schemas"]["GateRequest"];
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * GatesView
+         * @description The gates of config/gates.toml, and every gate request with its evidence pack and
+         *     decision (newest first). The agent never says go or no-go; the portfolio lead does.
+         */
+        GatesView: {
+            /** Can Request */
+            can_request: boolean;
+            /** Gates */
+            gates: components["schemas"]["GateDef"][];
+            /** Requests */
+            requests: components["schemas"]["GateRequestView"][];
+        };
         /** GradeCount */
         GradeCount: {
             /** Animals */
@@ -1839,6 +2209,10 @@ export interface components {
         };
         /** LedgerPage */
         LedgerPage: {
+            /** Corrections */
+            corrections?: {
+                [key: string]: components["schemas"]["CorrectionView"][];
+            };
             /** Entries */
             entries: (components["schemas"]["Event"] | components["schemas"]["RedactedEvent"])[];
             /** Next Before */
@@ -2213,6 +2587,68 @@ export interface components {
             /** Observation Seq */
             observation_seq: number;
         };
+        /** OpenItem */
+        OpenItem: {
+            /** Criterion Id */
+            criterion_id: string;
+            /** Finding Id */
+            finding_id?: string | null;
+            /** Seq */
+            seq?: number | null;
+            /** Text */
+            text: string;
+        };
+        /** OutlookFact */
+        OutlookFact: {
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Seq */
+            seq: number | null;
+            /**
+             * Static
+             * @default false
+             */
+            static: boolean;
+            /** Status */
+            status: string;
+            /** Value */
+            value: string;
+        };
+        /** OutlookRisk */
+        OutlookRisk: {
+            /** Seqs */
+            seqs: number[];
+            severity: components["schemas"]["Severity"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * OutlookView
+         * @description The latest PortfolioOutlook, as recorded, with its seq. Information only.
+         */
+        OutlookView: {
+            /**
+             * Narrated
+             * @default false
+             */
+            narrated: boolean;
+            outlook?: components["schemas"]["PortfolioOutlook"] | null;
+            /** Pending Reviews */
+            pending_reviews?: number[];
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Seq */
+            seq?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "outlook" | "none";
+        };
         /**
          * PersonView
          * @description A demo person from config/people.toml (development identity, not an account).
@@ -2263,6 +2699,61 @@ export interface components {
             asset_id: string;
             live: components["schemas"]["AssetLive"] | null;
             static: components["schemas"]["AssetStatic"];
+        };
+        /**
+         * PortfolioOutlook
+         * @description What portfolio.pipeline_intelligence reports (phase 5 step 3b): an event, not a
+         *     finding. Nothing here is decided by anyone; it is information for the portfolio lead.
+         *     narrated is never set by this version (no narrator).
+         */
+        PortfolioOutlook: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string;
+            /** Assets */
+            assets: components["schemas"]["AssetOutlook"][];
+            /** Dedup Key */
+            dedup_key: string;
+            /** Previous Outlook Seq */
+            previous_outlook_seq: number | null;
+            /** Review Id */
+            review_id: string;
+            /** Summary */
+            summary: string;
+            /** Trigger Seq */
+            trigger_seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "portfolio_outlook";
+        };
+        /**
+         * PortfolioReviewRequested
+         * @description The trigger of portfolio.pipeline_intelligence (phase 5 step 3b): asked for by the
+         *     portfolio lead through the API (reason requested), or monthly (reason scheduled,
+         *     requested_by system.schedule, period YYYY-MM). review_id names the review's cut.
+         */
+        PortfolioReviewRequested: {
+            /** Note */
+            note?: string | null;
+            /** Period */
+            period?: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "requested" | "scheduled";
+            /** Requested By */
+            requested_by: string;
+            /** Review Id */
+            review_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "portfolio_review_requested";
         };
         /** PreclinicalEndpoints */
         PreclinicalEndpoints: {
@@ -2498,6 +2989,16 @@ export interface components {
             title: string;
         };
         /**
+         * Recorded
+         * @description What the API recorded: the event's seq and its id.
+         */
+        Recorded: {
+            /** Id */
+            id: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
          * RedactedEvent
          * @description What a reader without unblinded access sees in place of a restricted event.
          */
@@ -2568,6 +3069,11 @@ export interface components {
             /** Items */
             items: components["schemas"]["FindingSummary"][];
         };
+        /** ReviewRequest */
+        ReviewRequest: {
+            /** Note */
+            note?: string | null;
+        };
         /**
          * Role
          * @enum {string}
@@ -2627,12 +3133,16 @@ export interface components {
             caveats: string[];
             /** Caveats Source */
             caveats_source: string;
+            /** Context */
+            context?: string[];
             /** Data Date */
             data_date: string | null;
             /** Drug */
             drug: string;
             /** Drug Reports */
             drug_reports: number | null;
+            /** Earlier Scans */
+            earlier_scans?: components["schemas"]["ScanSummary"][];
             /** Label Effective */
             label_effective: string | null;
             /** Label Most Common */
@@ -2651,6 +3161,7 @@ export interface components {
             requests: number;
             /** Rule */
             rule: string;
+            scan?: components["schemas"]["ScanSummary"] | null;
             /** Scan Id */
             scan_id: string | null;
             /** Scan Seq */
@@ -2670,6 +3181,38 @@ export interface components {
             terms_with_drug: number | null;
             /** Tested */
             tested: number;
+            /** Tiers */
+            tiers?: {
+                [key: string]: number;
+            };
+            /**
+             * Triage
+             * @default
+             */
+            triage: string;
+        };
+        /**
+         * ScanSummary
+         * @description One completed signal scan: who asked for it (as recorded, with any correction), the
+         *     agent version, and its findings.
+         */
+        ScanSummary: {
+            /** Agent Version */
+            agent_version: string | null;
+            /** Corrections */
+            corrections: components["schemas"]["CorrectionView"][];
+            /** Findings */
+            findings: number;
+            /** Open */
+            open: number;
+            /** Requested By */
+            requested_by: string;
+            /** Reuses Responses Of */
+            reuses_responses_of: number | null;
+            /** Scan Id */
+            scan_id: string;
+            /** Scan Seq */
+            scan_seq: number;
         };
         /**
          * SendStudyLoaded
@@ -2727,6 +3270,11 @@ export interface components {
             term: string;
             /** Term Reports */
             term_reports: number;
+            /**
+             * Tier
+             * @default not_signal
+             */
+            tier: string;
         };
         /**
          * SignalScanRequested
@@ -2736,6 +3284,8 @@ export interface components {
         SignalScanRequested: {
             /** Requested By */
             requested_by: string;
+            /** Reuses Responses Of */
+            reuses_responses_of?: number | null;
             /** Scan Id */
             scan_id: string;
             /** Study Id */
@@ -3382,6 +3932,190 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Portfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_gates_api_v1_portfolio_gates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatesView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_request_gate_api_v1_portfolio_gates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recorded"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_decide_gate_api_v1_portfolio_gates__request_seq__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                request_seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateDecisionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_outlook_api_v1_portfolio_outlook_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_request_review_api_v1_portfolio_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recorded"];
                 };
             };
             /** @description Validation Error */

@@ -1,4 +1,4 @@
-"""portfolio.safety_signal_scout 1.0.0: signals of disproportionate reporting for MRD-201's
+"""portfolio.safety_signal_scout 1.0.1: signals of disproportionate reporting for MRD-201's
 drug (xanomeline, with trospium chloride) in public FAERS data through openFDA, as
 pre-registered in docs/signal-scout.md (statistics in meridian.portfolio.disproportionality,
 queries in meridian.portfolio.openfda).
@@ -9,10 +9,17 @@ meridian-signal-worker fetches those responses first (the only zone with egress 
 api.fda.gov) and returns them with the drafts; the host keeps them, so a rerun on them
 gives identical drafts. Every finding is a reporting signal, never an incidence or a
 causal claim, and carries FAERS's own caveats; the medical monitor decides it.
+
+1.0.1 (phase 5 step 3b, pre-registered in docs/signal-scout.md): openFDA's throttling is
+retried; every signal carries the context (COBENFY is oral xanomeline with trospium, an
+antimuscarinic, in schizophrenia; MRD-201 is transdermal xanomeline alone in Alzheimer's
+disease); and each signal gets a tier. Only priority signals become findings; the rest stay
+on the Safety signals view with their tier.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 import polars as pl
 
@@ -26,9 +33,11 @@ from meridian.portfolio import openfda as o
 from meridian.portfolio.disproportionality import Ratio, SignalRule, Table, chi2_yates, prr, ror
 
 AGENT_ID = "portfolio.safety_signal_scout"
-VERSION = "1.0.0"
+VERSION = "1.0.1"  # 1.0.0 phase 5 step 3a
 VISIBLE_TO_MAX = frozenset({Role.MEDICAL_MONITOR, Role.PORTFOLIO_LEAD})
 CHECK = "reporting_signal"
+Tier = Literal["listed", "indication", "use", "weak", "priority", "not_signal"]
+TIERS: tuple[Tier, ...] = ("listed", "indication", "use", "weak", "priority")
 
 
 def responses_from(frame: pl.DataFrame) -> list[o.Response]:
@@ -76,6 +85,24 @@ class TermResult:
     signal: bool
     listed: bool | None  # None: no label to compare with
     sha256: str  # the term total's response
+    tier: Tier = "not_signal"
+
+
+def tier_of(
+    term: str, signal: bool, listed: bool | None, a: int, p: Ratio | None, cfg: SignalScoutConfig
+) -> Tier:
+    """The 1.0.1 triage: the first tier that applies (docs/signal-scout.md)."""
+    if not signal:
+        return "not_signal"
+    if listed:
+        return "listed"
+    if term.upper() in {t.upper() for t in cfg.indication_terms}:
+        return "indication"
+    if term.upper() in {t.upper() for t in cfg.use_terms}:
+        return "use"
+    if p is None or p.low <= cfg.priority_prr_low_above or a < cfg.priority_min_reports:
+        return "weak"
+    return "priority"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,16 +146,24 @@ def analyse(responses: Sequence[o.Response], cfg: SignalScoutConfig) -> Scan:
             missing.append(term)
             continue
         t = Table.from_counts(a, n_drug, n_term, n_all)
+        signal = rule.is_signal(t)
+        on_label = (
+            None
+            if label is None
+            else o.listed(term, label, cfg.label_spellings, cfg.label_synonyms)
+        )
+        p = prr(t)
         tested.append(
             TermResult(
                 term=term,
                 table=t,
-                prr=prr(t),
+                prr=p,
                 ror=ror(t),
                 chi2=chi2_yates(t),
-                signal=rule.is_signal(t),
-                listed=None if label is None else o.listed(term, label),
+                signal=signal,
+                listed=on_label,
                 sha256=r.sha256,
+                tier=tier_of(term, signal, on_label, a, p, cfg),
             )
         )
     return Scan(
@@ -147,6 +182,26 @@ def _ratio(name: str, r: Ratio | None) -> str:
     if r is None:
         return f"{name} undefined"
     return f"{name} {r.value:.2f} (95% CI {r.low:.2f} to {r.high:.2f})"
+
+
+TIER_TEXT: dict[str, str] = {
+    "listed": "named in the US label",
+    "indication": "an indication term (confounded by indication)",
+    "use": "a term about use, effect or supply, not a clinical event",
+    "weak": "weak: lower 95% limit of the PRR at most {low:g} or fewer than {n} reports",
+    "priority": "priority: lower 95% limit of the PRR above {low:g}, at least {n} reports, "
+    "not an indication or use term, not in the label",
+    "not_signal": "not a signal",
+}
+
+
+def tier_text(tier: str, cfg: SignalScoutConfig) -> str:
+    return TIER_TEXT[tier].format(low=cfg.priority_prr_low_above, n=cfg.priority_min_reports)
+
+
+def evidence(t: TermResult, scan: Scan, cfg: SignalScoutConfig) -> list[Evidence]:
+    """A signal's evidence (also the Safety signals view's, for every tier)."""
+    return _evidence(t, scan, cfg)
 
 
 def _evidence(t: TermResult, scan: Scan, cfg: SignalScoutConfig) -> list[Evidence]:
@@ -248,6 +303,43 @@ def _evidence(t: TermResult, scan: Scan, cfg: SignalScoutConfig) -> list[Evidenc
         )
         for i, c in enumerate(cfg.caveats, start=1)
     ]
+    # 1.0.1: the tier, the context of these reports against MRD-201, and on an indication
+    # term the confounding.
+    out.append(
+        Evidence(
+            source="docs/signal-scout.md (1.0.1 triage)",
+            selector=sel,
+            statistic="signal:tier",
+            value=float(TIERS.index(t.tier)) if t.tier in TIERS else -1.0,
+            role="supporting",
+            direction="none",
+            display=f"Tier: {tier_text(t.tier, cfg)}",
+        )
+    )
+    out += [
+        Evidence(
+            source="openfda:drug/label; config/portfolio.toml",
+            selector=f"CONTEXT={i}",
+            statistic="signal:context",
+            value=0.0,
+            role="supporting",
+            direction="none",
+            display=c,
+        )
+        for i, c in enumerate(cfg.context, start=1)
+    ]
+    if t.tier == "indication" and cfg.indication_caveat:
+        out.append(
+            Evidence(
+                source=cfg.indication_source or "docs/signal-scout.md",
+                selector=sel,
+                statistic="signal:indication",
+                value=0.0,
+                role="supporting",
+                direction="none",
+                display=cfg.indication_caveat,
+            )
+        )
     return out
 
 
@@ -279,7 +371,7 @@ class SafetySignalScout:
     def drafts(self, scan: Scan, cfg: SignalScoutConfig, cut_id: str) -> list[FindingDraft]:
         out = []
         for t in scan.tested:
-            if not t.signal:
+            if t.tier != "priority":
                 continue
             p = t.prr
             title = (
@@ -296,7 +388,11 @@ class SafetySignalScout:
                 "This is a signal of disproportionate reporting (Evans et al. 2001: at least "
                 f"{cfg.min_reports} reports, PRR at least {cfg.prr_min:g}, chi-squared at "
                 f"least {cfg.chi2_min:g}), not an incidence and not evidence that the drug "
-                "causes it."
+                "causes it. It is a priority signal (lower 95% limit of the PRR above "
+                f"{cfg.priority_prr_low_above:g}, at least {cfg.priority_min_reports} reports, "
+                "not an indication or use term). These reports concern oral xanomeline with "
+                "trospium in schizophrenia; MRD-201 is transdermal xanomeline alone in "
+                "Alzheimer's disease."
                 + (
                     " The US label "
                     + ("lists it" if t.listed else "does not name it in these words")
@@ -330,4 +426,12 @@ class SafetySignalScout:
         return out
 
 
-__all__ = ["AGENT_ID", "VERSION", "SafetySignalScout", "analyse", "responses_frame"]
+__all__ = [
+    "AGENT_ID",
+    "VERSION",
+    "SafetySignalScout",
+    "analyse",
+    "evidence",
+    "responses_frame",
+    "tier_of",
+]

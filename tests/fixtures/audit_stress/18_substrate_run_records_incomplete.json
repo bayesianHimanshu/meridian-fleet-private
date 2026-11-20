@@ -82,6 +82,10 @@
     "1.2.0": [
       "audit_unsandboxed_operational_run:rbqm.kri_monitor/2.2.0/1",
       "audit_unsandboxed_operational_run:safety.sae_reconciler/1.1.1/1"
+    ],
+    "1.3.0": [
+      "audit_unsandboxed_operational_run:rbqm.kri_monitor/2.2.0/1",
+      "audit_unsandboxed_operational_run:safety.sae_reconciler/1.1.1/1"
     ]
   }
 }

@@ -37,3 +37,11 @@ is reused.
 
 These ideals were written by the same model that then writes the agent. They test that the
 agent implements this specification, not how it behaves on cases nobody wrote down.
+
+Phase 5 step 3b added two cases for 1.3.0's audit_person_attribution_outside_api,
+19_person_named_outside_api and 20_clean_api_writes_by_people, with their ideals, before
+the set was run on 1.3.0. Said plainly: the check's code was written before these two
+cases (they were added when the version change showed the set needed a 1.3.0 run), so they
+are a specification test of code their author had already written, not a blind one. Rows
+carry ENVELOPE_KIND and NAMED as the host writes them; the other 18 cases have neither, so
+the new check does not judge them.

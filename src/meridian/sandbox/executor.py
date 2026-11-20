@@ -32,6 +32,7 @@ from meridian.data.study_store import (
     InventoryStageReader,
     LayeredStudyReader,
     NoaelStageReader,
+    PortfolioStageReader,
     SignalStageReader,
     StudyReader,
 )
@@ -39,15 +40,18 @@ from meridian.domain.events import (
     AuditReviewRequested,
     DataCut,
     Event,
+    GateRequest,
     HumanDecision,
     InventoryLoaded,
     NoaelDecision,
+    PortfolioReviewRequested,
     SendStudyLoaded,
     SignalScanRequested,
     SubstrateRun,
+    portfolio_study,
 )
 from meridian.portfolio.document import ResponseRecord, SignalDocument
-from meridian.portfolio.store import signal_dir
+from meridian.portfolio.store import prior_area, signal_dir
 from meridian.preclinical.noael_stage import noael_dir
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
@@ -56,6 +60,7 @@ from meridian.sandbox.policies import (
     INVENTORY,
     META,
     NOAEL,
+    PORTFOLIO,
     SEND,
     SIGNAL,
     TMF,
@@ -196,6 +201,7 @@ def stage_run(
     noael_root: Path | None = None,
     inventory_root: Path | None = None,
     signal_root: Path | None = None,
+    portfolio_root: Path | None = None,
 ) -> StagedRun:
     """Stage meta/ and the cut areas the policy reads (or the audit extract, or a SEND
     study) under dest, check the stage and the inputs manifest, and return it. Shared by
@@ -208,6 +214,10 @@ def stage_run(
             raise ExecutionError(f"trigger {trigger.seq} is not a signal scan")
         kept = None if signal_root is None else signal_dir(signal_root, trigger.seq) / SIGNAL
         sources = {SIGNAL: kept} if kept is not None and kept.is_dir() else {}
+        base = trigger.payload.reuses_responses_of
+        if not sources and base is not None:
+            # 1.0.1: a rerun on an earlier scan's kept responses, staged as prior_responses.
+            sources = {SIGNAL: prior_area(signal_root, trigger.seq, base)}
         stage = stage_areas(sources, trigger, dest)
         recomputed = build_manifest(stage)
         if (stage / META / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():
@@ -217,6 +227,27 @@ def stage_run(
         )
     if isinstance(trigger.payload, SignalScanRequested):
         raise ExecutionError(f"{agent_id} may not run a signal scan ({policy_name})")
+    if PORTFOLIO in policy.reads:
+        # The portfolio zone (phase 5 step 3b): the facts the host built as the portfolio
+        # lead for this review or gate request, and nothing else.
+        if isinstance(trigger.payload, SendStudyLoaded):
+            raise ExecutionError(f"{agent_id} may not read a SEND study ({policy_name} does not)")
+        if not isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+            raise ExecutionError(f"trigger {trigger.seq} is not a portfolio review or gate")
+        if portfolio_root is None:
+            raise ExecutionError("a portfolio run needs the portfolio facts folder")
+        area = portfolio_root / str(trigger.seq) / PORTFOLIO
+        if not area.is_dir():
+            raise ExecutionError(f"no portfolio facts for trigger {trigger.seq}")
+        stage = stage_areas({PORTFOLIO: area}, trigger, dest)
+        recomputed = build_manifest(stage)
+        if (stage / META / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():
+            raise ExecutionError("staged files changed after the inputs manifest was written")
+        return StagedRun(
+            stage=stage, areas=(PORTFOLIO, META), inputs_manifest_sha256=recomputed.sha256()
+        )
+    if isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+        raise ExecutionError(f"{agent_id} may not read portfolio facts ({policy_name})")
     if SEND in policy.reads:
         # The preclinical zone: a SEND study, never a clinical cut (phase 5 step 1), and
         # since step 2 a study's NOAEL decisions or an asset's study inventory.
@@ -293,7 +324,9 @@ class InProcessExecutor:
         noael_root: Path | None = None,
         inventory_root: Path | None = None,
         signal_root: Path | None = None,
+        portfolio_root: Path | None = None,
     ) -> None:
+        self._portfolio_root = portfolio_root  # <portfolio_root>/<trigger seq>/portfolio
         self._signal_root = signal_root  # <signal_root>/<trigger seq>/signal (step 3a)
         self._noael_root = noael_root  # <noael_root>/<trigger seq>/noael (phase 5 step 2)
         self._inventory_root = inventory_root  # <inventory_root>/<asset>/<cut>/inventory
@@ -364,6 +397,14 @@ class InProcessExecutor:
             )
         elif isinstance(trigger.payload, NoaelDecision | InventoryLoaded | HumanDecision):
             reader = self._preclinical_reader(agent_id, trigger, cut_id)
+        elif isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+            if self._portfolio_root is None:
+                raise ExecutionError("a portfolio run needs the portfolio facts folder")
+            reader = PortfolioStageReader.at_cut_dir(
+                self._portfolio_root / str(trigger.seq),
+                cut_id=cut_id,
+                study_id=portfolio_study(trigger),
+            )
         elif isinstance(trigger.payload, SignalScanRequested):
             # In process only on recorded responses (a replay): a live scan fetches from
             # openFDA and runs only in its sandbox (portfolio_signal).
@@ -458,8 +499,10 @@ class OpenShellExecutor:
         noael_root: Path | None = None,
         inventory_root: Path | None = None,
         signal_root: Path | None = None,
+        portfolio_root: Path | None = None,
         agent_timeouts: dict[str, int] | None = None,
     ) -> None:
+        self._portfolio_root = portfolio_root
         self._noael_root = noael_root
         self._inventory_root = inventory_root
         self._signal_root = signal_root
@@ -517,6 +560,7 @@ class OpenShellExecutor:
                 noael_root=self._noael_root,
                 inventory_root=self._inventory_root,
                 signal_root=self._signal_root,
+                portfolio_root=self._portfolio_root,
             )
             stage = staged.stage
             inputs_sha = staged.inputs_manifest_sha256

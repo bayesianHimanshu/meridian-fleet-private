@@ -1,4 +1,4 @@
-"""quality.audit_trail_reviewer 1.1.0: a review of the audit trail itself. Deterministic.
+"""quality.audit_trail_reviewer 1.3.0: a review of the audit trail itself. Deterministic.
 
 Input: the audit extract of the ledger from from_seq through through_seq (the trigger's,
 an AuditReviewRequested), staged as /stage/audit under policies/quality.audit_trail.yaml.
@@ -27,6 +27,11 @@ The checks (docs/audit-notes.md), one finding per occurrence, kind audit:
 * audit_decision_on_retired (medium): a decision recorded after its finding was superseded
   (a newer version of the agent raised the same thing: same FINDING_GROUP) or retired (a
   newer version completed a run on the finding's cut without raising it).
+* audit_person_attribution_outside_api (high, 1.3.0): an event naming a person as acting
+  (its actor or requested_by, decided_by, raised_by, corrected_by, a decision's actor) that
+  is not one the Fleet API records for that person (meridian.domain.audit.API_PERSON_TYPES,
+  with the person as the event's actor). An AttributionCorrection of it is shown as
+  evidence; the occurrence is still raised, since the record stays.
 * audit_data_quality (medium): a malformed row. The row is left out of the checks that
   need the bad field; the review never fails.
 
@@ -34,6 +39,7 @@ A finding about a person's decisions names that person (actor_under_review): the
 decide it.
 """
 
+import json
 import re
 from collections import defaultdict
 from collections.abc import Sequence
@@ -53,8 +59,9 @@ from meridian.ledger.hashing import GENESIS_HASH
 from meridian.platform.agent_settings import AuditTrailReviewerConfig
 
 AGENT_ID = "quality.audit_trail_reviewer"
-VERSION = "1.2.0"  # 1.1.0: substrate is a sandboxed executor (phase 4a step 2)
+VERSION = "1.3.0"  # 1.1.0: substrate is a sandboxed executor (phase 4a step 2)
 # 1.2.0: a run's start is ActorWoke's STARTED_AT when present (phase 4a step 3)
+# 1.3.0: audit_person_attribution_outside_api (phase 5 step 3b)
 VISIBLE_TO_MAX = frozenset({Role.CLINICAL_OPS_LEAD, Role.QA_AUDITOR})
 SEVERITY: dict[str, Severity] = {
     a.CHAIN_LINKAGE: Severity.HIGH,
@@ -64,6 +71,7 @@ SEVERITY: dict[str, Severity] = {
     a.REASON_QUALITY: Severity.LOW,
     a.DECISION_ON_RETIRED: Severity.MEDIUM,
     a.DATA_QUALITY: Severity.MEDIUM,
+    a.PERSON_OUTSIDE_API: Severity.HIGH,
 }
 SCORE = {Severity.HIGH: 1.0, Severity.MEDIUM: 0.5, Severity.LOW: 0.2}
 OPENSHELL = "openshell"
@@ -654,6 +662,105 @@ def retired(p: Parsed) -> list[Hit]:
     return hits
 
 
+def _named(row: Row) -> list[tuple[str, str, str]] | None:
+    """NAMED as (field, value, kind) triples; None when malformed."""
+    text = row.get(a.NAMED)
+    if not text:
+        return []
+    try:
+        raw = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(raw, list) or not all(
+        isinstance(x, list) and len(x) == 3 and all(isinstance(y, str) for y in x) for x in raw
+    ):
+        return None
+    return [(x[0], x[1], x[2]) for x in raw]
+
+
+def attribution(p: Parsed) -> list[Hit]:
+    """audit_person_attribution_outside_api (1.3.0): an event that names a person as acting
+    (its actor or a payload field) but is not one the Fleet API records for that person:
+    a type in API_PERSON_TYPES whose envelope actor is the person, every person it names
+    being that same person (a FindingRaised only for a QA observation). Rows without the
+    kind columns (extracts before 1.3.0) and redacted rows are not judged."""
+    corrections: dict[int, list[int]] = defaultdict(list)
+    for r in p.rows:
+        target = r.int(a.CORRECTS_SEQ)
+        if target is not None and r.type == EventType.ATTRIBUTION_CORRECTION.value:
+            corrections[target].append(r.seq)
+    hits: list[Hit] = []
+    for r in p.rows:
+        if r.redacted or not r.get(a.ENVELOPE_KIND):
+            continue
+        named = _named(r)
+        if named is None:
+            hits.append(
+                Hit(
+                    a.DATA_QUALITY,
+                    f"{r.seq}#{a.NAMED}",
+                    f"Audit extract: {a.NAMED} of row {r.seq} is not usable",
+                    f"{a.NAMED} of row {r.seq} is not a list of [field, value, kind]; the "
+                    "attribution check skips the row.",
+                    (_ev(f"SEQ={r.seq}", "data_quality:field", a.NAMED),),
+                )
+            )
+            continue
+        envelope, envelope_kind = r.get(a.ENVELOPE_ACTOR), r.get(a.ENVELOPE_KIND)
+        persons = sorted({v for _, v, k in named if k == a.PERSON})
+        if envelope_kind == a.PERSON:
+            persons = sorted({*persons, envelope})
+        if not persons:
+            continue
+        through_api = (
+            r.type in a.API_PERSON_TYPES
+            and envelope_kind == a.PERSON
+            and persons == [envelope]
+            and (r.type != EventType.FINDING_RAISED.value or r.get(a.AGENT) == a.OBSERVATION_AGENT)
+        )
+        if through_api:
+            continue
+        fields = ", ".join(f"{f}={v}" for f, v, k in named if k == a.PERSON)
+        why = (
+            f"a {r.type} is not an event the Fleet API records for a person"
+            if r.type not in a.API_PERSON_TYPES
+            else f"its actor is {envelope} ({envelope_kind}), not the person it names"
+        )
+        corrected = corrections.get(r.seq, [])
+        evidence = [
+            _ev(f"SEQ={r.seq}", "attribution:type", r.type),
+            _ev(f"SEQ={r.seq}", "attribution:envelope_actor", f"{envelope} ({envelope_kind})"),
+            _ev(f"SEQ={r.seq}", "attribution:named_person", fields or envelope),
+            _ev(
+                f"SEQ={r.seq}",
+                "attribution:corrected",
+                "corrected by AttributionCorrection at seq " + ", ".join(str(c) for c in corrected)
+                if corrected
+                else "no AttributionCorrection recorded",
+                value=float(len(corrected)),
+                role="supporting",
+            ),
+        ]
+        hits.append(
+            Hit(
+                a.PERSON_OUTSIDE_API,
+                str(r.seq),
+                f"Seq {r.seq} records {', '.join(persons)} as acting outside the Fleet API",
+                f"Seq {r.seq} names {', '.join(persons)} ({fields or 'as its actor'}), but {why}. "
+                "A person acts only through the API with their own identity, so the record "
+                "may say someone did what they did not do."
+                + (
+                    f" An AttributionCorrection (seq {', '.join(map(str, corrected))}) says what "
+                    "is true; the event itself stays as recorded."
+                    if corrected
+                    else ""
+                ),
+                tuple(evidence),
+            )
+        )
+    return hits
+
+
 def data_quality(p: Parsed) -> list[Hit]:
     hits = []
     seen: set[tuple[str, str]] = set()
@@ -692,6 +799,7 @@ def review(
         *rapid(p, cfg),
         *reasons(p, cfg),
         *retired(p),
+        *attribution(p),
         *data_quality(p),
     ]
 

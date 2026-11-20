@@ -26,7 +26,12 @@ from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.audit.extract import write_extract
 from meridian.data.study_store import ParquetStudyReader
-from meridian.domain.events import AuditReviewRequested, Event, SendStudyLoaded
+from meridian.domain.events import (
+    AuditReviewRequested,
+    Event,
+    PortfolioReviewRequested,
+    SendStudyLoaded,
+)
 from meridian.platform.agent_settings import QtlDetectorConfig
 from meridian.platform.clock import FixedClock
 from meridian.platform.config import AgentsSettings, SubstrateSettings
@@ -331,6 +336,9 @@ def _zone_roots(tmp_path: Path) -> tuple[Path, Event, Event]:
     send = tmp_path / "send" / "MRD-101-TOX-01" / "TOX-FINAL" / "send"
     send.mkdir(parents=True)
     pl.DataFrame({"USUBJID": ["A1"], "ARMCD": ["4"]}).write_parquet(send / "dm.parquet")
+    facts = tmp_path / "portfolio" / "13" / "portfolio"
+    facts.mkdir(parents=True)
+    pl.DataFrame({"asset_id": ["MRD-110"]}).write_parquet(facts / "portfolio_facts.parquet")
     return tmp_path, cut_trigger("DC-BASE", seq=2), review
 
 
@@ -346,6 +354,7 @@ EXPECTED_AREAS = {
     "quality": {"meta", "blinded", "tmf"},
     "quality.audit_trail": {"meta", "audit"},
     "preclinical": {"meta", "send"},
+    "portfolio": {"meta", "portfolio"},
 }
 AGENT_OF = {
     "rbqm": "rbqm.csm",
@@ -353,7 +362,18 @@ AGENT_OF = {
     "quality": "quality.tmf_completeness",
     "quality.audit_trail": "quality.audit_trail_reviewer",
     "preclinical": "preclinical.tox_study_monitor",
+    "portfolio": "portfolio.pipeline_intelligence",
 }
+
+
+def review_trigger(seq: int = 13) -> Event:
+    return cut_trigger("DC-BASE", seq=seq).model_copy(
+        update={
+            "payload": PortfolioReviewRequested(
+                review_id="REVIEW-20261120T000000Z", requested_by="rahul.iyer", reason="requested"
+            )
+        }
+    )
 
 
 @pytest.mark.parametrize("policy", SUBSTRATE_POLICIES)
@@ -362,10 +382,18 @@ def test_an_actor_receives_only_its_zones_folders(tmp_path: Path, policy: str) -
     root, cut, review = _zone_roots(tmp_path)
     audit = policy == "quality.audit_trail"
     send = policy == "preclinical"
+    folio = policy == "portfolio"
+    trigger = review if audit else send_trigger() if send else review_trigger() if folio else cut
     staged = stage_run(
         agent_id=AGENT_OF[policy],
-        trigger=review if audit else send_trigger() if send else cut,
-        cut_id="LEDGER" if audit else "TOX-FINAL" if send else "DC-BASE",
+        trigger=trigger,
+        cut_id="LEDGER"
+        if audit
+        else "TOX-FINAL"
+        if send
+        else "REVIEW-20261120T000000Z"
+        if folio
+        else "DC-BASE",
         policy_name=policy,
         dest=tmp_path / "stage",
         study_root=root / "curated" / STUDY,
@@ -373,6 +401,7 @@ def test_an_actor_receives_only_its_zones_folders(tmp_path: Path, policy: str) -
         etmf_root=root / "etmf" / STUDY,
         audit_root=root / "audit",
         send_root=root / "send" / "MRD-101-TOX-01",
+        portfolio_root=root / "portfolio",
     )
     members = archive_members(archive(staged.stage))
     areas = {m.split("/", 1)[0] for m in members}
@@ -384,7 +413,8 @@ def test_an_actor_receives_only_its_zones_folders(tmp_path: Path, policy: str) -
     # The actor's side: the template's --areas is the same set, and it refuses any other.
     command = zone_command(policy)
     assert set(command[command.index("--areas") + 1].split(",")) == set(ALL_POLICIES[policy].reads)
-    for other in {"blinded", "ops", "unblinded", "tmf", "audit", "lm", "narr", "send"} - areas:
+    others = {"blinded", "ops", "unblinded", "tmf", "audit", "lm", "narr", "send", "portfolio"}
+    for other in others - areas:
         bad = io.BytesIO()
         with tarfile.open(fileobj=bad, mode="w") as tar:
             info = tarfile.TarInfo(f"{other}/x.parquet")
@@ -465,4 +495,17 @@ def test_the_preclinical_zone_cannot_be_staged_a_clinical_cut(tmp_path: Path) ->
             policy_name="preclinical", dest=tmp_path / "stage",
             study_root=root / "curated" / STUDY, safety_root=None, etmf_root=None,
             audit_root=None, send_root=root / "send" / "MRD-101-TOX-01",
+        )  # fmt: skip
+
+
+@pytest.mark.parametrize("policy", [p for p in SUBSTRATE_POLICIES if p != "portfolio"])
+def test_no_other_zone_can_be_staged_portfolio_facts(tmp_path: Path, policy: str) -> None:
+    root, _, _ = _zone_roots(tmp_path)
+    with pytest.raises(ExecutionError, match=r"portfolio|not the|SendStudyLoaded|audit review"):
+        stage_run(
+            agent_id=AGENT_OF[policy], trigger=review_trigger(), cut_id="REVIEW-20261120T000000Z",
+            policy_name=policy, dest=tmp_path / "stage", study_root=root / "curated" / STUDY,
+            safety_root=root / "safety" / STUDY, etmf_root=root / "etmf" / STUDY,
+            audit_root=root / "audit", send_root=root / "send" / "MRD-101-TOX-01",
+            portfolio_root=root / "portfolio",
         )  # fmt: skip

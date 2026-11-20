@@ -122,6 +122,33 @@ def caller(
     return person
 
 
+def make_repository(ctx: ApiContext, person: Person, ledger: SqliteLedger) -> Repository:
+    """The Repository of one person over one open ledger (also the host's portfolio facts
+    builder, phase 5 step 3b, which acts as the portfolio lead)."""
+    return Repository(
+        ledger=ledger,
+        person=person,
+        clock=ctx.clock,
+        study_id=ctx.study_id,
+        registry=ctx.registry,
+        policies_dir=ctx.policies_dir,
+        ground_truth_dir=ctx.ground_truth_dir,
+        portfolio=ctx.portfolio,
+        operational_cuts=ctx.operational_cuts,
+        run_timeout_seconds=ctx.run_timeout_seconds,
+        executors=dict(ctx.executors),
+        default_executor=ctx.default_executor,
+        send_reader=ctx.send_reader,
+        tox_config=ctx.agents.tox_study_monitor,
+        preclinical_assets=dict(ctx.preclinical_assets),
+        inventory_reader=ctx.inventory_reader,
+        ind_config=ctx.agents.ind_readiness,
+        signal_responses=ctx.signal_responses,
+        signal_config=ctx.agents.safety_signal_scout,
+        gates=ctx.agents.stage_gate_pack.gates,
+    )
+
+
 def repository(
     ctx: Annotated[ApiContext, Depends(context)],
     person: Annotated[Person, Depends(caller)],
@@ -130,27 +157,7 @@ def repository(
         path=ctx.ledger_path, clock=ctx.clock, finding_id_prefixes=ctx.finding_id_prefixes
     )
     try:
-        yield Repository(
-            ledger=ledger,
-            person=person,
-            clock=ctx.clock,
-            study_id=ctx.study_id,
-            registry=ctx.registry,
-            policies_dir=ctx.policies_dir,
-            ground_truth_dir=ctx.ground_truth_dir,
-            portfolio=ctx.portfolio,
-            operational_cuts=ctx.operational_cuts,
-            run_timeout_seconds=ctx.run_timeout_seconds,
-            executors=dict(ctx.executors),
-            default_executor=ctx.default_executor,
-            send_reader=ctx.send_reader,
-            tox_config=ctx.agents.tox_study_monitor,
-            preclinical_assets=dict(ctx.preclinical_assets),
-            inventory_reader=ctx.inventory_reader,
-            ind_config=ctx.agents.ind_readiness,
-            signal_responses=ctx.signal_responses,
-            signal_config=ctx.agents.safety_signal_scout,
-        )
+        yield make_repository(ctx, person, ledger)
     finally:
         ledger.close()
 

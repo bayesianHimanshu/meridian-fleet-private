@@ -35,7 +35,7 @@ def _scan(fx: Fixture, root: Path, scan_id: str, fake: FakeOpenFda) -> tuple[Eve
                 study_id="MRD-201",
                 visibility=Visibility.BLINDED,
                 payload=SignalScanRequested(
-                    study_id="MRD-201", scan_id=scan_id, requested_by="karan.mehta"
+                    study_id="MRD-201", scan_id=scan_id, requested_by="operator:test"
                 ),
             )
         )
@@ -90,14 +90,26 @@ def test_the_signals_view_and_who_decides(tmp_path: Path) -> None:
         200,
         1_000_000,
     )
-    assert [s["term"] for s in view["signals"]] == ["VOMITING", "NAUSEA"]  # by PRR
+    assert [s["term"] for s in view["signals"]] == [
+        "COLD SWEAT", "PSYCHOTIC DISORDER", "HYPERHIDROSIS", "VOMITING", "NAUSEA",
+    ]  # by PRR  # fmt: skip
     nausea = next(s for s in view["signals"] if s["term"] == "NAUSEA")
     assert (nausea["reports"], nausea["term_reports"], nausea["label_listed"]) == (
         50,
         TERM_TOTALS["NAUSEA"],
         True,
     )
-    assert nausea["finding_id"] is not None
+    # 1.0.1: only the priority signal is a finding; the others stay here with their tier.
+    assert (nausea["tier"], nausea["finding_id"]) == ("listed", None)
+    priority = next(s for s in view["signals"] if s["term"] == "HYPERHIDROSIS")
+    assert priority["tier"] == "priority"
+    assert priority["finding_id"] is not None
+    assert view["tiers"] == {"listed": 2, "indication": 1, "use": 0, "weak": 1, "priority": 1}
+    assert len(view["context"]) == 2
+    assert view["scan"]["requested_by"] == "operator:test"
+    assert view["scan"]["agent_version"] == "1.0.1"
+    assert (view["scan"]["findings"], view["scan"]["open"]) == (1, 1)
+    assert view["earlier_scans"] == []
     assert view["signals_listed"] == 2
     assert [(r["reaction"], r["signal_terms"]) for r in view["label_most_common"]] == [
         ("nausea", ["NAUSEA"]),
@@ -109,8 +121,8 @@ def test_the_signals_view_and_who_decides(tmp_path: Path) -> None:
     for role in (Role.CLINICAL_OPS_LEAD, Role.TOXICOLOGIST, Role.QA_AUDITOR):
         assert c.get("/api/v1/safety/signals", headers=headers(role)).status_code == 403
         assert _signals(c, role) == []
-    url = f"/api/v1/findings/{nausea['finding_id']}/decisions"
-    decision = {"action": "escalated", "reason": "Known from the label; watch in MRD-201."}
+    url = f"/api/v1/findings/{priority['finding_id']}/decisions"
+    decision = {"action": "escalated", "reason": "Not in the label; watch in MRD-201."}
     assert c.post(url, json=decision, headers=headers(Role.PORTFOLIO_LEAD)).status_code == 403
     assert c.post(url, json=decision, headers=headers(Role.MEDICAL_MONITOR)).status_code == 201
     woke = [
@@ -122,7 +134,7 @@ def test_the_signals_view_and_who_decides(tmp_path: Path) -> None:
     ]
     (w,) = woke
     fetched = w["payload"]["fetched"]
-    assert len(fetched) == 8
+    assert len(fetched) == 11
     assert {f["path"] for f in fetched} == {o.EVENT, o.LABEL}
     assert all(len(f["sha256"]) == 64 and f["last_updated"] for f in fetched if f["status"] == 200)
 
@@ -130,31 +142,65 @@ def test_the_signals_view_and_who_decides(tmp_path: Path) -> None:
 def test_a_newer_scan_supersedes_or_retires(tmp_path: Path) -> None:
     fx = build(tmp_path / "fx")
     root = tmp_path / "signals"
-    _scan(fx, root, "SCAN-20261120T000000Z", FakeOpenFda())
+    # ANGER: 12 of 200 against 600 of 1,000,000, a priority signal in the first scan only.
+    _scan(fx, root, "SCAN-20261120T000000Z", FakeOpenFda(extra={"ANGER": (12, 600)}))
     c = _client(fx, root)
     first = {
         s["title"].split(": ", 1)[1].split(" (")[0]: s["finding_id"]
         for s in _signals(c, Role.MEDICAL_MONITOR)
     }
-    assert set(first) == {"nausea", "vomiting"}
+    assert set(first) == {"hyperhidrosis", "anger"}
 
-    class Fewer(FakeOpenFda):
-        def __call__(self, path: str, query: str) -> tuple[int, str]:
-            status, body = super().__call__(path, query)
-            if "VOMITING" in query and "count=fulfillexpeditecriteria" in query:
-                return 200, body.replace(str(TERM_TOTALS["VOMITING"]), "200000")
-            return status, body
-
-    _scan(fx, root, "SCAN-20261127T000000Z", Fewer("2026-11-25"))
+    _scan(fx, root, "SCAN-20261127T000000Z", FakeOpenFda("2026-11-25"))
     c = _client(fx, root)
     everything = {
         s["finding_id"]: s
         for s in _signals(c, Role.MEDICAL_MONITOR, include_superseded=True, include_retired=True)
     }
-    assert everything[first["nausea"]]["superseded"] is True
-    assert everything[first["vomiting"]]["retired"] is True  # no longer a signal
+    assert everything[first["hyperhidrosis"]]["superseded"] is True
+    assert everything[first["anger"]]["retired"] is True  # not raised by the newer scan
     current = _signals(c, Role.MEDICAL_MONITOR)
-    assert [s["title"].split(": ", 1)[1].split(" (")[0] for s in current] == ["nausea"]
+    assert [s["title"].split(": ", 1)[1].split(" (")[0] for s in current] == ["hyperhidrosis"]
     view = c.get("/api/v1/safety/signals", headers=headers(Role.PORTFOLIO_LEAD)).json()
     assert view["data_date"] == "2026-11-25"
     assert view["scan_id"] == "SCAN-20261127T000000Z"
+    (earlier,) = view["earlier_scans"]
+    assert (earlier["scan_id"], earlier["findings"], earlier["open"]) == (
+        "SCAN-20261120T000000Z",
+        2,
+        0,
+    )
+
+
+def test_an_attribution_correction_shows_on_the_ledger_and_the_scan(tmp_path: Path) -> None:
+    from meridian.domain.events import AttributionCorrection
+
+    fx = build(tmp_path / "fx")
+    root = tmp_path / "signals"
+    event, _ = _scan(fx, root, "SCAN-20261120T000000Z", FakeOpenFda())
+    correction = fx.append(
+        AttributionCorrection(
+            corrects_seq=event.seq,
+            field="requested_by",
+            recorded_value="karan.mehta",
+            true_value="operator:test",
+            explanation="Started from the CLI by the coding agent, not by the medical monitor.",
+            corrected_by="operator:test",
+        ),
+        actor="operator:test",
+    )
+    c = _client(fx, root)
+    page = c.get(
+        f"/api/v1/ledger?since={event.seq - 1}&limit=1", headers=headers(Role.MEDICAL_MONITOR)
+    ).json()
+    assert page["entries"][0]["seq"] == event.seq
+    (shown,) = page["corrections"][str(event.seq)]
+    assert (shown["seq"], shown["true_value"]) == (correction.seq, "operator:test")
+    view = c.get("/api/v1/safety/signals", headers=headers(Role.MEDICAL_MONITOR)).json()
+    (on_scan,) = view["scan"]["corrections"]
+    assert on_scan["recorded_value"] == "karan.mehta"
+    # A page that does not show the corrected event carries no correction.
+    later = c.get(
+        f"/api/v1/ledger?since={event.seq}&limit=500", headers=headers(Role.MEDICAL_MONITOR)
+    ).json()
+    assert later["corrections"] == {}

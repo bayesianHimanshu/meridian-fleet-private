@@ -36,6 +36,7 @@ SUBSTRATE_POLICIES: tuple[str, ...] = (
     "quality",
     "quality.audit_trail",
     "preclinical",
+    "portfolio",  # phase 5 step 3b: the portfolio facts, no network
 )
 CONFORMANCE = "conformance"
 WORKER_BIN = "/opt/meridian/venv/bin/meridian-worker"

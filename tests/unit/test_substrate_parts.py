@@ -78,7 +78,7 @@ def test_a_policy_with_network_rules_may_not_choose_substrate(policy: str) -> No
         )
 
 
-def test_the_configured_substrate_policies_are_the_four_without_network() -> None:
+def test_the_configured_substrate_policies_are_those_without_network() -> None:
     chosen = {p for p, e in Settings().runtime.executors.items() if e == "substrate"}
     assert chosen == set(SUBSTRATE_POLICIES)
     assert all(substrate_eligible(p) for p in chosen)
