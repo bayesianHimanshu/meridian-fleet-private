@@ -1135,13 +1135,13 @@ def sandbox_conformance(
         raise typer.Exit(code=1)
 
 
-def _api(settings: Settings, clock: Clock) -> FastAPI:
+def _api(settings: Settings, clock: Clock, read_only_log: Path | None = None) -> FastAPI:
     from meridian.api.app import context_from_settings, create_app
 
     ctx = context_from_settings(
         settings, clock, settings.api.people_file, settings.api.portfolio_file
     )
-    return create_app(ctx)
+    return create_app(ctx, read_only_log=read_only_log)
 
 
 def openapi_text(settings: Settings) -> str:
@@ -1157,6 +1157,14 @@ def openapi_text(settings: Settings) -> str:
 @api_app.command("serve")
 def api_serve(
     port: Annotated[int | None, typer.Option("--port", help="Default: [api] port.")] = None,
+    demo_read_only: Annotated[
+        Path | None,
+        typer.Option(
+            "--demo-read-only",
+            help="Read-only demo mode: every write is refused with 403 and logged to this "
+            "JSON-lines file (docs/demo/README.md).",
+        ),
+    ] = None,
 ) -> None:
     """Run the Fleet API with uvicorn on 127.0.0.1 (never another interface)."""
     import uvicorn
@@ -1168,11 +1176,16 @@ def api_serve(
     if not settings.ledger_path.exists():
         typer.echo(f"error: no ledger at {settings.ledger_path}", err=True)
         raise typer.Exit(code=1)
+    mode = f", read-only demo mode, refusals to {demo_read_only}" if demo_read_only else ""
     typer.echo(
         f"Fleet API on http://{HOST}:{port or settings.api.port}/api/v1 "
-        "(development identity, not authentication)"
+        f"(development identity, not authentication{mode})"
     )
-    uvicorn.run(_api(settings, SystemClock()), host=HOST, port=port or settings.api.port)
+    uvicorn.run(
+        _api(settings, SystemClock(), read_only_log=demo_read_only),
+        host=HOST,
+        port=port or settings.api.port,
+    )
 
 
 @api_app.command("openapi")

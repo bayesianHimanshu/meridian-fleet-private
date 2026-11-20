@@ -1,5 +1,6 @@
 """The Fleet API application: routes, error mapping, CORS and the development-auth header."""
 
+import json
 import tomllib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -93,7 +94,16 @@ def context_from_settings(
     )
 
 
-def create_app(ctx: ApiContext) -> FastAPI:
+READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+MODE_HEADER = "X-Meridian-Mode"
+READ_ONLY_MODE = "read-only-demo"
+
+
+def create_app(ctx: ApiContext, read_only_log: Path | None = None) -> FastAPI:
+    """read_only_log set: the demo's read-only mode (docs/demo/README.md). Every request
+    that is not GET, HEAD or OPTIONS is refused with 403 before any route runs, so no
+    decision, request or observation can be recorded, and each refusal is appended to
+    read_only_log as a JSON line with its time."""
     app = FastAPI(
         title="Meridian Fleet API",
         version=VERSION,
@@ -118,6 +128,33 @@ def create_app(ctx: ApiContext) -> FastAPI:
             return JSONResponse(status_code=status, content={"detail": str(exc)})
 
         app.add_exception_handler(error_type, handle)
+
+    if read_only_log is not None:
+        log_path = read_only_log
+
+        @app.middleware("http")
+        async def read_only_demo(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            if request.method in READ_METHODS:
+                response = await call_next(request)
+            else:
+                refused = {
+                    "at": ctx.clock.now().isoformat(),
+                    "method": request.method,
+                    "path": request.url.path,
+                    "actor": request.headers.get(ACTOR_HEADER),
+                    "status": 403,
+                }
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(refused) + "\n")
+                response = JSONResponse(
+                    status_code=403,
+                    content={"detail": "read-only demo mode: nothing can be recorded"},
+                )
+            response.headers[MODE_HEADER] = READ_ONLY_MODE
+            return response
 
     @app.middleware("http")
     async def development_auth_header(
